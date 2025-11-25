@@ -31,6 +31,8 @@ export default defineConfig({
       },
       plugins: [],
     },
+    // Exclude backend/server files
+    exclude: ['supabase'],
   },
   build: {
     target: 'esnext',
@@ -49,6 +51,8 @@ export default defineConfig({
           ],
         },
       },
+      // Exclude backend files from bundle
+      external: [/^\/supabase\//],
     },
   },
 });
