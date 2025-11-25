@@ -1,0 +1,300 @@
+==========================================
+  CLOUDFLARE PAGES - COPY/PASTE COMMANDS
+==========================================
+
+📋 همه commands لازم برای deploy به Cloudflare
+
+------------------------------------------
+1️⃣ GIT SETUP
+------------------------------------------
+
+# Initialize Git (اگر نکرده‌اید)
+git init
+
+# Add all files
+git add .
+
+# Commit
+git commit -m "Deploy to Cloudflare Pages"
+
+# Create GitHub repo at: https://github.com/new
+# Then:
+git remote add origin https://github.com/YOUR_USERNAME/suprik-wallet.git
+git branch -M main
+git push -u origin main
+
+------------------------------------------
+2️⃣ LOCAL BUILD TEST
+------------------------------------------
+
+# Install dependencies
+npm install
+
+# Test build
+npm run build
+
+# Should create dist/ folder
+ls -la dist/
+
+# Preview build
+npm run preview
+
+# Open: http://localhost:4173
+
+------------------------------------------
+3️⃣ CLOUDFLARE DASHBOARD
+------------------------------------------
+
+Direct links:
+
+Cloudflare Login:
+https://dash.cloudflare.com/login
+
+Create Pages Project:
+https://dash.cloudflare.com/sign-up/pages
+
+Workers & Pages:
+https://dash.cloudflare.com/?to=/:account/pages
+
+------------------------------------------
+4️⃣ BUILD SETTINGS (Copy این‌ها)
+------------------------------------------
+
+Project name:
+suprik-wallet
+
+Production branch:
+main
+
+Framework preset:
+Vite
+
+Build command:
+npm run build
+
+Build output directory:
+dist
+
+Root directory:
+(leave empty)
+
+------------------------------------------
+5️⃣ ENVIRONMENT VARIABLES
+------------------------------------------
+
+Copy این‌ها به Cloudflare dashboard:
+
+Name: VITE_SUPABASE_URL
+Value: https://qagsgxsaxspomcysaesa.supabase.co
+
+Name: VITE_SUPABASE_ANON_KEY
+Value: YOUR_ANON_KEY_HERE
+
+Name: VITE_SUPABASE_SERVICE_ROLE_KEY
+Value: YOUR_SERVICE_ROLE_KEY_HERE
+
+Name: VITE_ALCHEMY_API_KEY
+Value: YOUR_ALCHEMY_KEY (optional)
+
+Name: VITE_HELIUS_API_KEY
+Value: YOUR_HELIUS_KEY (optional)
+
+Name: VITE_APP_FEE_WALLET
+Value: YOUR_WALLET_ADDRESS (optional)
+
+------------------------------------------
+6️⃣ WRANGLER CLI (اختیاری)
+------------------------------------------
+
+# Install Wrangler
+npm install -g wrangler
+
+# Login
+wrangler login
+
+# Deploy directly
+wrangler pages deploy dist
+
+# This uploads dist/ to Cloudflare
+
+------------------------------------------
+7️⃣ UPDATE COMMANDS
+------------------------------------------
+
+# Make changes, then:
+git add .
+git commit -m "Update feature"
+git push
+
+# Cloudflare auto-deploys! ✨
+
+------------------------------------------
+8️⃣ TROUBLESHOOTING COMMANDS
+------------------------------------------
+
+# Build fails? Clean install:
+rm -rf node_modules package-lock.json
+npm install
+npm run build
+
+# Check build output:
+ls -la dist/
+du -sh dist/
+
+# Verify environment:
+npm run typecheck
+
+# Test local:
+npm run preview
+
+------------------------------------------
+9️⃣ WRANGLER ADVANCED
+------------------------------------------
+
+# Create new project
+wrangler pages project create suprik-wallet
+
+# List projects
+wrangler pages project list
+
+# Deploy specific folder
+wrangler pages deploy dist --project-name=suprik-wallet
+
+# Tail logs (real-time)
+wrangler pages deployment tail
+
+# View deployments
+wrangler pages deployment list
+
+------------------------------------------
+🔟 USEFUL CLOUDFLARE LINKS
+------------------------------------------
+
+Dashboard:
+https://dash.cloudflare.com
+
+Pages Documentation:
+https://developers.cloudflare.com/pages
+
+Vite Guide:
+https://developers.cloudflare.com/pages/framework-guides/vite
+
+Build Configuration:
+https://developers.cloudflare.com/pages/platform/build-configuration
+
+Environment Variables:
+https://developers.cloudflare.com/pages/platform/build-configuration#environment-variables
+
+Custom Domains:
+https://developers.cloudflare.com/pages/platform/custom-domains
+
+Analytics:
+https://developers.cloudflare.com/analytics/web-analytics
+
+------------------------------------------
+1️⃣1️⃣ CUSTOM DOMAIN SETUP
+------------------------------------------
+
+در Cloudflare Dashboard:
+
+1. انتخاب project
+2. Custom domains tab
+3. Set up a custom domain
+4. Enter: yourdomain.com
+5. Add DNS records:
+
+Type: CNAME
+Name: @
+Target: suprik-wallet-xxx.pages.dev
+Proxy: Enabled (orange cloud)
+
+------------------------------------------
+1️⃣2️⃣ SECURITY HEADERS
+------------------------------------------
+
+Create file: public/_headers
+
+Content:
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+
+/sw.js
+  Service-Worker-Allowed: /
+  Content-Type: application/javascript
+
+/manifest.json
+  Content-Type: application/manifest+json
+
+------------------------------------------
+1️⃣3️⃣ REDIRECTS
+------------------------------------------
+
+Create file: public/_redirects
+
+Content:
+/* /index.html 200
+
+# Or specific redirects:
+/old-url /new-url 301
+
+------------------------------------------
+1️⃣4️⃣ CHECK DEPLOYMENT STATUS
+------------------------------------------
+
+# Via Wrangler:
+wrangler pages deployment list --project-name=suprik-wallet
+
+# Get latest deployment:
+wrangler pages deployment list --project-name=suprik-wallet | head -n 5
+
+------------------------------------------
+1️⃣5️⃣ ROLLBACK
+------------------------------------------
+
+در Dashboard:
+1. Deployments tab
+2. Find previous successful deployment
+3. Click "..." > "Rollback to this deployment"
+
+Via Wrangler:
+wrangler pages deployment create dist --project-name=suprik-wallet --branch=main
+
+------------------------------------------
+✅ FINAL CHECK
+------------------------------------------
+
+After deploy, visit:
+https://suprik-wallet-xxx.pages.dev
+
+Test checklist:
+□ Site loads
+□ Create account works
+□ Unlock wallet works
+□ Tokens display
+□ Send/Receive works
+□ Swap opens
+□ Settings accessible
+□ Mobile responsive
+□ PWA installable
+
+------------------------------------------
+🎉 DONE!
+------------------------------------------
+
+Your Suprik wallet is now live on Cloudflare Pages!
+
+URL: https://suprik-wallet-xxx.pages.dev
+
+Features:
+✅ Global CDN
+✅ Unlimited bandwidth
+✅ DDoS protection
+✅ Auto-deploy
+✅ Preview deployments
+✅ Free SSL
+✅ Custom domains
+
+==========================================
