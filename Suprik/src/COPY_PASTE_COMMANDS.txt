@@ -1,0 +1,184 @@
+===========================================
+  SUPRIK DEPLOYMENT - COPY/PASTE COMMANDS
+===========================================
+
+📋 فقط copy/paste کنید! 🚀
+
+-------------------------------------------
+1️⃣ CHECK READINESS
+-------------------------------------------
+
+bash check-deployment-ready.sh
+
+-------------------------------------------
+2️⃣ GIT SETUP (اولین بار)
+-------------------------------------------
+
+git init
+git add .
+git commit -m "Initial commit - Suprik ready for deployment"
+
+# ساخت repo در GitHub: https://github.com/new
+# بعد run کنید (با URL خودتان):
+
+git remote add origin https://github.com/YOUR_USERNAME/suprik-wallet.git
+git branch -M main
+git push -u origin main
+
+-------------------------------------------
+3️⃣ LOCAL DEV COMMANDS
+-------------------------------------------
+
+# Install dependencies
+npm install
+
+# Run dev server
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview build
+npm run preview
+
+-------------------------------------------
+4️⃣ ENVIRONMENT VARIABLES FOR VERCEL/NETLIFY
+-------------------------------------------
+
+Copy این‌ها به dashboard:
+
+Name: VITE_SUPABASE_URL
+Value: https://qagsgxsaxspomcysaesa.supabase.co
+
+Name: VITE_SUPABASE_ANON_KEY
+Value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhZ3NneHNheHNwb21jeXNhZXNhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzExODMyMjksImV4cCI6MjA0Njc1OTIyOX0.lzUc7C9BCtNa7wXD3KQNWgzHJqjTZaLr7P7-w2N1234
+
+Name: VITE_SUPABASE_SERVICE_ROLE_KEY
+Value: YOUR_SERVICE_ROLE_KEY_HERE
+
+Name: VITE_ALCHEMY_API_KEY (اختیاری)
+Value: YOUR_ALCHEMY_KEY
+
+Name: VITE_HELIUS_API_KEY (اختیاری)
+Value: YOUR_HELIUS_KEY
+
+Name: VITE_APP_FEE_WALLET (اختیاری)
+Value: YOUR_SOLANA_WALLET_ADDRESS
+
+-------------------------------------------
+5️⃣ VERCEL CLI (اختیاری)
+-------------------------------------------
+
+# Install Vercel CLI
+npm i -g vercel
+
+# Login
+vercel login
+
+# Deploy to preview
+vercel
+
+# Deploy to production
+vercel --prod
+
+-------------------------------------------
+6️⃣ UPDATE COMMANDS (بعد از اولین deploy)
+-------------------------------------------
+
+# Make changes, then:
+git add .
+git commit -m "Your update message"
+git push
+
+# خودکار deploy می‌شود! ✨
+
+-------------------------------------------
+7️⃣ TROUBLESHOOTING COMMANDS
+-------------------------------------------
+
+# Build fails? Clean install:
+rm -rf node_modules package-lock.json
+npm install
+npm run build
+
+# Check Node version:
+node --version
+# باید >= 18.0.0 باشد
+
+# Check npm version:
+npm --version
+
+# Verify environment:
+npm run typecheck
+
+-------------------------------------------
+8️⃣ USEFUL LINKS
+-------------------------------------------
+
+Vercel Dashboard:
+https://vercel.com/dashboard
+
+Netlify Dashboard:
+https://app.netlify.com
+
+Cloudflare Dashboard:
+https://dash.cloudflare.com
+
+Supabase Dashboard:
+https://app.supabase.com
+
+GitHub New Repo:
+https://github.com/new
+
+-------------------------------------------
+9️⃣ PLATFORM SPECIFIC COMMANDS
+-------------------------------------------
+
+VERCEL:
+- Import project: https://vercel.com/new
+- Framework: Vite
+- Build: npm run build
+- Output: dist
+
+NETLIFY:
+- New site: https://app.netlify.com/start
+- Build command: npm run build
+- Publish directory: dist
+
+CLOUDFLARE:
+- New project: https://dash.cloudflare.com
+- Framework: Vite
+- Build: npm run build
+- Output: /dist
+
+-------------------------------------------
+🔟 POST-DEPLOYMENT TEST
+-------------------------------------------
+
+# بعد از deploy، این URL ها را تست کنید:
+
+https://your-app.vercel.app
+https://your-app.netlify.app
+https://your-app.pages.dev
+
+Test checklist:
+□ Site loads
+□ Create account works
+□ Unlock wallet works
+□ Tokens display
+□ Send/Receive works
+□ Swap page opens
+□ Settings accessible
+
+-------------------------------------------
+✅ DONE!
+-------------------------------------------
+
+Your app is now live! 🎉
+
+Need help?
+- Full guide: /DEPLOYMENT_COMPLETE_GUIDE.md
+- Quick start: /DEPLOY_NOW_VERCEL.md
+- Reference: /DEPLOYMENT_QUICK_REFERENCE.md
+
+===========================================
