@@ -1,0 +1,40 @@
+🚨 خطای "Must be authenticated!" را اینطور حل کنید:
+
+════════════════════════════════════════════════════════════════
+
+⚡ راه حل سریع (5 دقیقه):
+
+1️⃣ به Alchemy بروید:
+   https://dashboard.alchemy.com
+
+2️⃣ یک App بسازید:
+   - Chain: Ethereum
+   - Network: Mainnet
+
+3️⃣ API Key را کپی کنید:
+   ❌ اشتباه: https://eth-mainnet.g.alchemy.com/v2/abc123...
+   ✅ درست: abc123def456ghi789jkl012mno345pq
+   
+   فقط قسمت بعد از "/v2/" را کپی کنید!
+
+4️⃣ به Supabase بروید:
+   https://supabase.com/dashboard
+   
+5️⃣ Settings → Edge Functions → Secrets
+
+6️⃣ اگر ALCHEMY_API_KEY وجود دارد، حذفش کنید (🗑️)
+
+7️⃣ Add New Secret:
+   Name: ALCHEMY_API_KEY
+   Value: [فقط API key را paste کنید]
+
+8️⃣ Save کنید و 5 دقیقه صبر کنید
+
+9️⃣ در اپلیکیشن به Settings → روی "تست API Keys" کلیک کنید
+
+════════════════════════════════════════════════════════════════
+
+📖 راهنمای کامل: ALCHEMY_FIX_NOW.md
+
+⚠️ نکته مهم: مطمئن شوید URL کامل را کپی نکنید!
+فقط رشته حروف و اعداد (API key) را کپی کنید.

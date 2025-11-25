@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔧 Saturn Admin Console Helper</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            color: #667eea;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-right: 4px solid #667eea;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+            margin: 10px 0;
+            position: relative;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.3s;
+        }
+
+        .copy-btn:hover {
+            background: #5568d3;
+        }
+
+        .copy-btn.copied {
+            background: #10b981;
+        }
+
+        .button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+            transition: transform 0.2s;
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+        }
+
+        .output {
+            background: #e8f5e9;
+            border: 2px solid #4caf50;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            display: none;
+            word-break: break-all;
+        }
+
+        .output.show {
+            display: block;
+        }
+
+        .output strong {
+            color: #2e7d32;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            color: #856404;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            color: #0d47a1;
+        }
+
+        .step {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-right: 3px solid #667eea;
+        }
+
+        .step-number {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Saturn Admin Console Helper</h1>
+        <p class="subtitle">ابزار کمکی برای مدیریت Admin ها</p>
+
+        <!-- Section 1: Get Current Wallet ID -->
+        <div class="section">
+            <h2>۱. دریافت Wallet ID فعلی</h2>
+            <p>برای دریافت Wallet ID کاربر فعلی، این دستور را در Console مرورگر اجرا کنید:</p>
+            
+            <div class="code-block" id="code1">
+                <button class="copy-btn" onclick="copyCode('code1')">کپی</button>
+console.log('Current Wallet ID:', localStorage.getItem('wallet_id'));
+            </div>
+
+            <button class="button" onclick="getCurrentWallet()">🔍 دریافت Wallet ID من</button>
+            <div class="output" id="output1"></div>
+        </div>
+
+        <!-- Section 2: Get All Wallets -->
+        <div class="section">
+            <h2>۲. دریافت تمام Wallet ID ها</h2>
+            <p>برای مشاهده تمام Wallet ID های ذخیره شده در localStorage:</p>
+            
+            <div class="code-block" id="code2">
+                <button class="copy-btn" onclick="copyCode('code2')">کپی</button>
+Object.keys(localStorage)
+  .filter(key => key.includes('wallet'))
+  .forEach(key => console.log(key, localStorage.getItem(key)));
+            </div>
+
+            <button class="button" onclick="getAllWallets()">📋 نمایش تمام Wallet ها</button>
+            <div class="output" id="output2"></div>
+        </div>
+
+        <!-- Section 3: Add to Admin List -->
+        <div class="section">
+            <h2>۳. اضافه کردن به لیست Admin</h2>
+            
+            <div class="step">
+                <span class="step-number">1</span>
+                <strong>کپی Wallet ID:</strong> از بخش بالا Wallet ID را کپی کنید
+            </div>
+
+            <div class="step">
+                <span class="step-number">2</span>
+                <strong>باز کردن فایل:</strong> <code>/utils/adminCheck.ts</code>
+            </div>
+
+            <div class="step">
+                <span class="step-number">3</span>
+                <strong>اضافه کردن:</strong> Wallet ID را به آرایه <code>ADMIN_WALLET_IDS</code> اضافه کنید
+            </div>
+
+            <div class="code-block" id="code3">
+                <button class="copy-btn" onclick="copyCode('code3')">کپی</button>
+const ADMIN_WALLET_IDS = [
+  'your-wallet-id-here',  // 👈 اینجا اضافه کنید
+];
+            </div>
+
+            <div class="info-box">
+                💡 <strong>نکته:</strong> بعد از اضافه کردن Admin جدید، حتماً اپ را رفرش کنید.
+            </div>
+        </div>
+
+        <!-- Section 4: Check Admin Status -->
+        <div class="section">
+            <h2>۴. بررسی وضعیت Admin</h2>
+            <p>برای بررسی اینکه آیا کاربر فعلی Admin است:</p>
+            
+            <div class="code-block" id="code4">
+                <button class="copy-btn" onclick="copyCode('code4')">کپی</button>
+// در Console اپ
+import { isAdmin } from './utils/adminCheck';
+console.log('Am I admin?', isAdmin(localStorage.getItem('wallet_id')));
+            </div>
+
+            <button class="button" onclick="checkAdmin()">🔐 بررسی وضعیت Admin من</button>
+            <div class="output" id="output4"></div>
+
+            <div class="warning">
+                ⚠️ <strong>هشدار:</strong> این بررسی فقط در محیط Development کار می‌کند. 
+                در Production باید از Settings → Developer → Admin Panel استفاده کنید.
+            </div>
+        </div>
+
+        <!-- Section 5: Full Example -->
+        <div class="section">
+            <h2>۵. مثال کامل</h2>
+            <p>برای اضافه کردن Admin جدید، این مراحل را دنبال کنید:</p>
+
+            <div class="code-block" id="code5">
+                <button class="copy-btn" onclick="copyCode('code5')">کپی</button>
+// مرحله 1: دریافت Wallet ID
+const walletId = localStorage.getItem('wallet_id');
+console.log('Wallet ID:', walletId);
+
+// مرحله 2: کپی کنید
+
+// مرحله 3: به /utils/adminCheck.ts اضافه کنید
+const ADMIN_WALLET_IDS = [
+  'wallet-id-شما',
+];
+
+// مرحله 4: ذخیره و رفرش
+
+// مرحله 5: تست
+// Settings → Developer → Admin Panel
+            </div>
+        </div>
+
+        <!-- Section 6: Troubleshooting -->
+        <div class="section">
+            <h2>🐛 عیب‌یابی</h2>
+            
+            <div class="step">
+                <strong>مشکل:</strong> بخش "Developer" نمایش داده نمی‌شود
+                <br>
+                <strong>راه‌حل:</strong> 
+                <ul style="margin-right: 20px; margin-top: 10px;">
+                    <li>Wallet ID را چک کنید</li>
+                    <li>لیست Admin ها را بررسی کنید</li>
+                    <li>اپ را رفرش کنید</li>
+                </ul>
+            </div>
+
+            <div class="step">
+                <strong>مشکل:</strong> Admin Panel باز نمی‌شود
+                <br>
+                <strong>راه‌حل:</strong>
+                <ul style="margin-right: 20px; margin-top: 10px;">
+                    <li>کلمه "adm" را دقیق تایپ کنید</li>
+                    <li>۱۲ بار تایپ کنید (نه کمتر، نه بیشتر)</li>
+                    <li>در صورت اشتباه، از اول شروع می‌شود</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get current wallet ID
+        function getCurrentWallet() {
+            const walletId = localStorage.getItem('wallet_id');
+            const output = document.getElementById('output1');
+            
+            if (walletId) {
+                output.innerHTML = `
+                    <strong>✅ Wallet ID پیدا شد:</strong><br>
+                    <code style="user-select: all; background: white; padding: 10px; display: block; margin-top: 10px; border-radius: 5px;">${walletId}</code>
+                    <button onclick="copyToClipboard('${walletId}')" style="margin-top: 10px; padding: 8px 15px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        📋 کپی Wallet ID
+                    </button>
+                `;
+                output.classList.add('show');
+            } else {
+                output.innerHTML = '<strong>❌ Wallet ID پیدا نشد!</strong><br>لطفاً وارد اپ شوید.';
+                output.classList.add('show');
+                output.style.background = '#ffebee';
+                output.style.borderColor = '#f44336';
+            }
+        }
+
+        // Get all wallets
+        function getAllWallets() {
+            const output = document.getElementById('output2');
+            const walletKeys = Object.keys(localStorage).filter(key => 
+                key.includes('wallet') || key.includes('recovery') || key.includes('auth')
+            );
+            
+            if (walletKeys.length > 0) {
+                let html = '<strong>📋 کلیدهای یافت شده:</strong><br><br>';
+                walletKeys.forEach(key => {
+                    const value = localStorage.getItem(key);
+                    html += `<div style="background: white; padding: 10px; margin-bottom: 10px; border-radius: 5px;">
+                        <strong>${key}:</strong><br>
+                        <code style="word-break: break-all;">${value ? value.substring(0, 50) + '...' : 'null'}</code>
+                    </div>`;
+                });
+                output.innerHTML = html;
+                output.classList.add('show');
+            } else {
+                output.innerHTML = '<strong>❌ هیچ کلیدی پیدا نشد!</strong>';
+                output.classList.add('show');
+            }
+        }
+
+        // Check admin status
+        function checkAdmin() {
+            const output = document.getElementById('output4');
+            const walletId = localStorage.getItem('wallet_id');
+            
+            if (!walletId) {
+                output.innerHTML = '<strong>❌ Wallet ID پیدا نشد!</strong>';
+                output.classList.add('show');
+                return;
+            }
+
+            output.innerHTML = `
+                <strong>ℹ️ اطلاعات:</strong><br><br>
+                <strong>Wallet ID:</strong> <code>${walletId}</code><br><br>
+                <strong>وضعیت:</strong> برای بررسی دقیق، باید در Settings → Developer چک کنید.<br><br>
+                اگر بخش "Developer" را می‌بینید، یعنی Admin هستید! ✅
+            `;
+            output.classList.add('show');
+        }
+
+        // Copy code to clipboard
+        function copyCode(codeId) {
+            const codeBlock = document.getElementById(codeId);
+            const button = codeBlock.querySelector('.copy-btn');
+            const text = codeBlock.textContent.replace('کپی', '').trim();
+            
+            copyToClipboard(text);
+            
+            button.textContent = '✓ کپی شد';
+            button.classList.add('copied');
+            
+            setTimeout(() => {
+                button.textContent = 'کپی';
+                button.classList.remove('copied');
+            }, 2000);
+        }
+
+        // Copy to clipboard helper
+        function copyToClipboard(text) {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text);
+            } else {
+                // Fallback
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+            }
+        }
+    </script>
+</body>
+</html>

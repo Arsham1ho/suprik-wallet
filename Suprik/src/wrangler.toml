@@ -1,0 +1,23 @@
+# Cloudflare Pages Configuration
+name = "suprik-wallet"
+compatibility_date = "2024-11-24"
+
+[build]
+command = "npm run build"
+cwd = "."
+
+[build.upload]
+format = "service-worker"
+
+# Pages configuration
+pages_build_output_dir = "dist"
+
+# Environment Variables (مقادیر واقعی را در Cloudflare Dashboard تنظیم کنید)
+[env.production.vars]
+# این فقط placeholder است - مقادیر واقعی را در Cloudflare Pages dashboard اضافه کنید
+
+# SPA routing
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200

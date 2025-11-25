@@ -1,0 +1,98 @@
+==========================================
+  راه حل سریع خطای Build در Vercel
+==========================================
+
+خطای شما:
+sh: line 1: vite: command not found
+Error: Command "vite build" exited with 127
+
+==========================================
+  راه حل: 3 گام
+==========================================
+
+
+گام 1: حذف پروژه و Import مجدد
+------------------------------------------
+
+1. به Vercel Dashboard بروید
+   👉 https://vercel.com/dashboard
+
+2. پروژه خود → Settings
+
+3. پایین صفحه: "Delete Project"
+
+4. تایپ کنید نام پروژه و Delete
+
+5. Dashboard → "Add New" → "Project"
+
+6. Repository را Import کنید
+
+
+گام 2: تنظیمات Build
+------------------------------------------
+
+Framework Preset: Vite
+Build Command: npm run build
+Output Directory: dist
+Install Command: npm install
+Root Directory: ./
+
+
+گام 3: Environment Variables
+------------------------------------------
+
+اضافه کنید این 4 متغیر:
+
+1. VITE_SUPABASE_URL
+   https://qagsgxsaxspomcysaesa.supabase.co
+
+2. VITE_SUPABASE_ANON_KEY
+   eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhZ3NneHNheHNwb21jeXNhZXNhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIwNTEzMTIsImV4cCI6MjA3NzYyNzMxMn0.nXIq2kt816zG1yTPfG-FPDPubnPZ2n5tpQ7MFAB6sVM
+
+3. SUPABASE_SERVICE_ROLE_KEY
+   [از Supabase بگیرید: Settings → API → service_role]
+
+4. SUPABASE_DB_URL
+   [از Supabase بگیرید: Settings → Database → URI]
+
+
+هر متغیر:
+☑ Production  ☑ Preview  ☑ Development
+
+
+==========================================
+  Deploy!
+==========================================
+
+دکمه "Deploy" را بزنید!
+
+Build log باید نشان دهد:
+✓ npm install
+✓ vite v6.0.3 building...
+✓ built in 42s
+
+
+==========================================
+  اگر هنوز خطا داد
+==========================================
+
+1. چک کنید این فایل‌ها در GitHub هستند:
+   - package.json
+   - vite.config.ts
+   - index.html
+   - main.tsx
+   - vercel.json
+
+2. اگر نیستند:
+   git add .
+   git commit -m "Add build files"
+   git push origin main
+
+3. در Vercel → Redeploy
+
+
+==========================================
+
+📘 راهنمای کامل: /FIX_VERCEL_BUILD_ERROR.md
+
+==========================================
