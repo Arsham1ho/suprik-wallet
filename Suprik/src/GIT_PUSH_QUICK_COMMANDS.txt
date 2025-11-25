@@ -1,0 +1,132 @@
+==========================================
+  GIT PUSH - QUICK COMMANDS
+==========================================
+
+خطا: package.json not found در Cloudflare
+علت: فایل‌ها push نشده‌اند!
+
+------------------------------------------
+STEP 1: Initialize Git
+------------------------------------------
+
+git init
+git status
+
+------------------------------------------
+STEP 2: Add همه فایل‌ها
+------------------------------------------
+
+git add .
+git status
+
+# باید ببینید:
+# Changes to be committed:
+#   new file: package.json
+#   new file: vite.config.ts
+#   ...
+
+------------------------------------------
+STEP 3: Commit
+------------------------------------------
+
+git commit -m "Initial commit: Suprik wallet ready"
+
+------------------------------------------
+STEP 4: Create GitHub Repository
+------------------------------------------
+
+برو به: https://github.com/new
+
+Repository name: suprik-wallet
+Public یا Private: انتخاب کنید
+
+⚠️ مهم: DON'T initialize with README/gitignore
+
+کلیک "Create repository"
+
+------------------------------------------
+STEP 5: Connect Remote
+------------------------------------------
+
+# Copy این command از GitHub (بعد از create):
+git remote add origin https://github.com/YOUR_USERNAME/suprik-wallet.git
+
+# تغییر به main branch:
+git branch -M main
+
+------------------------------------------
+STEP 6: Push
+------------------------------------------
+
+git push -u origin main
+
+# اگر error داد:
+git push -u origin main --force
+
+------------------------------------------
+STEP 7: بررسی موفق بود
+------------------------------------------
+
+# Check remote:
+git remote -v
+
+# Check GitHub:
+https://github.com/YOUR_USERNAME/suprik-wallet
+
+باید همه فایل‌ها را ببینید!
+
+------------------------------------------
+STEP 8: Cloudflare Pages
+------------------------------------------
+
+1. https://dash.cloudflare.com
+2. Workers & Pages > Create application
+3. Pages > Connect to Git
+4. انتخاب repository: suprik-wallet
+5. Begin setup
+
+Build settings:
+- Framework: Vite
+- Build command: npm run build
+- Build output: dist
+
+Environment variables:
+- VITE_SUPABASE_URL
+- VITE_SUPABASE_ANON_KEY
+- VITE_SUPABASE_SERVICE_ROLE_KEY
+
+6. Save and Deploy
+
+------------------------------------------
+✅ SUCCESS!
+------------------------------------------
+
+بعد از push موفق:
+✅ Repository در GitHub
+✅ Cloudflare می‌تواند clone کند
+✅ package.json پیدا می‌شود
+✅ Build موفق می‌شود!
+
+------------------------------------------
+TROUBLESHOOTING
+------------------------------------------
+
+Error: "not a git repository"
+→ git init
+
+Error: "remote origin already exists"
+→ git remote remove origin
+→ git remote add origin URL
+
+Error: "Permission denied"
+→ Use HTTPS URL not SSH
+
+Error: "failed to push"
+→ git push -u origin main --force
+
+------------------------------------------
+
+نیاز به جزئیات بیشتر?
+ببین: /FIX_PACKAGE_JSON_NOT_FOUND.md
+
+==========================================

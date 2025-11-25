@@ -1,0 +1,63 @@
+==========================================
+  CLOUDFLARE BUILD ERROR - QUICK FIX
+==========================================
+
+خطا: "Missing entry-point to Worker script"
+
+------------------------------------------
+راه حل (2 دقیقه):
+------------------------------------------
+
+1. برو به Cloudflare Dashboard:
+   https://dash.cloudflare.com
+
+2. Workers & Pages > انتخاب project
+
+3. Settings > Build & deployments > Edit
+
+4. تغییر Build command به:
+   npm run build
+
+5. تغییر Build output directory به:
+   dist
+   (دقیقاً dist، نه /dist)
+
+6. Save
+
+7. Deployments tab > Retry deployment
+
+------------------------------------------
+تنظیمات صحیح:
+------------------------------------------
+
+Framework preset:    Vite
+Build command:       npm run build
+Build output:        dist
+Root directory:      (empty)
+
+------------------------------------------
+Environment Variables (check):
+------------------------------------------
+
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+VITE_SUPABASE_SERVICE_ROLE_KEY
+
+(همه باید VITE_ prefix داشته باشند)
+
+------------------------------------------
+بعد از Fix:
+------------------------------------------
+
+✅ Build موفق می‌شود
+✅ Deploy می‌شود
+✅ Site live است!
+
+🔗 https://suprik-wallet-xxx.pages.dev
+
+==========================================
+
+نیاز به جزئیات بیشتر؟
+ببین: /FIX_CLOUDFLARE_BUILD_ERROR.md
+
+==========================================
