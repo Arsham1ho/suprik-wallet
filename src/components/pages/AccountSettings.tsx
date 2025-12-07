@@ -39,6 +39,7 @@ interface Account {
   isPrimary: boolean;
   accountIndex?: number;
   solanaAddress?: string;
+  selectedEmoji?: string;
 }
 
 export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }: AccountSettingsProps) {
@@ -50,6 +51,7 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAddAccountDialog, setShowAddAccountDialog] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [newAccountName, setNewAccountName] = useState('');
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [showEmojiSelector, setShowEmojiSelector] = useState(false);
@@ -225,21 +227,31 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
 
   const loadAccounts = async () => {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/accounts/${walletId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
+      console.log('[AccountSettings] 📂 Loading accounts from AccountManager...');
       
-      if (response.ok) {
-        const data = await response.json();
-        setAccounts(data.accounts || []);
-      }
+      // Load accounts from AccountManager (localStorage)
+      const allAccounts = AccountManager.getAccounts();
+      const activeAccountId = AccountManager.getActiveAccountId();
+      
+      console.log('[AccountSettings] ✅ Loaded accounts:', allAccounts);
+      console.log('[AccountSettings] 🔵 Active account ID:', activeAccountId);
+      
+      // Transform AccountManager accounts to match the Account interface
+      const transformedAccounts = allAccounts.map((acc, index) => ({
+        id: acc.id,
+        username: acc.name,
+        walletId: acc.id, // Use account ID as walletId for switching
+        createdAt: new Date(acc.createdAt).toISOString(),
+        isPrimary: index === 0, // First account is primary
+        accountIndex: acc.accountIndex,
+        solanaAddress: acc.addresses.solana,
+        selectedEmoji: acc.selectedEmoji,
+      }));
+      
+      setAccounts(transformedAccounts);
+      setActiveAccountId(activeAccountId);
     } catch (error) {
-      console.error('Error loading accounts:', error);
+      console.error('[AccountSettings] Error loading accounts:', error);
     }
   };
 
@@ -340,6 +352,13 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
     }
 
     try {
+      // Validate walletId exists
+      if (!walletId) {
+        toast.error('Wallet ID not found. Please try reloading the page.');
+        console.error('[AccountSettings] ❌ walletId is missing:', walletId);
+        return;
+      }
+      
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/update-username`,
         {
@@ -429,12 +448,55 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
     }
   };
 
+  // Handle create new account (like Home page - no dialog)
+  const handleCreateAccount = async () => {
+    try {
+      if (!wallet.mnemonic || !wallet.isUnlocked) {
+        toast.error('Please unlock your wallet first');
+        return;
+      }
+
+      console.log('[AccountSettings] ➕ Creating new account...');
+      
+      // Get next account index
+      const nextIndex = AccountManager.getNextAccountIndex();
+      
+      // Derive addresses for new account
+      const newAddresses = await deriveAddresses(wallet.mnemonic, nextIndex);
+      
+      // Create account in AccountManager
+      const newAccount = AccountManager.createNewAccount(
+        walletId,
+        {
+          solana: newAddresses.solana,
+          ethereum: newAddresses.ethereum,
+        }
+      );
+
+      // Reload accounts to show the new one
+      loadAccounts();
+
+      toast.success(`Created ${newAccount.name}!`);
+      console.log('[AccountSettings] ✅ New account created:', newAccount);
+    } catch (error) {
+      console.error('[AccountSettings] Error creating account:', error);
+      toast.error('Failed to create account');
+    }
+  };
+
   const switchAccount = async (accountId: string) => {
     try {
       if (onSwitchAccount) {
         onSwitchAccount(accountId);
+        
+        // Update the active account ID in state
+        setActiveAccountId(accountId);
+        
+        // Reload wallet info for the new account
+        await loadWalletInfo();
+        
         toast.success('Switched account successfully');
-        onBack();
+        // Stay on the page - don't call onBack()
       }
     } catch (error) {
       console.error('Error switching account:', error);
@@ -506,12 +568,9 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col items-center gap-4 py-8"
+          className="flex flex-col items-center gap-4 py-6"
         >
-          <div className="relative group">
-            {/* Glow effect behind avatar */}
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/30 to-blue-500/30 rounded-full blur-2xl scale-110 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            
+          <div className="relative">
             <AnimalAvatar 
               size="lg" 
               walletId={walletId}
@@ -519,37 +578,17 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
               selectedEmoji={selectedEmoji}
             />
             
-            {/* Enhanced emoji selector button */}
-            <motion.button 
+            <button 
               onClick={() => setShowEmojiSelector(true)}
-              className="absolute -bottom-1 -right-1 p-3 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full shadow-xl border-2 border-slate-900"
-              whileHover={{ scale: 1.1, rotate: 10 }}
-              whileTap={{ scale: 0.95 }}
+              className="absolute -bottom-1 -right-1 p-2 bg-[#ad46ff] hover:bg-[#ad46ff]/90 rounded-full shadow-lg border-2 border-black transition-colors"
             >
-              <Smile className="w-5 h-5 text-white drop-shadow-lg" />
-              
-              {/* Pulse ring animation */}
-              <motion.div
-                className="absolute inset-0 rounded-full border-2 border-purple-400"
-                initial={{ scale: 1, opacity: 0.5 }}
-                animate={{ scale: 1.5, opacity: 0 }}
-                transition={{
-                  duration: 1.5,
-                  repeat: Infinity,
-                  ease: "easeOut"
-                }}
-              />
-            </motion.button>
+              <Smile className="w-4 h-4 text-white" />
+            </button>
           </div>
           
-          <motion.p 
-            className="text-slate-400 text-sm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-          >
+          <p className="text-slate-400 text-sm">
             Customize your avatar
-          </motion.p>
+          </p>
         </motion.div>
 
         {/* Username */}
@@ -557,13 +596,10 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="relative space-y-3 bg-gradient-to-br from-slate-900/80 to-slate-900/40 backdrop-blur-sm rounded-2xl p-5 border border-slate-700/50 shadow-xl"
+          className="space-y-3 bg-slate-900/50 rounded-xl p-4 border border-slate-800/30"
         >
-          {/* Gradient accent line */}
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-purple-500 to-transparent opacity-50" />
-          
           <Label htmlFor="username" className="text-white flex items-center gap-2">
-            <User className="w-4 h-4 text-purple-400" />
+            <User className="w-4 h-4 text-slate-400" />
             Username
           </Label>
           <div className="space-y-2">
@@ -575,9 +611,9 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
                   onChange={(e) => handleUsernameChange(e.target.value)}
                   className={`bg-slate-950/50 text-white pr-10 border transition-all ${
                     usernameError
-                      ? 'border-red-500/50 focus-visible:ring-red-500/30 bg-red-950/20'
+                      ? 'border-red-500/50 focus-visible:ring-red-500/30'
                       : usernameAvailable === true && username !== originalUsername
-                      ? 'border-green-500/50 focus-visible:ring-green-500/30 bg-green-950/20'
+                      ? 'border-green-500/50 focus-visible:ring-green-500/30'
                       : 'border-slate-700/50 focus-visible:ring-purple-500/30'
                   }`}
                   placeholder="@username"
@@ -596,8 +632,8 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
                     ) : usernameError ? (
                       <motion.div
                         key="error"
-                        initial={{ opacity: 0, scale: 0.8, rotate: -10 }}
-                        animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.8 }}
                       >
                         <X className="w-4 h-4 text-red-400" />
@@ -608,7 +644,6 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
                         initial={{ opacity: 0, scale: 0.5 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.8 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 15 }}
                       >
                         <Check className="w-4 h-4 text-green-400" />
                       </motion.div>
@@ -625,7 +660,7 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
                   username.length < 4 ||
                   !!usernameError
                 }
-                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                className="bg-[#ad46ff] hover:bg-[#ad46ff]/90 text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Save
               </Button>
@@ -662,47 +697,39 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="relative space-y-4 bg-gradient-to-br from-slate-900/80 to-slate-900/40 backdrop-blur-sm rounded-2xl p-5 border border-slate-700/50 shadow-xl overflow-hidden"
+          className="space-y-4 bg-slate-900/50 rounded-xl p-4 border border-slate-800/30"
         >
-          {/* Animated gradient background */}
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-transparent to-blue-500/5 opacity-50" />
+          <h3 className="text-white font-medium flex items-center gap-2">
+            <Wallet className="w-4 h-4 text-slate-400" />
+            Wallet Information
+          </h3>
           
-          <div className="relative z-10">
-            <h3 className="text-white font-medium flex items-center gap-2">
-              <div className="p-1.5 bg-purple-500/20 rounded-lg">
-                <Wallet className="w-4 h-4 text-purple-400" />
-              </div>
-              Wallet Information
-            </h3>
+          <Separator className="bg-slate-700/50" />
+          
+          <div className="space-y-3">
+            <div className="flex justify-between items-center p-3 rounded-lg bg-slate-950/30 border border-slate-800/30">
+              <span className="text-slate-400 text-sm">Wallet ID</span>
+              <span className="text-slate-300 font-mono text-xs">
+                {walletId.slice(0, 8)}...{walletId.slice(-6)}
+              </span>
+            </div>
             
-            <Separator className="bg-slate-700/50 my-4" />
-            
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-3 rounded-lg bg-slate-950/30 border border-slate-800/30">
-                <span className="text-slate-400 text-sm">Wallet ID</span>
-                <span className="text-slate-300 font-mono text-xs bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700/30">
-                  {walletId.slice(0, 8)}...{walletId.slice(-6)}
-                </span>
-              </div>
-              
-              <div className="flex justify-between items-center p-3 rounded-lg bg-slate-950/30 border border-slate-800/30">
-                <span className="text-slate-400 text-sm">Created</span>
-                <span className="text-slate-300 text-sm">
-                  {walletInfo?.createdAt ? new Date(walletInfo.createdAt).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  }) : 'Recently'}
-                </span>
-              </div>
+            <div className="flex justify-between items-center p-3 rounded-lg bg-slate-950/30 border border-slate-800/30">
+              <span className="text-slate-400 text-sm">Created</span>
+              <span className="text-slate-300 text-sm">
+                {walletInfo?.createdAt ? new Date(walletInfo.createdAt).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                }) : 'Recently'}
+              </span>
+            </div>
 
-              <div className="flex justify-between items-center p-3 rounded-lg bg-gradient-to-r from-purple-950/30 to-blue-950/30 border border-purple-700/30">
-                <span className="text-slate-400 text-sm">Type</span>
-                <span className="text-purple-300 text-sm font-medium flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" />
-                  Multi-chain Wallet
-                </span>
-              </div>
+            <div className="flex justify-between items-center p-3 rounded-lg bg-slate-950/30 border border-slate-800/30">
+              <span className="text-slate-400 text-sm">Type</span>
+              <span className="text-slate-300 text-sm">
+                Multi-chain Wallet
+              </span>
             </div>
           </div>
         </motion.div>
@@ -712,118 +739,70 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="space-y-4"
+          className="space-y-3"
         >
-          <div className="flex items-center justify-between px-2">
-            <h3 className="text-white font-medium">Your Accounts</h3>
-            <span className="text-xs text-slate-400 bg-slate-800/50 px-2.5 py-1 rounded-full">
-              {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
-            </span>
+          <h3 className="text-slate-400 text-sm px-2">Your Accounts</h3>
+          
+          {/* Info Card */}
+          <div className="bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-xl p-4">
+            <p className="text-slate-300 text-sm">
+              <span className="text-purple-300">💡</span> Manage multiple accounts with the same recovery phrase. Each account has its own unique address.
+            </p>
           </div>
           
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             {accounts.map((account, index) => {
-              const isActive = account.walletId === walletId;
-              // Use wallet context addresses for current account, 
-              // for other accounts show placeholder or stored addresses
-              const addresses = isActive && wallet?.addresses ? wallet.addresses : {
-                solana: account.solanaAddress || 'Loading...',
-                ethereum: 'Loading...',
-                base: 'Loading...',
-              };
+              const isActive = account.id === activeAccountId;
               
               return (
                 <motion.button
                   key={account.id}
                   onClick={() => !isActive && switchAccount(account.walletId)}
-                  className={`w-full p-4 rounded-xl border transition-all relative overflow-hidden ${
+                  className={`w-full p-4 rounded-xl border transition-all ${
                     isActive 
-                      ? 'bg-gradient-to-r from-purple-950/50 to-blue-950/50 border-purple-500/50 shadow-lg shadow-purple-500/10' 
-                      : 'bg-slate-900/50 border-slate-800/30 hover:bg-slate-900/80 hover:border-slate-700/50'
+                      ? 'bg-gradient-to-br from-purple-500/10 to-blue-500/10 border-purple-500/50' 
+                      : 'bg-slate-900/50 border-slate-800/30 hover:bg-slate-900/80'
                   }`}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.4 + index * 0.05 }}
-                  whileHover={!isActive ? { scale: 1.01, x: 4 } : {}}
-                  whileTap={!isActive ? { scale: 0.99 } : {}}
                 >
-                  {/* Active account gradient overlay */}
-                  {isActive && (
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 via-blue-500/10 to-purple-500/10 animate-pulse" />
-                  )}
-                  
-                  <div className="relative z-10 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-white shadow-lg ${
-                          isActive 
-                            ? 'bg-gradient-to-br from-purple-600 to-blue-600' 
-                            : 'bg-gradient-to-br from-slate-700 to-slate-800'
-                        }`}>
-                          {index + 1}
-                        </div>
-                        <div className="text-left">
-                          <p className={`font-medium ${isActive ? 'text-white' : 'text-slate-300'}`}>
-                            {account.username}
-                          </p>
-                          <p className="text-slate-400 text-xs mt-0.5">
-                            {account.isPrimary ? 'Primary Account' : `Account ${index + 1}`}
-                          </p>
-                        </div>
-                      </div>
-                      {isActive && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-purple-300 bg-purple-900/40 px-2.5 py-1 rounded-full border border-purple-700/30">
-                            Active
-                          </span>
-                          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse shadow-lg shadow-green-400/50" />
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Wallet Addresses */}
-                    <div className="space-y-2 pl-14">
-                      <div className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-slate-950/30 border border-slate-800/30">
-                        <span className="text-slate-400 text-xs">Solana</span>
-                        <span className="text-slate-300 font-mono text-xs">
-                          {addresses.solana.slice(0, 6)}...{addresses.solana.slice(-4)}
-                        </span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-slate-950/30 border border-slate-800/30">
-                        <span className="text-slate-400 text-xs">Ethereum</span>
-                        <span className="text-slate-300 font-mono text-xs">
-                          {addresses.ethereum.slice(0, 6)}...{addresses.ethereum.slice(-4)}
-                        </span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-slate-950/30 border border-slate-800/30">
-                        <span className="text-slate-400 text-xs">Base</span>
-                        <span className="text-slate-300 font-mono text-xs">
-                          {addresses.base.slice(0, 6)}...{addresses.base.slice(-4)}
-                        </span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <AnimalAvatar 
+                        size="sm" 
+                        walletId={account.id}
+                        selectedEmoji={account.selectedEmoji}
+                      />
+                      <div className="text-left">
+                        <p className={`font-medium ${isActive ? 'text-white' : 'text-slate-300'}`}>
+                          {account.username}
+                        </p>
+                        <p className="text-slate-400 text-xs">
+                          {account.isPrimary ? 'Primary Account' : `Account ${index + 1}`}
+                        </p>
                       </div>
                     </div>
+                    {isActive && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-purple-300 bg-purple-600/20 px-2.5 py-1 rounded-full border border-purple-500/30">
+                          Active
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </motion.button>
               );
             })}
           </div>
 
-          <motion.button
-            onClick={() => setShowAddAccountDialog(true)}
-            className="w-full p-4 rounded-xl bg-gradient-to-r from-purple-950/30 to-blue-950/30 hover:from-purple-950/50 hover:to-blue-950/50 border border-purple-500/30 hover:border-purple-500/50 flex items-center justify-center gap-2 text-white transition-all shadow-lg"
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.99 }}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
+          <button
+            onClick={handleCreateAccount}
+            className="w-full p-4 rounded-xl bg-[#ad46ff] hover:bg-[#ad46ff]/90 text-white flex items-center justify-center gap-2 transition-all font-medium"
           >
-            <div className="p-1 bg-purple-500/20 rounded-lg">
-              <Plus className="w-4 h-4 text-purple-400" />
-            </div>
+            <Plus className="w-4 h-4" />
             <span>Add Another Account</span>
-          </motion.button>
+          </button>
         </motion.div>
 
         <Separator className="bg-slate-800" />
@@ -832,44 +811,31 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          className="space-y-4"
+          transition={{ delay: 0.5 }}
+          className="space-y-3"
         >
-          <h3 className="text-red-400 font-medium px-2 flex items-center gap-2">
-            <div className="w-1 h-4 bg-red-500 rounded-full" />
-            Danger Zone
-          </h3>
+          <h3 className="text-slate-400 text-sm px-2">Danger Zone</h3>
           
-          <motion.div 
-            className="bg-gradient-to-br from-red-950/30 to-red-900/20 rounded-2xl border border-red-900/40 p-5 relative overflow-hidden"
-            whileHover={{ borderColor: 'rgba(239, 68, 68, 0.5)' }}
-          >
-            {/* Warning pattern background */}
-            <div className="absolute inset-0 opacity-5">
-              <div className="absolute inset-0" style={{
-                backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(239, 68, 68, 0.1) 10px, rgba(239, 68, 68, 0.1) 20px)'
-              }} />
-            </div>
-            
-            <div className="mb-4 relative z-10">
-              <h4 className="text-white font-medium mb-1.5 flex items-center gap-2">
+          <div className="bg-slate-900/50 rounded-xl border border-red-900/30 p-4">
+            <div className="mb-4">
+              <h4 className="text-white font-medium mb-1 flex items-center gap-2">
                 <Trash2 className="w-4 h-4 text-red-400" />
                 Delete Account
               </h4>
-              <p className="text-slate-400 text-sm leading-relaxed">
+              <p className="text-slate-400 text-sm">
                 Permanently delete your account and all associated data. This action cannot be undone.
               </p>
             </div>
             
             <Button 
               variant="destructive" 
-              className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 shadow-lg relative z-10"
+              className="w-full bg-red-600 hover:bg-red-700"
               onClick={() => setShowDeleteDialog(true)}
             >
               <Trash2 className="w-4 h-4 mr-2" />
               Delete Account Permanently
             </Button>
-          </motion.div>
+          </div>
         </motion.div>
       </div>
 
@@ -1042,8 +1008,8 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent className="bg-slate-950 border-slate-800 text-white">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Account?</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-400">
+            <AlertDialogTitle className="text-base sm:text-lg">Delete Account?</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400 text-sm">
               This action cannot be undone. Make sure you have backed up your recovery phrase before deleting your account. All your data will be permanently deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>

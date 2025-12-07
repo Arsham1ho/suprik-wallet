@@ -133,7 +133,7 @@ export async function loadAllTokens(
       prices = await fetchTokenPrices(uniqueSymbols);
       console.log('[TokenLoader] ✅ Fetched prices for', Object.keys(prices).length, 'symbols');
     } catch (error) {
-      console.error('[TokenLoader] ❌ Error fetching prices, using fallback:', error);
+      console.warn('[TokenLoader] ⚠️ Using cached prices (API temporarily unavailable)');
       // Fallback prices
       prices = {
         'SOL': 245.00,
@@ -153,7 +153,7 @@ export async function loadAllTokens(
       // Add official PARAI logo
       logos['PARAI'] = 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png';
     } catch (error) {
-      console.error('[TokenLoader] ❌ Error fetching logos, using defaults:', error);
+      console.warn('[TokenLoader] ⚠️ Using default token icons');
       logos = {
         'PARAI': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png'
       };

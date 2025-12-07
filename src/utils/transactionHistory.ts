@@ -45,15 +45,16 @@ export async function fetchSolanaTransactionHistory(
   isTestnet: boolean = false
 ): Promise<TransactionItem[]> {
   try {
-    console.log('[TxHistory] Fetching Solana transactions for:', address);
-    console.log('[TxHistory] Network:', isTestnet ? 'DEVNET' : 'MAINNET');
-    
     const apiKey = getHeliusApiKey();
     
     if (!apiKey) {
-      console.warn('[TxHistory] ⚠️ No Helius API key - cannot fetch real transactions');
+      // Silently return empty - API key is optional
+      console.log('[TxHistory] ℹ️ Helius API key not configured - transaction history not available');
       return [];
     }
+    
+    console.log('[TxHistory] Fetching Solana transactions for:', address);
+    console.log('[TxHistory] Network:', isTestnet ? 'DEVNET' : 'MAINNET');
     
     // Use Helius Enhanced Transactions API
     const endpoint = isTestnet
@@ -105,14 +106,52 @@ export async function fetchSolanaTransactionHistory(
           if (detailData.result) {
             const txData = detailData.result;
             const meta = txData.meta;
+            const accountKeys = txData.transaction?.message?.accountKeys || [];
             
-            // Determine if it's a send or receive
-            const preBalance = meta?.preBalances?.[0] || 0;
-            const postBalance = meta?.postBalances?.[0] || 0;
+            // Find the index of the user's address in the account keys
+            let userAccountIndex = 0;
+            for (let i = 0; i < accountKeys.length; i++) {
+              const accountKey = typeof accountKeys[i] === 'string' 
+                ? accountKeys[i] 
+                : accountKeys[i]?.pubkey;
+              if (accountKey === address) {
+                userAccountIndex = i;
+                break;
+              }
+            }
+            
+            // Determine if it's a send or receive based on user's balance change
+            const preBalance = meta?.preBalances?.[userAccountIndex] || 0;
+            const postBalance = meta?.postBalances?.[userAccountIndex] || 0;
             const balanceChange = postBalance - preBalance;
             
             const type = balanceChange > 0 ? 'receive' : 'send';
             const amount = Math.abs(balanceChange) / 1e9; // Convert lamports to SOL
+            
+            // Extract from/to addresses from transaction accounts
+            let fromAddress = address;
+            let toAddress = address;
+            
+            // First account is usually the fee payer (sender)
+            // Second account is usually the recipient
+            if (accountKeys.length >= 2) {
+              const firstAccount = typeof accountKeys[0] === 'string' 
+                ? accountKeys[0] 
+                : accountKeys[0]?.pubkey;
+              const secondAccount = typeof accountKeys[1] === 'string' 
+                ? accountKeys[1] 
+                : accountKeys[1]?.pubkey;
+                
+              if (type === 'receive') {
+                // For receive: first account is sender, current address is recipient
+                fromAddress = firstAccount || address;
+                toAddress = address;
+              } else {
+                // For send: current address is sender, second account is recipient
+                fromAddress = address;
+                toAddress = secondAccount || address;
+              }
+            }
             
             transactions.push({
               id: tx.signature,
@@ -123,8 +162,8 @@ export async function fetchSolanaTransactionHistory(
               date: new Date(tx.blockTime * 1000).toISOString(),
               timestamp: new Date(tx.blockTime * 1000).toISOString(),
               status: tx.err ? 'failed' : 'confirmed',
-              from: address,
-              to: address,
+              from: fromAddress,
+              to: toAddress,
               hash: tx.signature,
               signature: tx.signature,
               network: isTestnet ? 'devnet' : 'solana',
@@ -154,15 +193,16 @@ export async function fetchEthereumTransactionHistory(
   isTestnet: boolean = false
 ): Promise<TransactionItem[]> {
   try {
-    console.log('[TxHistory] Fetching Ethereum transactions for:', address);
-    console.log('[TxHistory] Network:', isTestnet ? 'SEPOLIA' : 'MAINNET');
-    
     const apiKey = getAlchemyApiKey();
     
     if (!apiKey) {
-      console.warn('[TxHistory] ⚠️ No Alchemy API key - cannot fetch real transactions');
+      // Silently return empty - API key is optional
+      console.log('[TxHistory] ℹ️ Alchemy API key not configured - transaction history not available');
       return [];
     }
+    
+    console.log('[TxHistory] Fetching Ethereum transactions for:', address);
+    console.log('[TxHistory] Network:', isTestnet ? 'SEPOLIA' : 'MAINNET');
     
     // Use correct network
     const network = isTestnet ? 'sepolia' : 'mainnet';

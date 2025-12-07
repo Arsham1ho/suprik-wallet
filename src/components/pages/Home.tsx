@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { RefreshCw, Grid2X2, Send as SendIcon, Plus, Search, DollarSign, QrCode, ChevronDown } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { RefreshCw, Grid2X2, Send as SendIcon, Plus, Search, DollarSign, QrCode, ChevronDown, Loader2 } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useWallet } from '../../utils/WalletContext';
@@ -12,7 +12,6 @@ import { useTheme } from '../../utils/ThemeContext';
 import { Wrench } from 'lucide-react';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { SendReceiveDialog } from '../SendReceiveDialog';
-import { ReceiveDialog } from '../ReceiveDialog';
 import { AddTokenDialog } from '../AddTokenDialog';
 import { CoinDetail } from './CoinDetail';
 import { TokenLogo } from '../TokenLogo';
@@ -24,12 +23,35 @@ import { deriveAddresses } from '../../utils/wallet';
 // import { usePullToRefresh } from '../../utils/mobile/usePullToRefresh';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { getCustomTokens, removeDuplicateParabolic, type CustomToken } from '../../utils/customTokens';
+import balanceBackgroundImg from '../../assets/balance-bg.png';
+import dollarBgImage from 'figma:asset/03e3917f15913824a7f09aea55d83b590255a690.png';
+import chartGrowthImg from 'figma:asset/cf0c640acfd7594fc19f2f68c33b585fb257787d.png';
+import circuitBoardImg from 'figma:asset/33819ceff9748d2e7acb552e77a691621fc959ae.png';
+import galaxyImg from 'figma:asset/5b4b9e5bc3dce63bd529dad0b6d15398841deffb.png';
+import atomImg from 'figma:asset/87f8b32663f196ec1a0eb5a25bdc487bcfefae9d.png';
+import techAtomImg from 'figma:asset/5aa70e98ce3aee3ece131f170f241d48a15c7bb9.png';
+import cosmicAtomImg from 'figma:asset/6dddf15e38d9de8af29c1069d4e32f01893e25c6.png';
 
 interface HomeProps {
-  onNavigate: (page: 'swap' | 'send' | 'search') => void;
+  onNavigate: (page: 'swap' | 'send' | 'receive' | 'search') => void;
   walletId: string;
   onTokensLoaded?: (tokens: Token[]) => void;
 }
+
+const balanceBackgrounds: { [key: string]: string } = {
+  'cosmic-atom': cosmicAtomImg,
+  'tech-atom': techAtomImg,
+  'atom': atomImg,
+  'galaxy': galaxyImg,
+  'circuit-board': circuitBoardImg,
+  'chart-growth': chartGrowthImg,
+  'digital-money': 'https://images.unsplash.com/photo-1694217363951-f922ec85f7e2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkaWdpdGFsJTIwbW9uZXklMjB0ZWNobm9sb2d5fGVufDF8fHx8MTc2NDUyNjM0Nnww&ixlib=rb-4.1.0&q=80&w=1080',
+  'gemini-dollar': 'https://i.ibb.co/wNSSLqZL/Gemini-Generated-Image-vhrk9dvhrk9dvhrk.png',
+  'bitcoin-stack': 'https://cdn.theatlantic.com/thumbor/1QQCcjt02QXBNLgdiLtZL-i1yHU=/0x144:3500x2113/960x540/media/img/mt/2017/11/RTX3KA07/original.jpg',
+  'nft-world': 'https://png.pngtree.com/thumb_back/fh260/background/20230704/pngtree-3d-render-of-crypto-currency-and-nft-composition-image_3828737.jpg',
+  'multi-coins': 'https://media.istockphoto.com/id/1034363382/photo/coins-of-various-cryptocurrencies.jpg?s=612x612&w=0&k=20&c=-ia1tKJeGeoJ7bWN8i6Udzq92MZ9T9vi--OFT6fVsiA=',
+  'crypto-future': 'https://t4.ftcdn.net/jpg/11/97/30/75/360_F_1197307541_NvhbbyeEs6zfVKuT6vtPnwpSIjbosTKW.jpg'
+};
 
 export interface Token {
   id: number;
@@ -79,13 +101,23 @@ const defaultSolanaTokens: TokenData[] = [
     network: 'solana'
   },
   {
-    mint: 'HrkKngiUavecwte1ZMrdt4H5Qet3cecNUzMoEAgjTAX8', // Real Parabolic AI Solana mint
+    mint: 'HrkKngiUavecwte1ZMrdt4H5Qet3cecNUzMoEAgjTAX8',
     name: 'Parabolic AI',
     symbol: 'PAI',
     amount: 0,
     logo: 'P',
     logoUrl: 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
     color: 'from-cyan-500 to-blue-600',
+    network: 'solana'
+  },
+  {
+    mint: 'CmGx4FoMTnYxWEmKso3BTwMsCgGFWRRYTqBmKRxnAkNH',
+    name: 'Suprana',
+    symbol: 'SUPRA',
+    amount: 0,
+    logo: 'S',
+    logoUrl: 'https://pbs.twimg.com/profile_images/1860413893823324160/8V-KVKXF_400x400.jpg',
+    color: 'from-orange-500 to-red-600',
     network: 'solana'
   },
 ];
@@ -120,12 +152,17 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
   const wallet = useWallet();
   const network = useNetwork();
   const [sendOpen, setSendOpen] = useState(false);
-  const [receiveOpen, setReceiveOpen] = useState(false);
   const [addTokenOpen, setAddTokenOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
+  const [balanceBackground, setBalanceBackground] = useState<string>(() => {
+    return localStorage.getItem('balanceBackground') || 'atom';
+  });
   const [tokens, setTokens] = useState<Token[]>([]);
+  const [allVerifiedTokens, setAllVerifiedTokens] = useState<Token[]>([]);
+  const [showAllTokens, setShowAllTokens] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingAllTokens, setLoadingAllTokens] = useState(false);
   const [networkStatus, setNetworkStatus] = useState<{network: string, lastCheck: string} | null>(null);
   const [checkingBlockchain, setCheckingBlockchain] = useState(false);
   const [lastPriceUpdate, setLastPriceUpdate] = useState<Date>(new Date());
@@ -136,6 +173,10 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [accountSwitcherOpen, setAccountSwitcherOpen] = useState(false);
   const [currentAccountId, setCurrentAccountId] = useState(walletId);
+  const [receiveBtnTapped, setReceiveBtnTapped] = useState(false);
+  const [sendBtnTapped, setSendBtnTapped] = useState(false);
+  const [swapBtnTapped, setSwapBtnTapped] = useState(false);
+  const [buyBtnTapped, setBuyBtnTapped] = useState(false);
   const [accounts, setAccounts] = useState([
     {
       id: walletId,
@@ -190,6 +231,58 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
 
     loadAccounts();
   }, [wallet.addresses, walletId]);
+
+  // Listen for background changes
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const newBackground = localStorage.getItem('balanceBackground') || 'atom';
+      setBalanceBackground(newBackground);
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Check every second for changes (for same-tab updates)
+    const interval = setInterval(() => {
+      const currentBg = localStorage.getItem('balanceBackground') || 'atom';
+      if (currentBg !== balanceBackground) {
+        setBalanceBackground(currentBg);
+      }
+    }, 1000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [balanceBackground]);
+
+  // Listen for blockchain timeout events
+  useEffect(() => {
+    const handleBlockchainTimeout = (event: any) => {
+      const { chain, error } = event.detail;
+      console.log('[Home] ⚠️ Blockchain timeout detected:', chain, error);
+      
+      // Show a helpful toast message
+      toast.error(
+        `Network is slow. Retrying in background...`,
+        { 
+          duration: 5000,
+          description: 'Your balances will update automatically when the network responds.'
+        }
+      );
+      
+      // Retry after a delay
+      setTimeout(() => {
+        console.log('[Home] 🔄 Auto-retrying after blockchain timeout...');
+        loadBlockchainBalances(true); // silent retry
+      }, 5000);
+    };
+
+    window.addEventListener('blockchainTimeout', handleBlockchainTimeout);
+    
+    return () => {
+      window.removeEventListener('blockchainTimeout', handleBlockchainTimeout);
+    };
+  }, []);
 
   // Handle switch account
   const handleSwitchAccount = async (accountId: string) => {
@@ -382,6 +475,7 @@ Check console for full details!
   //   onRefresh: handleRefresh,
   // });
 
+  // Initial load - run once on mount
   useEffect(() => {
     // 🧹 Cleanup: Remove duplicate PARAI token (silent cleanup)
     removeDuplicateParabolic();
@@ -391,7 +485,10 @@ Check console for full details!
     
     // 🧹 Cleanup duplicate tokens on mount (server-side)
     cleanupDuplicateTokens();
-    
+  }, [walletId]); // Only run on mount and when walletId changes
+  
+  // Auto-refresh interval - separated to prevent memory leaks
+  useEffect(() => {
     // 🚀 OPTIMIZATION: Auto-refresh every 10 seconds (like Phantom) - prices are cached for 60s
     const priceInterval = setInterval(() => {
       if (wallet.isUnlocked && wallet.addresses) {
@@ -401,6 +498,13 @@ Check console for full details!
       }
     }, 10000); // 10 seconds - faster than before!
     
+    return () => {
+      clearInterval(priceInterval);
+    };
+  }, [wallet.addresses, wallet.isUnlocked]); // Re-create interval when wallet state changes
+  
+  // Event listeners - separated to run only once
+  useEffect(() => {
     // Listen for custom event from DevModeDialog and Send page
     const handleBalanceUpdate = () => {
       console.log('[Home] Balance update event received, refreshing...');
@@ -431,13 +535,21 @@ Check console for full details!
     window.addEventListener('customTokensChanged', handleCustomTokensChanged);
     
     return () => {
-      clearInterval(priceInterval);
       window.removeEventListener('walletBalanceUpdated', handleBalanceUpdate);
       window.removeEventListener('profilePictureUpdated', handleProfileUpdate);
       window.removeEventListener('avatarUpdated', handleAvatarUpdate);
       window.removeEventListener('customTokensChanged', handleCustomTokensChanged);
     };
-  }, [wallet.addresses, wallet.isUnlocked, walletId]);
+  }, []); // Only run once on mount
+  
+  // Network change handler - CRITICAL FIX for network switching!
+  useEffect(() => {
+    console.log('[Home] 🌐 Network changed to:', network.networkMode, '(testnet:', network.isTestnet, ')');
+    // Reset tokens and reload when network changes
+    setTokens([]);
+    setLoading(true);
+    loadBlockchainBalances();
+  }, [network.networkMode]); // Reload when network changes
 
   const loadWalletInfo = async () => {
     try {
@@ -586,11 +698,6 @@ Check console for full details!
         
         console.log('[Home] ✅ Loaded', newTokens.length, 'tokens');
         
-        // Show empty state message if no tokens
-        if (newTokens.length === 0 && network.isTestnet) {
-          toast.info('No testnet tokens found. Get tokens from faucets!', { duration: 5000 });
-        }
-        
         // 🚀 CHECK FOR BALANCE CHANGES - emit event if balances changed
         if (isAutoRefresh && tokens.length > 0) {
           // Check if any token balance increased (receive)
@@ -624,9 +731,16 @@ Check console for full details!
         setTokens(newTokens);
         onTokensLoaded?.(newTokens);
         setLastPriceUpdate(new Date());
-      } catch (error) {
+      } catch (error: any) {
         console.error('[Home] Error fetching blockchain balances:', error);
-        toast.error('Failed to fetch blockchain balances');
+        
+        // Show user-friendly error message
+        if (error.message === 'Failed to fetch' || error.name === 'AbortError') {
+          console.warn('[Home] ⚠️ Server temporarily unavailable, showing cached data');
+          // Don't show error toast for network issues - just fail silently and show cached data
+        } else {
+          toast.error('Unable to fetch latest balances. Showing cached data.');
+        }
       } finally {
         setLoading(false);
       }
@@ -810,6 +924,87 @@ Check console for full details!
       if (!isRefresh) {
         setLoading(false);
       }
+    }
+  };
+
+  // Fetch all verified tokens from CoinGecko (like Phantom)
+  const fetchAllVerifiedTokens = async () => {
+    try {
+      setLoadingAllTokens(true);
+      console.log('[Home] Fetching all verified tokens from CoinGecko...');
+      
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=1&per_page=250`,
+        {
+          headers: {
+            'Authorization': `Bearer ${publicAnonKey}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Home] Fetch all tokens error:', response.status, errorText);
+        throw new Error('Failed to fetch verified tokens');
+      }
+
+      const coinGeckoData = await response.json();
+      
+      // Merge CoinGecko data with wallet tokens
+      const mergedTokens: Token[] = [];
+      const seenSymbols = new Set<string>();
+      
+      coinGeckoData.forEach((coin: any, index: number) => {
+        const symbolUpper = coin.symbol.toUpperCase();
+        
+        // Skip duplicates
+        if (seenSymbols.has(symbolUpper)) {
+          return;
+        }
+        seenSymbols.add(symbolUpper);
+        
+        // Find matching token in wallet
+        const walletToken = tokens.find(t => 
+          t.symbol.toLowerCase() === coin.symbol.toLowerCase() ||
+          t.name.toLowerCase() === coin.name.toLowerCase()
+        );
+
+        mergedTokens.push({
+          id: index + 1,
+          mint: walletToken?.mint || coin.id, // Use CoinGecko ID as fallback
+          symbol: symbolUpper,
+          name: coin.name,
+          amount: walletToken?.amount || 0,
+          value: walletToken?.value || 0,
+          price: coin.current_price,
+          change: coin.price_change_percentage_24h,
+          logo: symbolUpper.charAt(0),
+          color: walletToken?.color || 'from-purple-600 to-purple-400',
+          logoUrl: coin.image,
+          network: walletToken?.network || 'solana',
+        });
+        
+        // Log for debugging
+        if (!walletToken) {
+          console.log('[Home] 🆕 New token without wallet data:', symbolUpper, '- using CoinGecko ID:', coin.id);
+        }
+      });
+
+      // Sort: tokens with balance first, then by price
+      mergedTokens.sort((a, b) => {
+        if (a.amount > 0 && b.amount === 0) return -1;
+        if (a.amount === 0 && b.amount > 0) return 1;
+        return b.price - a.price;
+      });
+
+      setAllVerifiedTokens(mergedTokens);
+      console.log('[Home] Loaded', mergedTokens.length, 'verified tokens');
+      
+    } catch (error) {
+      console.error('[Home] Error fetching verified tokens:', error);
+      toast.error('Failed to load all tokens');
+    } finally {
+      setLoadingAllTokens(false);
     }
   };
 
@@ -1046,40 +1241,50 @@ Check console for full details!
         >
           {/* Background with dark overlay on image */}
           <div className="relative h-40">
-            <ImageWithFallback
-              src="https://images.pexels.com/photos/730564/pexels-photo-730564.jpeg"
-              alt="Night sky background"
-              className="absolute inset-0 w-full h-full object-cover"
+            {/* Background Image */}
+            <div 
+              className="absolute inset-0 z-0 opacity-50"
+              style={{
+                backgroundImage: `url('${balanceBackgrounds[balanceBackground]}')`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat'
+              }}
             />
+            
             {/* Dark overlay for readability */}
             <div className="absolute inset-0 bg-black/60" />
             
             {/* Content */}
-            <div className="relative z-10 p-6 h-full flex flex-col justify-center">
-              <p className="text-purple-200 text-sm mb-2">{t.home.totalBalance}</p>
-              {loading ? (
-                <div className="h-12 w-40 bg-white/20 rounded-xl animate-pulse" />
-              ) : (
-                <motion.h1 
-                  className="text-5xl tracking-tight text-white"
-                  key={totalBalance}
-                  initial={{ scale: 1.05, opacity: 0.8 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ 
-                    duration: 0.4,
-                    ease: [0.34, 1.56, 0.64, 1]
-                  }}
-                >
-                  {formatPrice(animatedBalance)}
-                </motion.h1>
-              )}
-              <div className="flex items-center gap-2 mt-2">
-                <span className={`text-sm font-semibold ${totalChange >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-                  {totalChange >= 0 ? '+' : ''}{Math.abs(totalChange).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-                <span className={`text-xs px-2 py-0.5 rounded ${totalChangePercent >= 0 ? 'bg-green-400/30 text-green-200' : 'bg-red-400/30 text-red-200'}`}>
-                  {totalChangePercent >= 0 ? '+' : ''}{totalChangePercent.toFixed(2)}%
-                </span>
+            <div className="relative z-10 p-6 h-full flex flex-col justify-center overflow-hidden">
+              
+              {/* Content */}
+              <div className="relative z-10">
+                <p className="text-purple-200 text-sm mb-2">{t.home.totalBalance}</p>
+                {loading ? (
+                  <div className="h-12 w-40 bg-white/20 rounded-xl animate-pulse" />
+                ) : (
+                  <motion.h1 
+                    className="text-5xl tracking-tight text-white"
+                    key={totalBalance}
+                    initial={{ scale: 1.05, opacity: 0.8 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ 
+                      duration: 0.4,
+                      ease: [0.34, 1.56, 0.64, 1]
+                    }}
+                  >
+                    {formatPrice(animatedBalance)}
+                  </motion.h1>
+                )}
+                <div className="flex items-center gap-2 mt-2">
+                  <span className={`text-sm font-semibold ${totalChange >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                    {totalChange >= 0 ? '+' : ''}{Math.abs(totalChange).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded ${totalChangePercent >= 0 ? 'bg-green-400/30 text-green-200' : 'bg-red-400/30 text-red-200'}`}>
+                    {totalChangePercent >= 0 ? '+' : ''}{totalChangePercent.toFixed(2)}%
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -1092,36 +1297,245 @@ Check console for full details!
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <button
-            onClick={() => setReceiveOpen(true)}
-            className="flex flex-col items-center gap-2 p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all border border-slate-800/30"
+          <motion.button
+            onClick={() => {
+              setReceiveBtnTapped(true);
+              setTimeout(() => setReceiveBtnTapped(false), 500);
+              onNavigate('receive');
+            }}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl relative overflow-hidden"
+            style={{
+              backgroundColor: receiveBtnTapped ? 'rgba(168, 85, 247, 0.3)' : 'rgba(15, 23, 42, 0.5)',
+              borderColor: receiveBtnTapped ? 'rgba(168, 85, 247, 0.5)' : 'rgba(51, 65, 85, 0.3)',
+              borderWidth: '1px',
+              borderStyle: 'solid',
+              transition: 'all 0.3s ease',
+            }}
+            animate={{
+              scale: receiveBtnTapped ? [1, 1.08, 1] : 1,
+              boxShadow: receiveBtnTapped 
+                ? ['0 0 0px rgba(168, 85, 247, 0)', '0 0 25px rgba(168, 85, 247, 0.6)', '0 0 0px rgba(168, 85, 247, 0)']
+                : '0 0 0px rgba(168, 85, 247, 0)',
+            }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            whileHover={{ scale: 1.05, y: -2 }}
+            whileTap={{ scale: 0.95 }}
           >
-            <QrCode className="w-6 h-6 text-purple-400" />
-            <span className="text-sm text-slate-300">{t.home.receive}</span>
-          </button>
+            {/* Pulse rings */}
+            <AnimatePresence>
+              {receiveBtnTapped && (
+                <>
+                  <motion.div
+                    className="absolute inset-0 rounded-xl border-2 border-purple-400"
+                    initial={{ scale: 1, opacity: 0.8 }}
+                    animate={{ scale: 1.5, opacity: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                  />
+                  <motion.div
+                    className="absolute inset-0 rounded-xl border-2 border-pink-400"
+                    initial={{ scale: 1, opacity: 0.8 }}
+                    animate={{ scale: 1.8, opacity: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.5, ease: "easeOut", delay: 0.1 }}
+                  />
+                </>
+              )}
+            </AnimatePresence>
+            
+            <motion.div
+              animate={{
+                rotate: receiveBtnTapped ? [0, -15, 15, -15, 0] : 0,
+                scale: receiveBtnTapped ? [1, 1.2, 1] : 1,
+              }}
+              transition={{ duration: 0.5 }}
+              className="relative z-10"
+            >
+              <QrCode className="w-6 h-6 text-purple-400" />
+            </motion.div>
+            <span className="text-sm text-slate-300 relative z-10">{t.home.receive}</span>
+          </motion.button>
           
-          <button
-            onClick={() => onNavigate('send')}
-            className="flex flex-col items-center gap-2 p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all border border-slate-800/30"
+          <motion.button
+            onClick={() => {
+              setSendBtnTapped(true);
+              setTimeout(() => {
+                setSendBtnTapped(false);
+                onNavigate('send');
+              }, 500);
+            }}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl relative overflow-hidden"
+            style={{
+              backgroundColor: sendBtnTapped ? 'rgba(168, 85, 247, 0.3)' : 'rgba(15, 23, 42, 0.5)',
+              borderColor: sendBtnTapped ? 'rgba(168, 85, 247, 0.5)' : 'rgba(51, 65, 85, 0.3)',
+              borderWidth: '1px',
+              borderStyle: 'solid',
+              transition: 'all 0.3s ease',
+            }}
+            animate={{
+              scale: sendBtnTapped ? [1, 1.08, 1] : 1,
+              boxShadow: sendBtnTapped 
+                ? ['0 0 0px rgba(168, 85, 247, 0)', '0 0 25px rgba(168, 85, 247, 0.6)', '0 0 0px rgba(168, 85, 247, 0)']
+                : '0 0 0px rgba(168, 85, 247, 0)',
+            }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            whileHover={{ scale: 1.05, y: -2 }}
+            whileTap={{ scale: 0.95 }}
           >
-            <SendIcon className="w-6 h-6 text-purple-400" />
-            <span className="text-sm text-slate-300">{t.home.send}</span>
-          </button>
+            {/* Pulse rings */}
+            <AnimatePresence>
+              {sendBtnTapped && (
+                <>
+                  <motion.div
+                    className="absolute inset-0 rounded-xl border-2 border-purple-400"
+                    initial={{ scale: 1, opacity: 0.8 }}
+                    animate={{ scale: 1.5, opacity: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                  />
+                  <motion.div
+                    className="absolute inset-0 rounded-xl border-2 border-pink-400"
+                    initial={{ scale: 1, opacity: 0.8 }}
+                    animate={{ scale: 1.8, opacity: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.5, ease: "easeOut", delay: 0.1 }}
+                  />
+                </>
+              )}
+            </AnimatePresence>
+            
+            <motion.div
+              animate={{
+                rotate: sendBtnTapped ? [0, -15, 15, -15, 0] : 0,
+                scale: sendBtnTapped ? [1, 1.2, 1] : 1,
+              }}
+              transition={{ duration: 0.5 }}
+              className="relative z-10"
+            >
+              <SendIcon className="w-6 h-6 text-purple-400" />
+            </motion.div>
+            <span className="text-sm text-slate-300 relative z-10">{t.home.send}</span>
+          </motion.button>
           
-          <button
-            onClick={() => onNavigate('swap')}
-            className="flex flex-col items-center gap-2 p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all border border-slate-800/30"
+          <motion.button
+            onClick={() => {
+              setSwapBtnTapped(true);
+              setTimeout(() => {
+                setSwapBtnTapped(false);
+                onNavigate('swap');
+              }, 500);
+            }}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl relative overflow-hidden"
+            style={{
+              backgroundColor: swapBtnTapped ? 'rgba(168, 85, 247, 0.3)' : 'rgba(15, 23, 42, 0.5)',
+              borderColor: swapBtnTapped ? 'rgba(168, 85, 247, 0.5)' : 'rgba(51, 65, 85, 0.3)',
+              borderWidth: '1px',
+              borderStyle: 'solid',
+              transition: 'all 0.3s ease',
+            }}
+            animate={{
+              scale: swapBtnTapped ? [1, 1.08, 1] : 1,
+              boxShadow: swapBtnTapped 
+                ? ['0 0 0px rgba(168, 85, 247, 0)', '0 0 25px rgba(168, 85, 247, 0.6)', '0 0 0px rgba(168, 85, 247, 0)']
+                : '0 0 0px rgba(168, 85, 247, 0)',
+            }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            whileHover={{ scale: 1.05, y: -2 }}
+            whileTap={{ scale: 0.95 }}
           >
-            <RefreshCw className="w-6 h-6 text-purple-400" />
-            <span className="text-sm text-slate-300">{t.nav.swap}</span>
-          </button>
+            {/* Pulse rings */}
+            <AnimatePresence>
+              {swapBtnTapped && (
+                <>
+                  <motion.div
+                    className="absolute inset-0 rounded-xl border-2 border-purple-400"
+                    initial={{ scale: 1, opacity: 0.8 }}
+                    animate={{ scale: 1.5, opacity: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                  />
+                  <motion.div
+                    className="absolute inset-0 rounded-xl border-2 border-pink-400"
+                    initial={{ scale: 1, opacity: 0.8 }}
+                    animate={{ scale: 1.8, opacity: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.5, ease: "easeOut", delay: 0.1 }}
+                  />
+                </>
+              )}
+            </AnimatePresence>
+            
+            <motion.div
+              animate={{
+                rotate: swapBtnTapped ? [0, -15, 15, -15, 0] : 0,
+                scale: swapBtnTapped ? [1, 1.2, 1] : 1,
+              }}
+              transition={{ duration: 0.5 }}
+              className="relative z-10"
+            >
+              <RefreshCw className="w-6 h-6 text-purple-400" />
+            </motion.div>
+            <span className="text-sm text-slate-300 relative z-10">{t.nav.swap}</span>
+          </motion.button>
           
-          <button
-            className="flex flex-col items-center gap-2 p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all border border-slate-800/30"
+          <motion.button
+            onClick={() => {
+              setBuyBtnTapped(true);
+              setTimeout(() => setBuyBtnTapped(false), 500);
+              toast.info('Buy feature coming soon!');
+            }}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl relative overflow-hidden"
+            style={{
+              backgroundColor: buyBtnTapped ? 'rgba(168, 85, 247, 0.3)' : 'rgba(15, 23, 42, 0.5)',
+              borderColor: buyBtnTapped ? 'rgba(168, 85, 247, 0.5)' : 'rgba(51, 65, 85, 0.3)',
+              borderWidth: '1px',
+              borderStyle: 'solid',
+              transition: 'all 0.3s ease',
+            }}
+            animate={{
+              scale: buyBtnTapped ? [1, 1.08, 1] : 1,
+              boxShadow: buyBtnTapped 
+                ? ['0 0 0px rgba(168, 85, 247, 0)', '0 0 25px rgba(168, 85, 247, 0.6)', '0 0 0px rgba(168, 85, 247, 0)']
+                : '0 0 0px rgba(168, 85, 247, 0)',
+            }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            whileHover={{ scale: 1.05, y: -2 }}
+            whileTap={{ scale: 0.95 }}
           >
-            <DollarSign className="w-6 h-6 text-purple-400" />
-            <span className="text-sm text-slate-300">Buy</span>
-          </button>
+            {/* Pulse rings */}
+            <AnimatePresence>
+              {buyBtnTapped && (
+                <>
+                  <motion.div
+                    className="absolute inset-0 rounded-xl border-2 border-purple-400"
+                    initial={{ scale: 1, opacity: 0.8 }}
+                    animate={{ scale: 1.5, opacity: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                  />
+                  <motion.div
+                    className="absolute inset-0 rounded-xl border-2 border-pink-400"
+                    initial={{ scale: 1, opacity: 0.8 }}
+                    animate={{ scale: 1.8, opacity: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.5, ease: "easeOut", delay: 0.1 }}
+                  />
+                </>
+              )}
+            </AnimatePresence>
+            
+            <motion.div
+              animate={{
+                rotate: buyBtnTapped ? [0, -15, 15, -15, 0] : 0,
+                scale: buyBtnTapped ? [1, 1.2, 1] : 1,
+              }}
+              transition={{ duration: 0.5 }}
+              className="relative z-10"
+            >
+              <DollarSign className="w-6 h-6 text-purple-400" />
+            </motion.div>
+            <span className="text-sm text-slate-300 relative z-10">Buy</span>
+          </motion.button>
         </motion.div>
 
         {/* Tokens Section */}
@@ -1131,15 +1545,29 @@ Check console for full details!
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-3">
             <h3 className="text-white font-semibold">{t.home.yourAssets}</h3>
-            <button
-              onClick={() => setAddTokenOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 transition-colors text-sm font-medium"
-            >
-              <Plus className="w-4 h-4" />
-              {t.home.addToken}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  if (!showAllTokens && allVerifiedTokens.length === 0) {
+                    fetchAllVerifiedTokens();
+                  }
+                  setShowAllTokens(!showAllTokens);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700/50 transition-colors text-sm font-medium text-slate-300 flex items-center gap-1.5"
+              >
+                {showAllTokens ? 'My Tokens' : 'All Tokens'}
+                {loadingAllTokens && <Loader2 className="w-3 h-3 animate-spin" />}
+              </button>
+              <button
+                onClick={() => setAddTokenOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 transition-colors text-sm font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                {t.home.addToken}
+              </button>
+            </div>
           </div>
 
           {loading ? (
@@ -1192,7 +1620,7 @@ Check console for full details!
             </motion.div>
           ) : (
             <div className="space-y-2">
-              {filteredTokens.map((token, idx) => {
+              {(showAllTokens ? allVerifiedTokens : filteredTokens).map((token, idx) => {
                 const tokenChange = token.amount * token.price * token.change / 100;
                 return (
                   <motion.button
@@ -1218,18 +1646,24 @@ Check console for full details!
                       <div className="text-left">
                         <h4 className="text-white font-semibold">{token.name}</h4>
                         <p className="text-slate-400 text-sm">
-                          {token.amount} {token.symbol}
+                          {token.amount > 0 ? `${token.amount.toFixed(token.symbol === 'BTC' ? 8 : (token.symbol === 'ETH' || token.symbol === 'SOL' ? 4 : 2))} ${token.symbol}` : token.symbol}
                         </p>
                       </div>
                     </div>
 
                     <div className="text-right">
-                      <p className="text-white font-semibold">
-                        {formatPrice(token.value)}
-                      </p>
-                      {token.amount > 0 && (
-                        <p className={`text-sm ${tokenChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {tokenChange >= 0 ? '+' : ''}{formatPrice(Math.abs(tokenChange))}
+                      {token.amount > 0 ? (
+                        <>
+                          <p className="text-white font-semibold">
+                            {formatPrice(token.value)}
+                          </p>
+                          <p className={`text-sm ${tokenChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {tokenChange >= 0 ? '+' : ''}{formatPrice(Math.abs(tokenChange))}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-slate-500 text-sm">
+                          ${token.price.toFixed(2)}
                         </p>
                       )}
                     </div>
@@ -1255,7 +1689,6 @@ Check console for full details!
       </div>
 
       <SendReceiveDialog open={sendOpen} onOpenChange={setSendOpen} mode="send" />
-      <ReceiveDialog open={receiveOpen} onOpenChange={setReceiveOpen} walletId={walletId} />
       <AddTokenDialog 
         open={addTokenOpen} 
         onOpenChange={setAddTokenOpen} 

@@ -11,7 +11,7 @@
  */
 export function getHeliusApiKey(): string | undefined {
   // Try Vite env variable first (local development)
-  const viteKey = import.meta.env.VITE_HELIUS_API_KEY;
+  const viteKey = import.meta.env?.VITE_HELIUS_API_KEY;
   if (viteKey) return viteKey;
   
   // Fallback to window.ENV (server-side rendered)
@@ -20,7 +20,7 @@ export function getHeliusApiKey(): string | undefined {
     if (windowKey) return windowKey;
   }
   
-  console.warn('[ENV] ⚠️ HELIUS_API_KEY not found. Add it to your .env.local or Vercel Environment Variables.');
+  // Return undefined silently (no warning needed - it's optional)
   return undefined;
 }
 
@@ -29,7 +29,7 @@ export function getHeliusApiKey(): string | undefined {
  */
 export function getAlchemyApiKey(): string | undefined {
   // Try Vite env variable first (local development)
-  const viteKey = import.meta.env.VITE_ALCHEMY_API_KEY;
+  const viteKey = import.meta.env?.VITE_ALCHEMY_API_KEY;
   if (viteKey) return viteKey;
   
   // Fallback to window.ENV (server-side rendered)
@@ -38,11 +38,13 @@ export function getAlchemyApiKey(): string | undefined {
     if (windowKey) return windowKey;
   }
   
-  console.warn('[ENV] ⚠️ ALCHEMY_API_KEY not found. Add it to your .env.local or Vercel Environment Variables.');
+  // Return undefined silently (no warning needed - it's optional)
   return undefined;
 }
 
-// Helper to check if APIs are configured
+/**
+ * Helper to check if APIs are configured
+ */
 export function areApiKeysConfigured(): {
   helius: boolean;
   alchemy: boolean;

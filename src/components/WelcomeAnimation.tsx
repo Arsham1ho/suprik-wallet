@@ -40,8 +40,8 @@ export function WelcomeAnimation({ onComplete }: WelcomeAnimationProps) {
     };
   }, []);
 
-  // Welcome animation duration
-  const duration = isMobile ? 4000 : 5000;
+  // Welcome animation duration - 2 seconds for first-time users
+  const duration = 2000;
 
   useEffect(() => {
     const timer = setTimeout(onComplete, duration);

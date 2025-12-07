@@ -68,10 +68,12 @@ export function OAuthSignUp({ provider, onSuccess, onBack }: OAuthSignUpProps) {
             WalletStorage.setWalletId(walletId);
             WalletStorage.setCurrentAccount(0);
             
+            // Store OAuth password securely (encrypted with device fingerprint)
+            await WalletStorage.setOAuthPassword(autoPassword);
+            
             // Store OAuth info
             localStorage.setItem('saturn_oauth_provider', provider);
             localStorage.setItem('saturn_oauth_email', session.user.email || '');
-            localStorage.setItem('saturn_auto_password', autoPassword); // For auto-unlock
             
             // Generate default username
             const emailPrefix = session.user.email?.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user';

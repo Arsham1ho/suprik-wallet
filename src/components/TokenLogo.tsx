@@ -22,6 +22,21 @@ interface TokenLogoProps {
   mint?: string; // SPL token mint address for Solana tokens
 }
 
+// Token logo mapping - Direct CDN URLs for major tokens
+const TOKEN_LOGO_MAP: Record<string, string> = {
+  'SOL': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
+  'USDC': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png',
+  'USDT': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png',
+  'ETH': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png',
+  'BTC': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/bitcoin/info/logo.png',
+  'BNB': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/binance/info/logo.png',
+  'BONK': 'https://arweave.net/hQiPZOsRZXGXBJd_82PhVdlM_hACsT_q6wqwf5cSY7I',
+  'WIF': 'https://bafkreibk3covs5ltyqxa272uodhculbr6kea6betidfwy3ajsav2vjzyum.ipfs.nftstorage.link',
+  'JUP': 'https://static.jup.ag/jup/icon.png',
+  'RAY': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R/logo.png',
+  'MATIC': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/polygon/info/logo.png',
+};
+
 // Fallback logo sources - Multiple CDNs for maximum coverage
 const FALLBACK_SOURCES = {
   // CryptoLogos.cc - High quality crypto logos
@@ -66,23 +81,14 @@ export function TokenLogo({ logoUrl, logo, name, color, symbol, size = 'md', tok
     imageSources.push('https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png');
   }
   
-  // 1. Primary: Use provided logoUrl (from Helius, DexScreener, etc.)
+  // 1. PRIMARY: Use provided logoUrl (from CoinGecko API - this is already the full URL)
   if (providedLogoUrl) {
     imageSources.push(providedLogoUrl);
   }
   
-  // 2. CryptoLogos.cc - Very reliable for major coins
-  if (actualSymbol) {
-    const majorTokens = [
-      'BTC', 'ETH', 'SOL', 'USDC', 'USDT', 'BNB', 'XRP', 'ADA', 'DOGE', 
-      'MATIC', 'DOT', 'LINK', 'UNI', 'ATOM', 'LTC', 'AVAX', 'SHIB', 
-      'BCH', 'NEAR', 'FTM', 'ALGO', 'VET', 'ICP', 'FIL', 'APT', 'ARB',
-      'OP', 'MKR', 'AAVE', 'SNX', 'CRV', 'COMP', 'SUSHI', 'YFI',
-      'BONK', 'WIF', 'PEPE', 'FLOKI', 'SAND', 'MANA', 'AXS', 'GALA'
-    ];
-    if (majorTokens.includes(actualSymbol.toUpperCase())) {
-      imageSources.push(FALLBACK_SOURCES.cryptoLogos(actualSymbol));
-    }
+  // 2. SECONDARY: Check if token has a direct logo mapping
+  if (actualSymbol && TOKEN_LOGO_MAP[actualSymbol.toUpperCase()]) {
+    imageSources.push(TOKEN_LOGO_MAP[actualSymbol.toUpperCase()]);
   }
   
   // 3. Solana Token List - For SPL tokens with mint address
@@ -90,10 +96,19 @@ export function TokenLogo({ logoUrl, logo, name, color, symbol, size = 'md', tok
     imageSources.push(FALLBACK_SOURCES.solanaTokenList(actualMint));
   }
   
-  // 4. CoinGecko - If we have the CoinGecko ID
-  if (actualCoinGeckoId) {
-    imageSources.push(FALLBACK_SOURCES.coinGeckoLarge(actualCoinGeckoId));
-    imageSources.push(FALLBACK_SOURCES.coinGeckoSmall(actualCoinGeckoId));
+  // 4. CryptoLogos.cc - Very reliable for major coins
+  if (actualSymbol) {
+    const majorTokens = [
+      'BTC', 'ETH', 'SOL', 'USDC', 'USDT', 'BNB', 'XRP', 'ADA', 'DOGE', 
+      'MATIC', 'DOT', 'LINK', 'UNI', 'ATOM', 'LTC', 'AVAX', 'SHIB', 
+      'BCH', 'NEAR', 'FTM', 'ALGO', 'VET', 'ICP', 'FIL', 'APT', 'ARB',
+      'OP', 'MKR', 'AAVE', 'SNX', 'CRV', 'COMP', 'SUSHI', 'YFI',
+      'BONK', 'WIF', 'PEPE', 'FLOKI', 'SAND', 'MANA', 'AXS', 'GALA',
+      'TRX', 'DOGE', 'WBTC', 'WETH', 'WBT', 'HYPE', 'BCH'
+    ];
+    if (majorTokens.includes(actualSymbol.toUpperCase())) {
+      imageSources.push(FALLBACK_SOURCES.cryptoLogos(actualSymbol));
+    }
   }
   
   // 5. CryptoCompare - Another fallback
@@ -119,10 +134,10 @@ export function TokenLogo({ logoUrl, logo, name, color, symbol, size = 'md', tok
   // Handle image error - try next fallback
   const handleImageError = () => {
     if (currentImageIndex < imageSources.length - 1) {
-      console.log(`[TokenLogo] Image failed for ${actualSymbol}, trying fallback ${currentImageIndex + 1}`);
+      console.log(`[TokenLogo] Image failed for ${actualSymbol} at URL: ${imageSources[currentImageIndex]}, trying fallback ${currentImageIndex + 1}`);
       setCurrentImageIndex(currentImageIndex + 1);
     } else {
-      console.log(`[TokenLogo] All images failed for ${actualSymbol}, using gradient fallback`);
+      console.log(`[TokenLogo] All images failed for ${actualSymbol}. Tried ${imageSources.length} sources:`, imageSources);
       setImageError(true);
     }
   };
@@ -132,15 +147,16 @@ export function TokenLogo({ logoUrl, logo, name, color, symbol, size = 'md', tok
   
   if (imageSources.length > 0 && !imageError && currentImageIndex < imageSources.length) {
     // Use image from sources with fallback chain
+    const currentSource = imageSources[currentImageIndex];
+    
     logoContent = (
       <img 
         key={`${actualSymbol}-${currentImageIndex}`}
-        src={imageSources[currentImageIndex]}
+        src={currentSource}
         alt={actualName}
         className="w-full h-full object-cover"
         onError={handleImageError}
         loading="lazy"
-        crossOrigin="anonymous"
       />
     );
   } else {

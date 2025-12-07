@@ -34,7 +34,8 @@ export function UnlockWallet({ walletId, onUnlock, onSignOut }: UnlockWalletProp
           const oauthPassword = await WalletStorage.getOAuthPassword();
           
           if (oauthPassword) {
-            console.log('[UnlockWallet] 🔑 OAuth password found, unlocking...');
+            console.log('[UnlockWallet] 🔑 OAuth password retrieved successfully');
+            console.log('[UnlockWallet] 🔑 Password length:', oauthPassword.length);
             const success = await wallet.unlock(oauthPassword);
             
             if (success) {
@@ -43,14 +44,23 @@ export function UnlockWallet({ walletId, onUnlock, onSignOut }: UnlockWalletProp
               onUnlock();
               return;
             } else {
-              console.warn('[UnlockWallet] ⚠️ Auto-unlock failed, manual unlock required');
+              console.warn('[UnlockWallet] ⚠️ Auto-unlock failed - password decryption failed');
+              toast.error('Auto-unlock failed. Please enter your password manually.', {
+                description: 'Wallet data may have been encrypted with a different password',
+                duration: 5000,
+              });
             }
           } else {
             console.log('[UnlockWallet] ℹ️ No OAuth password stored, manual unlock required');
           }
+        } else {
+          console.log('[UnlockWallet] ℹ️ Not an OAuth wallet, manual unlock required');
         }
       } catch (error) {
         console.error('[UnlockWallet] ❌ Auto-unlock error:', error);
+        toast.error('Auto-unlock failed', {
+          description: 'Please enter your password manually',
+        });
       } finally {
         setAutoUnlocking(false);
       }
@@ -89,9 +99,12 @@ export function UnlockWallet({ walletId, onUnlock, onSignOut }: UnlockWalletProp
       console.error('[UnlockWallet] ❌ Unlock error:', err);
       
       // Better error messages based on error type
-      if (err.name === 'OperationError') {
-        setError('Decryption failed. Wrong password or corrupted data.');
-        toast.error('Failed to decrypt wallet');
+      if (err.name === 'OperationError' || err.message?.includes('decrypt')) {
+        setError('Wallet data appears corrupted. Please use "Forgot Password" to recover.');
+        toast.error('Decryption failed - wallet data may be corrupted', {
+          description: 'Use "Forgot Password" to recover with your recovery phrase',
+          duration: 5000,
+        });
       } else {
         setError('Failed to unlock wallet. Please try again.');
         toast.error('Unlock failed');
@@ -233,16 +246,6 @@ export function UnlockWallet({ walletId, onUnlock, onSignOut }: UnlockWalletProp
             </button>
           </div>
         </motion.form>
-
-        {/* Security Note */}
-        <motion.div 
-          className="bg-blue-950/20 border border-blue-900/30 rounded-xl p-4 backdrop-blur-sm"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-        >
-          {/* // ... remove this code ... */}
-        </motion.div>
       </motion.div>
     </div>
   );

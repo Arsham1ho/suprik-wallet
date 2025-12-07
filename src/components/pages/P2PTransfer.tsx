@@ -858,38 +858,6 @@ export function P2PTransfer({ onBack }: P2PTransferProps) {
                 <p className="text-slate-400">Create a durable nonce account for unlimited time</p>
               </div>
 
-              {/* Info Card */}
-              <div className="bg-gradient-to-br from-purple-500/10 to-pink-500/10 border-2 border-purple-500 rounded-xl p-6">
-                <div className="flex items-start gap-3 mb-4">
-                  <Zap className="w-8 h-8 text-purple-400 flex-shrink-0 mt-1" />
-                  <div>
-                    <h3 className="text-xl font-semibold text-purple-400 mb-2">CosmoPay Features ✨</h3>
-                    <div className="space-y-2 text-slate-300">
-                      <div className="flex items-center gap-2">
-                        <span className="text-green-400">✅</span>
-                        <span>No time limit - send transactions anytime</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-green-400">✅</span>
-                        <span>Perfect for offline P2P transfers</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-green-400">✅</span>
-                        <span>Share via QR, file, or paste</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-green-400">✅</span>
-                        <span>One-time setup (~0.0015 SOL)</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-green-400">💰</span>
-                        <span>Fully refundable rent</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               {/* Explanation */}
               <div className="bg-blue-500/10 border border-blue-500/50 rounded-xl p-4">
                 <div className="flex items-start gap-3">

@@ -49,6 +49,7 @@
           "ethers": "*",
           "hono": "*",
           "html2canvas": "*",
+          "html5-qrcode": "*",
           "input-otp": "^1.4.2",
           "lucide-react": "^0.487.0",
           "motion": "*",

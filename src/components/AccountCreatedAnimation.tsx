@@ -99,150 +99,47 @@ export function AccountCreatedAnimation({ onComplete }: AccountCreatedAnimationP
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-6 overflow-hidden relative">
-      {/* Animated mesh gradient background */}
-      <div className="absolute inset-0 overflow-hidden">
-        <motion.div
-          className="absolute inset-0 opacity-30"
+      {/* Simple background like WelcomeAnimation */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {/* Central purple glow */}
+        <motion.div 
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full"
           style={{
-            background: 'radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.3) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(236, 72, 153, 0.3) 0%, transparent 50%), radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.3) 0%, transparent 50%)',
-            willChange: 'transform',
+            background: 'radial-gradient(circle, rgba(168, 85, 247, 0.4) 0%, transparent 70%)',
+            filter: 'blur(100px)',
           }}
-          animate={{
-            scale: [1, 1.2, 1],
-            rotate: [0, 90, 0],
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ 
+            scale: 1,
+            opacity: 0.5,
           }}
           transition={{
-            duration: 20,
-            repeat: Infinity,
-            ease: "linear",
+            duration: 1.5,
+            ease: "easeOut"
           }}
         />
       </div>
 
-      {/* Grid pattern */}
-      <div className="absolute inset-0 opacity-[0.02]" 
-        style={{
-          backgroundImage: 'linear-gradient(rgba(139, 92, 246, 0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(139, 92, 246, 0.5) 1px, transparent 1px)',
-          backgroundSize: '50px 50px',
-        }}
-      />
-      
-      {/* Nebula Effect - سحابی */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* پس‌زمینه سحابی با gradient های چند لایه */}
-        <motion.div
-          className="absolute inset-0"
-          style={{
-            background: `
-              radial-gradient(ellipse 800px 400px at 20% 30%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
-              radial-gradient(ellipse 600px 500px at 80% 70%, rgba(236, 72, 153, 0.12) 0%, transparent 50%),
-              radial-gradient(ellipse 500px 600px at 50% 50%, rgba(59, 130, 246, 0.1) 0%, transparent 50%)
-            `,
-          }}
-          animate={{
-            opacity: [0.3, 0.6, 0.3],
-          }}
-          transition={{
-            duration: 8,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-        />
-        
-        {/* ستاره‌های چشمک‌زن */}
-        {[...Array(50)].map((_, i) => {
-          const x = Math.random() * 100;
-          const y = Math.random() * 100;
-          const size = Math.random() * 2 + 0.5;
-          const duration = Math.random() * 3 + 2;
-          const delay = Math.random() * 5;
-          
-          return (
-            <motion.div
-              key={`star-${i}`}
-              className="absolute rounded-full bg-white"
-              style={{
-                left: `${x}%`,
-                top: `${y}%`,
-                width: `${size}px`,
-                height: `${size}px`,
-                boxShadow: `0 0 ${size * 2}px rgba(255, 255, 255, 0.8)`,
-              }}
-              animate={{
-                opacity: [0.2, 1, 0.2],
-                scale: [1, 1.2, 1],
-              }}
-              transition={{
-                duration: duration,
-                delay: delay,
-                repeat: Infinity,
-                ease: "easeInOut",
-              }}
-            />
-          );
-        })}
-        
-        {/* شهاب‌سنگ‌های متحرک */}
-        {[...Array(5)].map((_, i) => {
-          const startY = Math.random() * 50;
-          const duration = Math.random() * 2 + 1.5;
-          const delay = i * 3 + Math.random() * 2;
-          
-          return (
-            <motion.div
-              key={`shooting-star-${i}`}
-              className="absolute"
-              style={{
-                left: '-100px',
-                top: `${startY}%`,
-                width: '100px',
-                height: '2px',
-                background: 'linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent)',
-                boxShadow: '0 0 10px rgba(139, 92, 246, 0.6), 0 0 20px rgba(236, 72, 153, 0.4)',
-                transform: 'rotate(-45deg)',
-              }}
-              animate={{
-                x: ['0vw', '120vw'],
-                opacity: [0, 1, 1, 0],
-              }}
-              transition={{
-                duration: duration,
-                delay: delay,
-                repeat: Infinity,
-                repeatDelay: 8,
-                ease: "easeOut",
-              }}
-            />
-          );
-        })}
-        
-        {/* سیاره‌های کوچک شناور */}
-        {[
-          { color: 'rgba(139, 92, 246, 0.3)', size: 40, x: 10, y: 20 },
-          { color: 'rgba(236, 72, 153, 0.3)', size: 30, x: 85, y: 70 },
-          { color: 'rgba(59, 130, 246, 0.25)', size: 25, x: 75, y: 15 },
-        ].map((planet, i) => (
+      {/* Small particles */}
+      <div className="absolute inset-0 pointer-events-none">
+        {[...Array(10)].map((_, i) => (
           <motion.div
-            key={`planet-${i}`}
-            className="absolute rounded-full"
+            key={i}
+            className="absolute w-1 h-1 bg-purple-400 rounded-full"
             style={{
-              left: `${planet.x}%`,
-              top: `${planet.y}%`,
-              width: `${planet.size}px`,
-              height: `${planet.size}px`,
-              background: `radial-gradient(circle at 30% 30%, ${planet.color}, transparent)`,
-              border: `1px solid ${planet.color}`,
-              boxShadow: `0 0 ${planet.size}px ${planet.color}`,
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
             }}
-            animate={{
-              y: [-10, 10, -10],
-              x: [-5, 5, -5],
-              rotate: [0, 360],
+            initial={{ opacity: 0, scale: 0 }}
+            animate={{ 
+              opacity: [0, 1, 0],
+              scale: [0, 1.5, 0],
+              y: [0, -50],
             }}
             transition={{
-              duration: 15 + i * 5,
+              duration: 1.5,
+              delay: Math.random() * 1,
               repeat: Infinity,
-              ease: "easeInOut",
             }}
           />
         ))}
@@ -280,7 +177,7 @@ export function AccountCreatedAnimation({ onComplete }: AccountCreatedAnimationP
       ))}
 
       {/* Main content */}
-      <div className="relative z-10 flex flex-col items-center max-w-md w-full">
+      <div className="relative z-10 flex flex-col items-center max-w-md w-full mt-[76px]">
         {/* Success icon container */}
         <motion.div
           initial={{ scale: 0, rotate: -180, opacity: 0 }}
@@ -291,7 +188,7 @@ export function AccountCreatedAnimation({ onComplete }: AccountCreatedAnimationP
             damping: 20,
             duration: 0.8,
           }}
-          className="relative mb-12"
+          className="relative mb-[calc(3rem+2cm)]"
         >
           {/* Pulsing rings */}
           {[...Array(3)].map((_, i) => (

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { ArrowDownUp, ArrowDown, Settings as SettingsIcon, Info, Zap, Loader2, ChevronDown, Search as SearchIcon, TrendingUp, TrendingDown, Clock, AlertTriangle, ArrowLeft } from 'lucide-react';
@@ -69,6 +69,12 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
   const wallet = useWallet();
   const network = useNetwork();
   
+  // Use ref to store latest tokens to avoid dependency issues
+  const tokensRef = useRef(tokens);
+  useEffect(() => {
+    tokensRef.current = tokens;
+  }, [tokens]);
+  
   // State for all coins from CoinGecko
   const [allCoins, setAllCoins] = useState<SwapToken[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,7 +93,6 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
   const [showSlippageSettings, setShowSlippageSettings] = useState(false);
   const [showPriorityFeeSettings, setShowPriorityFeeSettings] = useState(false);
   const [showTipSettings, setShowTipSettings] = useState(false);
-  const [showToTokenSearch, setShowToTokenSearch] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
   const [isSwapping, setIsSwapping] = useState(false);
   const [showSwapAnimation, setShowSwapAnimation] = useState(false);
@@ -112,23 +117,23 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
   const [priceImpact, setPriceImpact] = useState<number | null>(null);
   const [route, setRoute] = useState<string | null>(null);
 
-  // Fetch coins from CoinGecko
+  // Fetch coins from CoinGecko - only on mount
   useEffect(() => {
-    fetchAllCoins();
+    fetchAllCoins(true); // Initial load with loading spinner
     loadBiometricSettings();
     loadRecentSwaps();
-  }, [tokens]);
+  }, []); // Remove tokens dependency to prevent constant re-fetching
 
-  // Auto-refresh prices every 30 seconds
+  // Auto-refresh prices every 30 seconds (background refresh without loading state)
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchAllCoins();
+      fetchAllCoins(false); // Background refresh without loading spinner
     }, 30000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, []); // FIXED: Empty deps to prevent re-creation of interval
 
-  const loadBiometricSettings = async () => {
+  const loadBiometricSettings = useCallback(async () => {
     try {
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/user-settings/${walletId}`,
@@ -144,9 +149,9 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     } catch (error) {
       console.error('[Swap] Error loading biometric settings:', error);
     }
-  };
+  }, [walletId]);
 
-  const loadRecentSwaps = async () => {
+  const loadRecentSwaps = useCallback(async () => {
     try {
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet/${walletId}/recent-swaps`,
@@ -162,11 +167,14 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     } catch (error) {
       console.error('[Swap] Error loading recent swaps:', error);
     }
-  };
+  }, [walletId]);
 
-  const fetchAllCoins = async () => {
+  const fetchAllCoins = useCallback(async (isInitialLoad = false) => {
     try {
-      setLoading(true);
+      // Don't show loading spinner on background refresh
+      if (isInitialLoad) {
+        setLoading(true);
+      }
       console.log('Fetching coins for swap...');
       
       const response = await fetch(
@@ -197,10 +205,10 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         throw new Error((coinGeckoData as any).error);
       }
       
-      // Merge CoinGecko data with wallet tokens
+      // Merge CoinGecko data with wallet tokens (use ref to avoid dependency)
       const mergedCoins: SwapToken[] = coinGeckoData.map(coin => {
         // Find matching token in wallet
-        const walletToken = tokens.find(t => 
+        const walletToken = tokensRef.current.find(t => 
           t.symbol.toLowerCase() === coin.symbol.toLowerCase() ||
           t.name.toLowerCase() === coin.name.toLowerCase()
         );
@@ -219,8 +227,8 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         };
       });
 
-      // Add wallet tokens that are not in CoinGecko list
-      tokens.forEach(walletToken => {
+      // Add wallet tokens that are not in CoinGecko list (use ref to avoid dependency)
+      tokensRef.current.forEach(walletToken => {
         const alreadyExists = mergedCoins.find(c => 
           c.symbol.toLowerCase() === walletToken.symbol.toLowerCase() ||
           c.name.toLowerCase() === walletToken.name.toLowerCase()
@@ -253,8 +261,8 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
       setAllCoins(mergedCoins);
       console.log('Loaded coins for swap:', mergedCoins.length);
       
-      // Auto-select SOL for "from" and USDC for "to"
-      if (mergedCoins.length > 0) {
+      // Auto-select SOL for "from" and USDC for "to" - ONLY on initial load
+      if (isInitialLoad && mergedCoins.length > 0) {
         const solToken = mergedCoins.find(c => c.symbol === 'SOL' && c.hasBalance);
         const usdcToken = mergedCoins.find(c => c.symbol === 'USDC');
         
@@ -287,12 +295,14 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
       console.error('Error fetching coins:', error);
       toast.error('Failed to load coins');
     } finally {
-      setLoading(false);
+      if (isInitialLoad) {
+        setLoading(false);
+      }
     }
-  };
+  }, [tokens]);
 
   // Function to get Jupiter quote (CLIENT-SIDE)
-  const getJupiterQuoteData = async (inputMint: string, outputMint: string, amount: string, inputSymbol: string, outputSymbol: string) => {
+  const getJupiterQuoteData = useCallback(async (inputMint: string, outputMint: string, amount: string, inputSymbol: string, outputSymbol: string) => {
     if (!amount || parseFloat(amount) <= 0) {
       setJupiterQuote(null);
       setPriceImpact(null);
@@ -382,10 +392,10 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     } finally {
       setLoadingQuote(false);
     }
-  };
+  }, []);
 
-  // Tokens that can be used for "You pay" (must have balance)
-  const fromTokenOptions = allCoins.filter(t => t.hasBalance);
+  // Tokens that can be used for "You pay" (must have balance) - memoized
+  const fromTokenOptions = useMemo(() => allCoins.filter(t => t.hasBalance), [allCoins]);
   
   // Popular token pairs for quick swap
   const popularPairs = [
@@ -398,23 +408,23 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
   // Tokens that can be used for "You receive" (all coins)
   const toTokenOptions = allCoins;
 
-  const fromTokenData = allCoins.find(t => t.id === fromToken);
-  const toTokenData = allCoins.find(t => t.id === toToken);
+  const fromTokenData = useMemo(() => allCoins.find(t => t.id === fromToken), [allCoins, fromToken]);
+  const toTokenData = useMemo(() => allCoins.find(t => t.id === toToken), [allCoins, toToken]);
 
-  // Get token mint address by symbol
-  const getMintAddress = (symbol: string): string | null => {
+  // Get token mint address by symbol - memoized
+  const getMintAddress = useCallback((symbol: string): string | null => {
     const mint = getTokenMint(symbol);
     // Return null if it's the same as input (not found)
     return mint !== symbol ? mint : null;
-  };
+  }, []);
 
-  // Get token decimals by symbol
-  const getTokenDecimalsForSymbol = (symbol: string): number => {
+  // Get token decimals by symbol - memoized
+  const getTokenDecimalsForSymbol = useCallback((symbol: string): number => {
     return getTokenDecimals(symbol);
-  };
+  }, []);
 
   // Auto-calculate toAmount when fromAmount changes
-  const handleFromAmountChange = (value: string) => {
+  const handleFromAmountChange = useCallback((value: string) => {
     setFromAmount(value);
     
     // Clear previous quote if amount is empty or invalid
@@ -453,10 +463,10 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
       setPriceImpact(null);
       setRoute(null);
     }
-  };
+  }, [useJupiter, fromTokenData, toTokenData, getMintAddress, getJupiterQuoteData]);
 
   // Quick swap function for popular pairs
-  const quickSwap = (fromSym: string, toSym: string) => {
+  const quickSwap = useCallback((fromSym: string, toSym: string) => {
     const fromTokenMatch = allCoins.find(t => t.symbol === fromSym && t.hasBalance);
     const toTokenMatch = allCoins.find(t => t.symbol === toSym);
     
@@ -471,10 +481,10 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     } else {
       toast.error(`${fromSym} or ${toSym} not available`);
     }
-  };
+  }, [allCoins]);
 
   // Function to play success sound - Enhanced celebratory sound!
-  const playSuccessSound = () => {
+  const playSuccessSound = useCallback(() => {
     try {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       
@@ -513,31 +523,41 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     } catch (error) {
       console.log('Could not play sound:', error);
     }
-  };
+  }, []);
 
-  const initiateSwap = () => {
-    if (!fromAmount || parseFloat(fromAmount) <= 0) {
-      toast.error('Please enter an amount');
-      return;
-    }
-    if (!fromTokenData || parseFloat(fromAmount) > fromTokenData.balance) {
-      toast.error('Insufficient balance');
-      return;
-    }
-    if (!toTokenData) {
-      toast.error('Please select a token to receive');
-      return;
-    }
+  // Calculate exchange rate - memoized (must be before handleSwap)
+  const exchangeRate = useMemo(() => 
+    fromTokenData && toTokenData 
+      ? (fromTokenData.price / toTokenData.price).toFixed(6)
+      : '0'
+  , [fromTokenData, toTokenData]);
 
-    // Check if biometric confirmation is required
-    if (biometricSettings?.enabled && biometricSettings?.requireForTransactions) {
-      setShowBiometricConfirm(true);
-    } else {
-      handleSwap();
-    }
-  };
+  // Calculate estimated fee (0.5% of swap in USD) - memoized
+  const estimatedFeeUSD = useMemo(() => 
+    fromAmount && fromTokenData
+      ? (parseFloat(fromAmount) * fromTokenData.price * 0.005).toFixed(2)
+      : '0'
+  , [fromAmount, fromTokenData]);
+  
+  // Calculate fee in fromToken (0.5% of fromAmount) - memoized
+  const feeInFromToken = useMemo(() => 
+    fromAmount 
+      ? (parseFloat(fromAmount) * 0.005)
+      : 0
+  , [fromAmount]);
 
-  const handleSwap = async () => {
+  // Price impact warning threshold (for legacy swaps) - memoized
+  const legacyPriceImpact = useMemo(() => 
+    fromAmount && fromTokenData && toTokenData
+      ? ((parseFloat(fromAmount) * fromTokenData.price) / 1000000 * 100).toFixed(2)
+      : '0'
+  , [fromAmount, fromTokenData, toTokenData]);
+  
+  const showPriceImpactWarning = useMemo(() => 
+    priceImpact ? Math.abs(priceImpact) > 1 : parseFloat(legacyPriceImpact) > 1
+  , [priceImpact, legacyPriceImpact]);
+
+  const handleSwap = useCallback(async () => {
     try {
       setIsSwapping(true);
       setShowSwapAnimation(true);
@@ -578,9 +598,9 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
       setShowSwapAnimation(false);
       setIsSwapping(false);
     }
-  };
 
-  const handleJupiterSwap = async () => {
+    // Inner function for Jupiter swap
+    async function handleJupiterSwap() {
     try {
       if (!jupiterQuote) {
         throw new Error('No quote available. Please wait for quote to load.');
@@ -662,9 +682,10 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
       console.error('❌ [Swap] Jupiter swap error:', error);
       throw error;
     }
-  };
+    }
 
-  const handleSimulatedSwap = async () => {
+    // Inner function for simulated swap
+    async function handleSimulatedSwap() {
     try {
       // Simulate swap processing
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -861,9 +882,32 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
       setShowSwapAnimation(false);
       setIsSwapping(false);
     }
-  };
+    }
+  }, [useJupiter, fromTokenData, toTokenData, fromAmount, wallet, walletId, jupiterQuote, slippage, playSuccessSound, onSwapComplete, loadRecentSwaps, toAmount, estimatedFeeUSD]);
 
-  const handleFlip = () => {
+  const initiateSwap = useCallback(() => {
+    if (!fromAmount || parseFloat(fromAmount) <= 0) {
+      toast.error('Please enter an amount');
+      return;
+    }
+    if (!fromTokenData || parseFloat(fromAmount) > fromTokenData.balance) {
+      toast.error('Insufficient balance');
+      return;
+    }
+    if (!toTokenData) {
+      toast.error('Please select a token to receive');
+      return;
+    }
+
+    // Check if biometric confirmation is required
+    if (biometricSettings?.enabled && biometricSettings?.requireForTransactions) {
+      setShowBiometricConfirm(true);
+    } else {
+      handleSwap();
+    }
+  }, [fromAmount, fromTokenData, toTokenData, biometricSettings, handleSwap]);
+
+  const handleFlip = useCallback(() => {
     // Only flip if both tokens are valid
     if (!fromToken || !toToken) return;
     
@@ -884,98 +928,34 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     setToToken(tempToken);
     setFromAmount(toAmount);
     setToAmount(tempAmount);
-  };
+  }, [fromToken, toToken, fromAmount, toAmount, isFlipped, allCoins]);
 
-  const setMaxAmount = () => {
+  const setMaxAmount = useCallback(() => {
     if (fromTokenData) {
       // Calculate max amount considering 0.5% fee
       // If balance is X, max swap amount is X / 1.005 (so X = swapAmount + fee)
       const maxSwapAmount = fromTokenData.balance / 1.005;
       handleFromAmountChange(maxSwapAmount.toFixed(6));
     }
-  };
-
-  const handleSelectToToken = (coin: CoinGeckoToken) => {
-    // Convert CoinGecko token to SwapToken format
-    const swapToken: SwapToken = {
-      id: coin.id,
-      symbol: coin.symbol.toUpperCase(),
-      name: coin.name,
-      logo: coin.symbol.charAt(0).toUpperCase(),
-      logoUrl: coin.image,
-      price: coin.current_price,
-      balance: coin.amount || 0,
-      hasBalance: coin.amount ? coin.amount > 0 : false
-    };
-
-    // Check if token already exists in allCoins
-    const existingToken = allCoins.find(t => t.id === coin.id);
-    if (!existingToken) {
-      // Add to allCoins if not present
-      setAllCoins(prev => [...prev, swapToken]);
-    } else if (existingToken.price !== coin.current_price) {
-      // Update price if changed
-      setAllCoins(prev => prev.map(t => 
-        t.id === coin.id 
-          ? { ...t, price: coin.current_price }
-          : t
-      ));
-    }
-
-    // Set as toToken and close search
-    setToToken(coin.id);
-    setShowToTokenSearch(false);
-    
-    // Recalculate toAmount with new token if fromAmount exists
-    if (fromAmount && fromTokenData) {
-      const calculatedTo = (parseFloat(fromAmount) * fromTokenData.price) / coin.current_price;
-      setToAmount(calculatedTo.toFixed(6));
-    }
-  };
-
-  // Calculate exchange rate
-  const exchangeRate = fromTokenData && toTokenData 
-    ? (fromTokenData.price / toTokenData.price).toFixed(6)
-    : '0';
-
-  // Calculate estimated fee (0.5% of swap in USD)
-  const estimatedFeeUSD = fromAmount && fromTokenData
-    ? (parseFloat(fromAmount) * fromTokenData.price * 0.005).toFixed(2)
-    : '0';
-  
-  // Calculate fee in fromToken (0.5% of fromAmount)
-  const feeInFromToken = fromAmount 
-    ? (parseFloat(fromAmount) * 0.005)
-    : 0;
-
-  // Price impact warning threshold (for legacy swaps)
-  const legacyPriceImpact = fromAmount && fromTokenData && toTokenData
-    ? ((parseFloat(fromAmount) * fromTokenData.price) / 1000000 * 100).toFixed(2)
-    : '0';
-  
-  const showPriceImpactWarning = priceImpact ? Math.abs(priceImpact) > 1 : parseFloat(legacyPriceImpact) > 1;
+  }, [fromTokenData, handleFromAmountChange]);
 
   // Show loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white pb-20 w-full">
         <div className="px-4 py-6 w-full">
-          <motion.div 
+          <div 
             className="flex items-center justify-between mb-6"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
           >
             <h1 className="text-2xl">Swap</h1>
-          </motion.div>
+          </div>
           
-          <motion.div 
+          <div 
             className="flex flex-col items-center justify-center mt-20"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
           >
             <Loader2 className="w-10 h-10 text-purple-500 animate-spin mb-4" />
             <p className="text-slate-400">Loading coins...</p>
-          </motion.div>
+          </div>
         </div>
       </div>
     );
@@ -986,18 +966,14 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     return (
       <div className="min-h-screen bg-black text-white pb-20 w-full">
         <div className="px-4 py-6 w-full">
-          <motion.div 
+          <div 
             className="flex items-center justify-between mb-6"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
           >
             <h1 className="text-2xl">Swap</h1>
-          </motion.div>
+          </div>
           
-          <motion.div 
+          <div 
             className="flex flex-col items-center justify-center mt-20"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
           >
             <div className="w-20 h-20 rounded-full bg-slate-900/50 flex items-center justify-center mb-4">
               <ArrowDown className="w-10 h-10 text-slate-600" />
@@ -1006,7 +982,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             <p className="text-slate-400 text-center max-w-xs">
               You need to have tokens in your wallet before you can swap them.
             </p>
-          </motion.div>
+          </div>
         </div>
       </div>
     );
@@ -1016,10 +992,8 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     <div className="min-h-screen bg-black text-white pb-20 w-full">
       <div className="px-4 py-16 w-full">
         {/* Header */}
-        <motion.div 
+        <div 
           className="flex items-center justify-between mb-6"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
         >
           <div className="absolute top-4 left-4 z-10 flex items-center gap-3">
             <h1 className="text-2xl">Swap</h1>
@@ -1033,14 +1007,12 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           >
             <SettingsIcon className="w-5 h-5 text-slate-400" />
           </motion.button>
-        </motion.div>
+        </div>
 
         {/* Network Mode Banner - Testnet */}
         {network.isTestnet && (
-          <motion.div
+          <div
             className="mb-4 p-3 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
           >
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
@@ -1048,7 +1020,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
                 🧪 <strong>Testnet Mode</strong> - Simulated swaps
               </p>
             </div>
-          </motion.div>
+          </div>
         )}
 
         {/* Swap Mode Indicator - Real vs Demo */}
@@ -1063,11 +1035,8 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         {/* Swap Interface */}
         <div className="space-y-2">
           {/* From */}
-          <motion.div 
+          <div 
             className="relative bg-slate-900/50 border border-slate-800/30 rounded-2xl p-5 backdrop-blur-sm"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
           >
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-3">
@@ -1091,7 +1060,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               
               <div className="flex items-center gap-3">
                 <Select value={fromToken} onValueChange={setFromToken}>
-                  <SelectTrigger className="w-32 bg-slate-950/80 border-slate-800/50 text-white h-14">
+                  <SelectTrigger className="w-[140px] bg-slate-950/80 border-slate-800/50 text-white h-14">
                     <SelectValue>
                       {fromTokenData && (
                         <div className="flex items-center gap-2">
@@ -1142,16 +1111,14 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               </div>
 
               {fromTokenData && fromAmount && (
-                <motion.div 
+                <div 
                   className="mt-2 text-slate-500 text-sm"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
                 >
                   ≈ ${(parseFloat(fromAmount) * fromTokenData.price).toFixed(2)}
-                </motion.div>
+                </div>
               )}
             </div>
-          </motion.div>
+          </div>
 
           {/* Flip Button */}
           <div className="flex justify-center -my-2 relative z-10">
@@ -1168,11 +1135,8 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           </div>
 
           {/* To */}
-          <motion.div 
+          <div 
             className="relative bg-slate-900/50 border border-slate-800/30 rounded-2xl p-5 backdrop-blur-sm"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
           >
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-3">
@@ -1185,27 +1149,49 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               </div>
               
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setShowToTokenSearch(true)}
-                  className="w-32 bg-slate-950/80 border border-slate-800/50 text-white h-14 rounded-md flex items-center justify-between hover:bg-slate-800/80 transition-colors text-[16px] px-[12px] py-[8px]"
-                >
-                  {toTokenData ? (
-                    <div className="flex items-center gap-2">
-                      <TokenLogo
-                        logoUrl={toTokenData.logoUrl}
-                        logo={toTokenData.logo}
-                        symbol={toTokenData.symbol}
-                        name={toTokenData.name}
-                        mint={toTokenData.mint}
-                        size="sm"
-                      />
-                      <span>{toTokenData.symbol}</span>
-                    </div>
-                  ) : (
-                    <span className="text-slate-500">Select</span>
-                  )}
-                  <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
-                </button>
+                <Select value={toToken} onValueChange={setToToken}>
+                  <SelectTrigger className="w-[140px] bg-slate-950/80 border-slate-800/50 text-white h-14">
+                    <SelectValue>
+                      {toTokenData ? (
+                        <div className="flex items-center gap-2">
+                          <TokenLogo
+                            logoUrl={toTokenData.logoUrl}
+                            logo={toTokenData.logo}
+                            symbol={toTokenData.symbol}
+                            name={toTokenData.name}
+                            mint={toTokenData.mint}
+                            size="sm"
+                          />
+                          <span>{toTokenData.symbol}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-500\">Select</span>
+                      )}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-slate-800 max-h-[300px] overflow-y-auto">
+                    {allCoins.filter(t => t.id !== fromToken).map(token => (
+                      <SelectItem key={token.id} value={token.id} className="text-white">
+                        <div className="flex items-center gap-2">
+                          <TokenLogo
+                            logoUrl={token.logoUrl}
+                            logo={token.logo}
+                            symbol={token.symbol}
+                            name={token.name}
+                            mint={token.mint}
+                            size="sm"
+                          />
+                          <div className="flex flex-col items-start">
+                            <span>{token.symbol}</span>
+                            {token.hasBalance && (
+                              <span className="text-xs text-slate-400">{token.balance.toFixed(4)}</span>
+                            )}
+                          </div>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
 
                 <div className="flex-1 text-2xl text-white h-14 flex items-center">
                   {toAmount || '0.00'}
@@ -1213,24 +1199,20 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               </div>
 
               {toTokenData && toAmount && (
-                <motion.div 
+                <div 
                   className="mt-2 text-slate-500 text-sm"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
                 >
                   ≈ ${(parseFloat(toAmount) * toTokenData.price).toFixed(2)}
-                </motion.div>
+                </div>
               )}
             </div>
-          </motion.div>
+          </div>
         </div>
 
         {/* Price Impact Warning */}
         {showPriceImpactWarning && fromAmount && (
-          <motion.div
+          <div
             className="mt-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 backdrop-blur-sm"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
           >
             <div className="flex items-start gap-2">
               <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" />
@@ -1241,15 +1223,13 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
                 </p>
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
 
         {/* Rate Info */}
         {fromAmount && (
-          <motion.div 
+          <div 
             className="mt-4 bg-slate-900/50 border border-slate-800/30 rounded-xl p-4 backdrop-blur-sm"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
           >
             <div className="flex items-center justify-between text-sm mb-3">
               <span className="text-slate-400">Rate</span>
@@ -1287,7 +1267,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
                 </div>
               </>
             )}
-          </motion.div>
+          </div>
         )}
 
         {/* Swap Button */}
@@ -1322,10 +1302,8 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
 
         {/* Testnet Mode Banner */}
         {network.isTestnet && (
-          <motion.div
+          <div
             className="mt-4 p-3 rounded-xl bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/30"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
           >
             <div className="flex items-center gap-2">
               <div className="text-blue-400 text-xl">🧪</div>
@@ -1333,16 +1311,13 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
                 <strong>Testnet Mode Active</strong> - Swaps will be simulated (no real blockchain interaction)
               </p>
             </div>
-          </motion.div>
+          </div>
         )}
 
         {/* Recent Swaps */}
         {recentSwaps.length > 0 && (
-          <motion.div
+          <div
             className="mt-6"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
           >
             <div className="flex items-center gap-2 mb-3">
               <Clock className="w-4 h-4 text-slate-400" />
@@ -1374,7 +1349,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
                 </motion.div>
               ))}
             </div>
-          </motion.div>
+          </div>
         )}
       </div>
 
@@ -1686,9 +1661,11 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Swap Animation Dialog */}
+      {/* Swap Animation Dialog - Removed */}
+
+      {/* Old Animation (backup) - Hidden */}
       <AnimatePresence>
-        {showSwapAnimation && (
+        {false && showSwapAnimation && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1980,29 +1957,6 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
                 </motion.p>
               </div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Token Search for "You receive" */}
-      <AnimatePresence mode="wait">
-        {showToTokenSearch && (
-          <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ 
-              type: 'tween',
-              duration: 0.3,
-              ease: [0.4, 0, 0.2, 1]
-            }}
-            className="fixed inset-0 z-50 bg-black will-change-transform"
-          >
-            <Search 
-              onBack={() => setShowToTokenSearch(false)}
-              walletId={walletId}
-              onSelectToken={handleSelectToToken}
-            />
           </motion.div>
         )}
       </AnimatePresence>

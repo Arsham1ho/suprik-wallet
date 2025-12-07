@@ -15,6 +15,8 @@ import {
   getBiometricTypeName,
   type BiometricSettings 
 } from '../../utils/biometric';
+import { SecureStorage, WalletStorage } from '../../utils/wallet';
+import { useWallet } from '../../utils/WalletContext';
 
 interface SecuritySettingsProps {
   onBack: () => void;
@@ -41,6 +43,7 @@ interface UserSettings {
 }
 
 export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
+  const wallet = useWallet();
   const [loading, setLoading] = useState(true);
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
@@ -48,10 +51,12 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
   const [phraseConfirmed, setPhraseConfirmed] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [oldPassword, setOldPassword] = useState('');
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [copiedWord, setCopiedWord] = useState<number | null>(null);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [settingUpBiometric, setSettingUpBiometric] = useState(false);
+  const [loadingPhrase, setLoadingPhrase] = useState(false);
   const biometricType = getBiometricTypeName();
 
   useEffect(() => {
@@ -135,20 +140,63 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
   };
 
   const setPassword = async () => {
-    if (newPassword !== confirmPassword) {
-      toast.error('Passwords do not match');
-      return;
-    }
-    
-    if (newPassword.length < 8) {
-      toast.error('Password must be at least 8 characters');
-      return;
-    }
+    // If changing existing wallet password
+    if (userSettings?.usePassword && userSettings?.password) {
+      if (!oldPassword) {
+        toast.error('Please enter your current password');
+        return;
+      }
+      
+      // Try to decrypt mnemonic with old password to verify it
+      const mnemonic = await SecureStorage.retrieveMnemonic(oldPassword);
+      if (!mnemonic) {
+        toast.error('Current password is incorrect');
+        return;
+      }
+      
+      // Verify new password
+      if (newPassword !== confirmPassword) {
+        toast.error('New passwords do not match');
+        return;
+      }
+      
+      if (newPassword.length < 8) {
+        toast.error('New password must be at least 8 characters');
+        return;
+      }
+      
+      // Re-encrypt mnemonic with new password
+      try {
+        await SecureStorage.storeMnemonic(mnemonic, newPassword);
+        await updateSettings({ usePassword: true, password: newPassword });
+        setShowPasswordForm(false);
+        setNewPassword('');
+        setConfirmPassword('');
+        setOldPassword('');
+        toast.success('Wallet password changed successfully');
+      } catch (error) {
+        console.error('Failed to change wallet password:', error);
+        toast.error('Failed to change password. Please try again.');
+      }
+    } else {
+      // Setting password for first time
+      if (newPassword !== confirmPassword) {
+        toast.error('Passwords do not match');
+        return;
+      }
+      
+      if (newPassword.length < 8) {
+        toast.error('Password must be at least 8 characters');
+        return;
+      }
 
-    await updateSettings({ usePassword: true, password: newPassword });
-    setShowPasswordForm(false);
-    setNewPassword('');
-    setConfirmPassword('');
+      await updateSettings({ usePassword: true, password: newPassword });
+      setShowPasswordForm(false);
+      setNewPassword('');
+      setConfirmPassword('');
+      setOldPassword('');
+      toast.success('Password set successfully');
+    }
   };
 
   const removePassword = async () => {
@@ -268,6 +316,76 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
     toast.error('Cannot remove recovery phrase - it\'s required to access your wallet');
   };
 
+  const loadRecoveryPhrase = async () => {
+    setLoadingPhrase(true);
+    try {
+      console.log('[SecuritySettings] 🔍 Loading recovery phrase from WalletContext...');
+      
+      // Check if wallet is already unlocked (from WalletContext)
+      if (wallet.isUnlocked && wallet.mnemonic) {
+        console.log('[SecuritySettings] ✅ Wallet already unlocked, using mnemonic from context');
+        setWalletInfo({
+          ...walletInfo,
+          seedPhrase: wallet.mnemonic,
+        });
+        setPhraseConfirmed(true);
+        setLoadingPhrase(false);
+        return;
+      }
+
+      // If not unlocked, try OAuth password first
+      const authMethod = localStorage.getItem(`${walletId}_auth_method`);
+      if (authMethod === 'social') {
+        console.log('[SecuritySettings] 🔑 OAuth wallet detected, trying auto-unlock...');
+        const oauthPassword = await WalletStorage.getOAuthPassword();
+        
+        if (oauthPassword) {
+          const mnemonic = await SecureStorage.retrieveMnemonic(oauthPassword);
+          if (mnemonic) {
+            console.log('[SecuritySettings] ✅ Mnemonic retrieved with OAuth password');
+            setWalletInfo({
+              ...walletInfo,
+              seedPhrase: mnemonic,
+            });
+            setPhraseConfirmed(true);
+            setLoadingPhrase(false);
+            return;
+          }
+        }
+      }
+
+      // If OAuth failed or not OAuth wallet, prompt for password
+      const password = prompt('Enter your wallet password to view recovery phrase:');
+      
+      if (!password) {
+        toast.error('Password required to view recovery phrase');
+        setLoadingPhrase(false);
+        return;
+      }
+
+      const mnemonic = await SecureStorage.retrieveMnemonic(password);
+      
+      if (!mnemonic) {
+        toast.error('Incorrect password. Please try again.');
+        setLoadingPhrase(false);
+        return;
+      }
+
+      console.log('[SecuritySettings] ✅ Recovery phrase loaded successfully');
+      setWalletInfo({
+        ...walletInfo,
+        seedPhrase: mnemonic,
+      });
+      setPhraseConfirmed(true);
+      toast.success('Recovery phrase loaded');
+    } catch (error) {
+      console.error('[SecuritySettings] ❌ Failed to load recovery phrase:', error);
+      toast.error('Failed to load recovery phrase');
+    } finally {
+      setLoadingPhrase(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -346,10 +464,11 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
                   ⚠️ Make sure you're in a private location before revealing your phrase
                 </div>
                 <Button 
-                  onClick={() => setPhraseConfirmed(true)}
+                  onClick={loadRecoveryPhrase}
+                  disabled={loadingPhrase}
                   className="w-full bg-orange-600 hover:bg-orange-700"
                 >
-                  I Understand, Show Recovery Phrase
+                  {loadingPhrase ? 'Loading...' : 'I Understand, Show Recovery Phrase'}
                 </Button>
               </div>
             ) : (
@@ -534,45 +653,20 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
           <div className="bg-slate-900/50 border border-slate-800/30 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <Key className="w-5 h-5 text-purple-400" />
-              <h4 className="text-white font-medium">Sign-in Password</h4>
+              <h4 className="text-white font-medium">Change Password</h4>
             </div>
             
-            {userSettings?.usePassword ? (
-              <div className="space-y-3">
-                <div className="bg-green-950/20 border border-green-900/30 rounded-lg p-3">
-                  <p className="text-green-300 text-sm">✓ Password protection is enabled</p>
-                </div>
-                <div className="flex gap-2">
-                  <Button 
-                    onClick={() => setShowPasswordForm(true)}
-                    variant="outline"
-                    className="flex-1 border-slate-700"
-                  >
-                    Change Password
-                  </Button>
-                  <Button 
-                    onClick={removePassword}
-                    variant="outline"
-                    className="flex-1 border-red-900/30 text-red-400"
-                  >
-                    Remove Password
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-slate-400 text-sm">
-                  Add an extra layer of security by requiring a password to sign in.
-                </p>
-                <Button 
-                  onClick={() => setShowPasswordForm(true)}
-                  className="w-full bg-purple-600 hover:bg-purple-700"
-                >
-                  <Key className="w-4 h-4 mr-2" />
-                  Set Password
-                </Button>
-              </div>
-            )}
+            <p className="text-slate-400 text-sm mb-4">
+              Change the password you use to unlock your wallet.
+            </p>
+            
+            <Button 
+              onClick={() => setShowPasswordForm(true)}
+              className="w-full bg-[#ad46ff] hover:bg-[#9333ea]"
+            >
+              <Key className="w-4 h-4 mr-2" />
+              Change Password
+            </Button>
 
             {showPasswordForm && (
               <motion.div
@@ -580,6 +674,18 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
                 animate={{ opacity: 1, height: 'auto' }}
                 className="mt-4 pt-4 border-t border-slate-700 space-y-3"
               >
+                <div className="space-y-2">
+                  <Label htmlFor="oldPassword">Current Password</Label>
+                  <Input
+                    id="oldPassword"
+                    type="password"
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                    className="bg-slate-900 border-slate-700"
+                    placeholder="Enter current password"
+                  />
+                </div>
+                
                 <div className="space-y-2">
                   <Label htmlFor="newPassword">New Password</Label>
                   <Input
@@ -593,7 +699,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm Password</Label>
+                  <Label htmlFor="confirmPassword">Confirm New Password</Label>
                   <Input
                     id="confirmPassword"
                     type="password"
@@ -607,7 +713,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
                 <div className="flex gap-2">
                   <Button 
                     onClick={setPassword}
-                    className="flex-1 bg-purple-600 hover:bg-purple-700"
+                    className="flex-1 bg-[#ad46ff] hover:bg-[#9333ea]"
                   >
                     Save Password
                   </Button>
@@ -616,6 +722,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
                       setShowPasswordForm(false);
                       setNewPassword('');
                       setConfirmPassword('');
+                      setOldPassword('');
                     }}
                     variant="outline"
                     className="flex-1 border-slate-700"

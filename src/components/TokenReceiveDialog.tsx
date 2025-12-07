@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
-import { Check, Copy, Info, ExternalLink } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Check, Copy, Info, ExternalLink, Share2, Download, X, Link, MessageCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { toast } from 'sonner@2.0.3';
 import { copyToClipboard } from '../utils/clipboard';
 import QRCode from 'qrcode';
 import type { Token } from './pages/Home';
 import { useWallet } from '../utils/WalletContext';
+import suprikQrLogo from 'figma:asset/5aa4d38c7eec78d8bd26f08104423d0aa0e3b5f4.png';
 
 interface TokenReceiveDialogProps {
   open: boolean;
@@ -31,7 +32,8 @@ export function TokenReceiveDialog({ open, onOpenChange, token, walletId }: Toke
   const [walletAddress, setWalletAddress] = useState<string>('');
   const [qrCode, setQrCode] = useState<string>('');
   const [loading, setLoading] = useState(true);
-  const [copiedItem, setCopiedItem] = useState<'wallet' | 'contract' | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
   const { mnemonic } = useWallet();
   
   // Detect network from token mint address
@@ -114,11 +116,12 @@ export function TokenReceiveDialog({ open, onOpenChange, token, walletId }: Toke
   const generateQRCode = async (address: string): Promise<string> => {
     try {
       const dataUrl = await QRCode.toDataURL(address, {
-        width: 240,
-        margin: 1,
+        width: 300,
+        margin: 2,
+        errorCorrectionLevel: 'H', // High error correction allows logo overlay
         color: {
           dark: '#000000',
-          light: '#FFFFFF',
+          light: '#ffffff',
         },
       });
       return dataUrl;
@@ -196,21 +199,86 @@ export function TokenReceiveDialog({ open, onOpenChange, token, walletId }: Toke
     }
   };
 
-  const handleCopy = async (text: string, type: 'wallet' | 'contract') => {
-    const success = await copyToClipboard(text);
+  const handleCopy = async () => {
+    if (!walletAddress) return;
+
+    const success = await copyToClipboard(walletAddress);
     
     if (success) {
-      setCopiedItem(type);
-      toast.success(`${type === 'wallet' ? 'Wallet address' : 'Contract address'} copied!`);
+      setCopied(true);
+      toast.success('Address copied to clipboard!');
       
       setTimeout(() => {
-        setCopiedItem(null);
+        setCopied(false);
       }, 2000);
-    } else {
-      toast.error(`Please copy manually: ${text.slice(0, 20)}...`, {
-        duration: 5000,
-      });
     }
+  };
+
+  const handleShare = () => {
+    setShowShareMenu(true);
+  };
+
+  const handleDownloadQR = () => {
+    if (!qrCode) return;
+    
+    const link = document.createElement('a');
+    link.download = `${token.symbol}_address_qr.png`;
+    link.href = qrCode;
+    link.click();
+    toast.success('QR Code downloaded!');
+    setShowShareMenu(false);
+  };
+
+  const handleShareSocial = (platform: string) => {
+    if (!walletAddress) return;
+
+    const text = `Send ${token.symbol} to my ${network.name} address:\\n${walletAddress}`;
+    const encodedText = encodeURIComponent(text);
+    
+    let url = '';
+    
+    switch (platform) {
+      case 'twitter':
+        url = `https://twitter.com/intent/tweet?text=${encodedText}`;
+        break;
+      case 'telegram':
+        url = `https://t.me/share/url?text=${encodedText}`;
+        break;
+      case 'whatsapp':
+        url = `https://wa.me/?text=${encodedText}`;
+        break;
+      case 'native':
+        if (navigator.share) {
+          navigator.share({
+            title: `My ${network.name} Address`,
+            text: text,
+          }).then(() => {
+            toast.success('Shared successfully!');
+          }).catch((error) => {
+            if (error.name !== 'AbortError') {
+              console.error('Error sharing:', error);
+            }
+          });
+          setShowShareMenu(false);
+          return;
+        }
+        break;
+    }
+    
+    if (url) {
+      window.open(url, '_blank');
+      toast.success('Opening share dialog...');
+      setShowShareMenu(false);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    await handleCopy();
+    setShowShareMenu(false);
+  };
+
+  const truncateAddress = (address: string) => {
+    return `${address.slice(0, 8)}...${address.slice(-8)}`;
   };
 
   return (
@@ -235,167 +303,201 @@ export function TokenReceiveDialog({ open, onOpenChange, token, walletId }: Toke
             <div className="h-64 bg-slate-900/50 rounded-xl animate-pulse" />
           </div>
         ) : (
-          <div className="overflow-y-auto max-h-[calc(95vh-100px)] p-4 space-y-4">
-            {/* Token Info */}
-            <div className={`p-4 rounded-xl bg-gradient-to-br ${network.gradient} bg-opacity-20 border border-slate-800/50`}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-full bg-slate-900/50 p-2">
-                  <img 
-                    src={token.logoUrl || token.logo} 
-                    alt={token.name}
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-white">{token.name}</h3>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full bg-gradient-to-br ${network.gradient} text-white`}>
-                      {network.logo} {network.name}
-                    </span>
-                  </div>
-                </div>
+          <div className="overflow-y-auto max-h-[calc(95vh-100px)] p-6 space-y-6">
+            {/* Selected Network Info */}
+            <div className="text-center">
+              <div className="w-20 h-20 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 bg-black overflow-hidden p-3">
+                <img 
+                  src={token.logoUrl || token.logo} 
+                  alt={token.name}
+                  className="w-full h-full object-contain"
+                />
               </div>
-              
-              {/* Wallet Address */}
-              <div className="space-y-2 mb-4">
-                <label className="text-xs text-slate-300 uppercase tracking-wider">Your Wallet Address</label>
-                <div className="flex gap-2">
-                  <div 
-                    className="flex-1 p-3 bg-black/40 rounded-lg border border-slate-700/50 overflow-x-auto cursor-pointer hover:bg-black/60 transition-colors"
-                    onClick={(e) => {
-                      const codeElement = e.currentTarget.querySelector('code');
-                      if (codeElement) {
-                        const range = document.createRange();
-                        range.selectNodeContents(codeElement);
-                        const selection = window.getSelection();
-                        selection?.removeAllRanges();
-                        selection?.addRange(range);
-                      }
-                    }}
-                  >
-                    <code className="text-xs text-white font-mono break-all select-all">
-                      {walletAddress}
-                    </code>
-                  </div>
-                  <Button
-                    onClick={() => handleCopy(walletAddress, 'wallet')}
-                    size="sm"
-                    className={`shrink-0 h-auto px-3 transition-all ${
-                      copiedItem === 'wallet'
-                        ? 'bg-green-500 hover:bg-green-600'
-                        : 'bg-purple-600 hover:bg-purple-700'
-                    }`}
-                  >
-                    {copiedItem === 'wallet' ? (
-                      <Check className="w-4 h-4" />
-                    ) : (
-                      <Copy className="w-4 h-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              {/* Token Contract Address */}
-              <div className="space-y-2">
-                <label className="text-xs text-slate-300 uppercase tracking-wider">Token Contract Address</label>
-                <div className="flex gap-2">
-                  <div 
-                    className="flex-1 p-3 bg-black/40 rounded-lg border border-slate-700/50 overflow-x-auto cursor-pointer hover:bg-black/60 transition-colors"
-                    onClick={(e) => {
-                      const codeElement = e.currentTarget.querySelector('code');
-                      if (codeElement) {
-                        const range = document.createRange();
-                        range.selectNodeContents(codeElement);
-                        const selection = window.getSelection();
-                        selection?.removeAllRanges();
-                        selection?.addRange(range);
-                      }
-                    }}
-                  >
-                    <code className="text-xs text-slate-400 font-mono break-all select-all">
-                      {token.mint}
-                    </code>
-                  </div>
-                  <Button
-                    onClick={() => handleCopy(token.mint, 'contract')}
-                    size="sm"
-                    variant="outline"
-                    className={`shrink-0 h-auto px-3 transition-all border-slate-700 ${
-                      copiedItem === 'contract'
-                        ? 'bg-green-500 hover:bg-green-600 border-green-500'
-                        : 'hover:bg-slate-800'
-                    }`}
-                  >
-                    {copiedItem === 'contract' ? (
-                      <Check className="w-4 h-4" />
-                    ) : (
-                      <Copy className="w-4 h-4" />
-                    )}
-                  </Button>
-                </div>
-                {network.addressUrl && (
-                  <a
-                    href={network.addressUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 transition-colors mt-1"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    View on {network.explorer.replace('https://', '').split('.')[0]}
-                  </a>
-                )}
-              </div>
+              <h2 className="text-2xl font-bold mb-1">{token.name}</h2>
+              <p className="text-slate-400">{network.name} Network</p>
             </div>
 
             {/* QR Code */}
-            <div className="bg-white p-5 rounded-2xl">
-              <div className="flex justify-center">
-                {qrCode ? (
-                  <motion.img 
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
+            <motion.div 
+              className="bg-white rounded-3xl p-6 mx-auto w-fit"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.1 }}
+            >
+              {qrCode && (
+                <div className="relative w-[280px] h-[280px]">
+                  <img 
                     src={qrCode} 
-                    alt="QR Code"
-                    className="w-60 h-60 object-contain"
+                    alt="QR Code" 
+                    className="w-full h-full"
                   />
-                ) : (
-                  <div className="w-60 h-60 flex items-center justify-center bg-slate-100 rounded-lg">
-                    <div className="text-center">
-                      <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                      <p className="text-xs text-slate-600">Generating QR...</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Warning Cards */}
-            <div className="space-y-2">
-              <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/30">
-                <div className="flex gap-2">
-                  <Info className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
-                  <p className="text-xs text-purple-200">
-                    <strong>Important:</strong> Only send <strong>{token.symbol}</strong> tokens to this address. Sending other tokens or using wrong network will result in permanent loss.
-                  </p>
-                </div>
-              </div>
-              
-              {network.symbol === 'SOL' && (
-                <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/30">
-                  <div className="flex gap-2">
-                    <Info className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-orange-200">
-                        <strong>Solana Network:</strong> Make sure sender and receiver are on the same network (Mainnet/Devnet). After receiving, tap Refresh (↻) on Home page.
-                      </p>
-                    </div>
+                  {/* Suprik Wallet Logo in center - sized to work with QR error correction */}
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                    <img
+                      src={suprikQrLogo}
+                      alt="Suprik Wallet"
+                      className="w-16 h-16 rounded-full object-cover shadow-lg"
+                    />
                   </div>
                 </div>
               )}
+            </motion.div>
+
+            {/* Address */}
+            <div className="bg-slate-900/50 rounded-2xl p-4 border border-slate-800">
+              <p className="text-xs text-slate-400 mb-2 text-center">Your {network.name} Address</p>
+              <div className="flex items-center justify-between gap-3">
+                <code className="text-sm text-white font-mono flex-1 text-center break-all px-2">
+                  {walletAddress ? truncateAddress(walletAddress) : ''}
+                </code>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-3 pt-4">
+              <Button
+                onClick={handleShare}
+                className="h-14 bg-slate-800 hover:bg-slate-700 text-white border-slate-700 rounded-xl"
+                size="lg"
+              >
+                <Share2 className="w-5 h-5 mr-2" />
+                Share
+              </Button>
+              <Button
+                onClick={handleCopy}
+                className="h-14 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white rounded-xl"
+                size="lg"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-5 h-5 mr-2" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-5 h-5 mr-2" />
+                    Copy Address
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         )}
       </DialogContent>
+
+      {/* Share Menu Modal */}
+      <AnimatePresence>
+        {showShareMenu && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowShareMenu(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+            />
+            
+            {/* Share Menu */}
+            <motion.div
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 100 }}
+              className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-slate-900 rounded-t-3xl p-6 z-[101] border-t border-slate-800"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold">Share Address</h3>
+                <button
+                  onClick={() => setShowShareMenu(false)}
+                  className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Share Options */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                {/* Download QR */}
+                <motion.button
+                  onClick={handleDownloadQR}
+                  className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <div className="w-12 h-12 rounded-full bg-purple-600/20 flex items-center justify-center">
+                    <Download className="w-6 h-6 text-purple-400" />
+                  </div>
+                  <span className="text-sm">Download QR</span>
+                </motion.button>
+
+                {/* Copy Link */}
+                <motion.button
+                  onClick={handleCopyLink}
+                  className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <div className="w-12 h-12 rounded-full bg-blue-600/20 flex items-center justify-center">
+                    <Link className="w-6 h-6 text-blue-400" />
+                  </div>
+                  <span className="text-sm">Copy Address</span>
+                </motion.button>
+
+                {/* Twitter */}
+                <motion.button
+                  onClick={() => handleShareSocial('twitter')}
+                  className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <div className="w-12 h-12 rounded-full bg-sky-600/20 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-sky-400" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                    </svg>
+                  </div>
+                  <span className="text-sm">Twitter</span>
+                </motion.button>
+
+                {/* Telegram */}
+                <motion.button
+                  onClick={() => handleShareSocial('telegram')}
+                  className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <div className="w-12 h-12 rounded-full bg-cyan-600/20 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-cyan-400" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z" />
+                    </svg>
+                  </div>
+                  <span className="text-sm">Telegram</span>
+                </motion.button>
+
+                {/* WhatsApp */}
+                <motion.button
+                  onClick={() => handleShareSocial('whatsapp')}
+                  className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <div className="w-12 h-12 rounded-full bg-green-600/20 flex items-center justify-center">
+                    <MessageCircle className="w-6 h-6 text-green-400" />
+                  </div>
+                  <span className="text-sm">WhatsApp</span>
+                </motion.button>
+
+                {/* More Options (Native Share) */}
+                <motion.button
+                  onClick={() => handleShareSocial('native')}
+                  className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <div className="w-12 h-12 rounded-full bg-slate-600/20 flex items-center justify-center">
+                    <Share2 className="w-6 h-6 text-slate-400" />
+                  </div>
+                  <span className="text-sm">More</span>
+                </motion.button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </Dialog>
   );
 }

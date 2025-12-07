@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Home } from './pages/Home';
 import { Swap } from './pages/Swap';
 import { Activity } from './pages/Activity';
 import { Settings } from './pages/Settings';
 import { Send } from './pages/Send';
+import { Receive } from './pages/Receive';
 import { Search, CoinGeckoToken } from './pages/Search';
 import { CoinDetail } from './pages/CoinDetail';
 import { P2PTransfer } from './pages/P2PTransfer';
@@ -13,11 +14,22 @@ import type { Token } from './pages/Home';
 interface MainAppProps {
   accessToken: string | null;
   onSignOut: () => void;
+  onLockWallet?: () => void;
   onSwitchAccount?: (walletId: string) => void;
 }
 
-export function MainApp({ accessToken, onSignOut, onSwitchAccount }: MainAppProps) {
-  const [currentPage, setCurrentPage] = useState<'home' | 'swap' | 'activity' | 'settings' | 'p2p' | 'send' | 'search' | 'coinDetail'>('home');
+export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount }: MainAppProps) {
+  const [currentPage, setCurrentPage] = useState<'home' | 'swap' | 'activity' | 'settings' | 'p2p' | 'send' | 'receive' | 'search' | 'coinDetail'>('home');
+  
+  // Scroll to top when page changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentPage]);
+  
+  const handleNavigate = (page: 'home' | 'swap' | 'activity' | 'settings' | 'p2p') => {
+    console.log('[MainApp] Navigating to:', page);
+    setCurrentPage(page);
+  };
   const [tokensData, setTokensData] = useState<any[]>([]);
   const [selectedCoinForDetail, setSelectedCoinForDetail] = useState<Token | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -52,9 +64,10 @@ export function MainApp({ accessToken, onSignOut, onSwitchAccount }: MainAppProp
       {currentPage === 'home' && <Home onNavigate={setCurrentPage} walletId={accessToken || ''} onTokensLoaded={setTokensData} key={refreshTrigger} />}
       {currentPage === 'swap' && <Swap tokens={tokensData} walletId={accessToken || ''} onSwapComplete={handleRefreshTokens} />}
       {currentPage === 'activity' && <Activity walletId={accessToken || ''} />}
-      {currentPage === 'settings' && <Settings onSignOut={onSignOut} walletId={accessToken || ''} onSwitchAccount={onSwitchAccount} />}
+      {currentPage === 'settings' && <Settings onSignOut={onSignOut} walletId={accessToken || ''} onLockWallet={onLockWallet} onSwitchAccount={onSwitchAccount} />}
       {currentPage === 'p2p' && <P2PTransfer onBack={() => setCurrentPage('home')} />}
       {currentPage === 'send' && <Send onNavigate={setCurrentPage} tokens={tokensData} walletId={accessToken || ''} onSendComplete={handleRefreshTokens} />}
+      {currentPage === 'receive' && <Receive onBack={() => setCurrentPage('home')} walletId={accessToken || ''} />}
       {currentPage === 'search' && (
         <Search 
           onBack={() => setCurrentPage('home')} 
@@ -75,7 +88,7 @@ export function MainApp({ accessToken, onSignOut, onSwitchAccount }: MainAppProp
         />
       )}
       
-      {currentPage !== 'send' && currentPage !== 'search' && currentPage !== 'coinDetail' && <BottomNav currentPage={currentPage} onNavigate={setCurrentPage} />}
+      {currentPage !== 'send' && currentPage !== 'receive' && currentPage !== 'search' && currentPage !== 'coinDetail' && <BottomNav currentPage={currentPage} onNavigate={handleNavigate} />}
     </div>
   );
 }

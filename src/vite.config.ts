@@ -36,8 +36,15 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
+    minify: 'terser',
     commonjsOptions: {
       transformMixedEsModules: true,
+    },
+    terserOptions: {
+      compress: {
+        drop_console: true,  // Remove console.* in production
+        drop_debugger: true,
+      },
     },
     rollupOptions: {
       output: {

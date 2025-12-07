@@ -12,9 +12,10 @@ const failedApiKeys = new Map<string, number>(); // key -> timestamp of last fai
 // Rate limiter for CoinGecko API
 const coinGeckoRateLimiter = {
   lastCall: 0,
-  minDelay: 2000, // 2 seconds between calls (safer than 1.2s for free tier)
+  minDelay: 3500, // 3.5 seconds between calls (much safer for free tier - allows ~17 calls/min vs 30 limit)
   callCount: 0,
   resetTime: Date.now() + 60000, // Reset counter every minute
+  maxCallsPerMinute: 20, // Conservative limit (CoinGecko free tier allows 30/min)
   
   async wait() {
     const now = Date.now();
@@ -23,13 +24,13 @@ const coinGeckoRateLimiter = {
     if (now >= this.resetTime) {
       this.callCount = 0;
       this.resetTime = now + 60000;
-      console.log('[RateLimit] Counter reset');
+      console.log('[RateLimit] 🔄 Counter reset');
     }
     
     // If we've made too many calls in this minute, wait until reset
-    if (this.callCount >= 30) { // Limit to 30 calls per minute (safer than 50)
+    if (this.callCount >= this.maxCallsPerMinute) {
       const waitTime = this.resetTime - now;
-      console.log(`[RateLimit] Call limit reached. Waiting ${waitTime}ms until reset`);
+      console.log(`[RateLimit] ⏳ Max calls reached (${this.callCount}/${this.maxCallsPerMinute}). Waiting ${Math.ceil(waitTime / 1000)}s until reset`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
       this.callCount = 0;
       this.resetTime = Date.now() + 60000;
@@ -39,13 +40,13 @@ const coinGeckoRateLimiter = {
     const timeSinceLastCall = now - this.lastCall;
     if (timeSinceLastCall < this.minDelay) {
       const waitTime = this.minDelay - timeSinceLastCall;
-      console.log(`[RateLimit] Waiting ${waitTime}ms before CoinGecko API call`);
+      console.log(`[RateLimit] ⏳ Waiting ${waitTime}ms before CoinGecko API call`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
     
     this.lastCall = Date.now();
     this.callCount++;
-    console.log(`[RateLimit] API call ${this.callCount}/30 in this minute`);
+    console.log(`[RateLimit] 📊 Call ${this.callCount}/${this.maxCallsPerMinute} in current minute`);
   }
 };
 
@@ -77,7 +78,7 @@ async function fetchRealChartData(mint: string, period: string): Promise<Array<{
       geckoAggregate = 1;
       break;
     case '1M':
-      timeFrom = Date.now() - 30 * 3600000;
+      timeFrom = Date.now() - 30 * 24 * 3600000; // Fixed: 30 days not 30 hours
       geckoTimeframe = 'hour';
       geckoAggregate = 4;
       break;
@@ -99,8 +100,10 @@ async function fetchRealChartData(mint: string, period: string): Promise<Array<{
     'parabolic': 'parabolic-ai',
     'hrkkngiuavecwte1zmrdt4h5qet3cecnuzmoeagjtax8': 'parabolic-ai', // Real Parabolic AI Solana mint (lowercase)
     'HrkKngiUavecwte1ZMrdt4H5Qet3cecNUzMoEAgjTAX8': 'parabolic-ai', // Real Parabolic AI Solana mint (original case)
-    'cmgx4fomtnyxwemkso3btwmscggfwrrytqbmkrxnaknh': 'parabolic-ai', // Alternate mint (lowercase)
-    'Cmgx4FoMTNyxWeMKso3BTWmScGgFwrryTQbMKrxNAKNh': 'parabolic-ai', // Alternate mint (original case)
+    'suprebyajmudegjlzvueum8w4xv1gf8jbqwynvg41dp': 'suprana', // Suprana official Solana mint (lowercase)
+    'SupreByajmUdeJGLzvUEUm8W4xv1gF8JBqwYnvG41Dp': 'suprana', // Suprana official Solana mint (original case)
+    'suprana': 'suprana',
+    'supra': 'suprana',
     'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263': 'bonk',
     'bonk': 'bonk',
     'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': 'usd-coin',
@@ -146,10 +149,13 @@ async function fetchRealChartData(mint: string, period: string): Promise<Array<{
             price: price,
           }));
           
-          // Filter for 1H period
+          // Filter for 1H and 1D periods to ensure accurate time range
           if (period === '1H') {
             const oneHourAgo = Date.now() - 3600000;
             chartData = chartData.filter(d => new Date(d.time).getTime() >= oneHourAgo);
+          } else if (period === '1D') {
+            const oneDayAgo = Date.now() - 24 * 3600000;
+            chartData = chartData.filter(d => new Date(d.time).getTime() >= oneDayAgo);
           }
           
           console.log(`[ChartData] ✅ CoinGecko SUCCESS: ${chartData.length} real points for ${coinId}`);
@@ -646,10 +652,11 @@ app.get("/make-server-e5bc10d1/coin-details/:mint", async (c) => {
     
     console.log('Fetching coin details for:', mint, 'period:', period);
     
-    // Check cache first (cache coin details for 5 minutes, includes period in key)
+    // Check cache first (cache coin details for different periods)
     const cacheKey = `coin:${mint}:${period}:details`;
     const cached = await kv.get(cacheKey);
-    const CACHE_TTL = 5 * 60 * 1000; // 5 minutes (shorter for chart data)
+    // Shorter TTL for 1H and 1D to get fresher data
+    const CACHE_TTL = (period === '1H' || period === '1D') ? 2 * 60 * 1000 : 5 * 60 * 1000; // 2 min for 1H/1D, 5 min for others
     
     if (cached && cached.timestamp && Date.now() - cached.timestamp < CACHE_TTL) {
       console.log(`[CoinDetails] ✅ Returning cached data for ${mint} (${period})`);
@@ -677,8 +684,10 @@ app.get("/make-server-e5bc10d1/coin-details/:mint", async (c) => {
         'parabolic-ai': 'parabolic-ai',
         'HrkKngiUavecwte1ZMrdt4H5Qet3cecNUzMoEAgjTAX8': 'parabolic-ai', // Real Parabolic AI
         'hrkkngiuavecwte1zmrdt4h5qet3cecnuzmoeagjtax8': 'parabolic-ai', // lowercase
-        'Cmgx4FoMTNyxWeMKso3BTWmScGgFwrryTQbMKrxNAKNh': 'parabolic-ai', // Alternate
-        'cmgx4fomtnyxwemkso3btwmscggfwrrytqbmkrxnaknh': 'parabolic-ai', // lowercase
+        'SupreByajmUdeJGLzvUEUm8W4xv1gF8JBqwYnvG41Dp': 'suprana', // Suprana official mint
+        'suprebyajmudegjlzvueum8w4xv1gf8jbqwynvg41dp': 'suprana', // lowercase
+        'suprana': 'suprana',
+        'supra': 'suprana',
         'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263': 'bonk',
         'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': 'usd-coin',
       };
@@ -1483,10 +1492,10 @@ app.post("/make-server-e5bc10d1/token-prices", async (c) => {
     
     console.log('Fetching token prices from CoinGecko for:', symbols.join(', '));
     
-    // Check cache first (cache prices for 15 minutes to reduce API calls)
+    // Check cache first (cache prices for 30 minutes to reduce API calls)
     const cacheKey = `prices:${symbols.sort().join(',')}`;
     const cached = await kv.get(cacheKey);
-    const CACHE_TTL = 15 * 60 * 1000; // 15 minutes instead of 5
+    const CACHE_TTL = 30 * 60 * 1000; // 30 minutes to reduce API load
     
     if (cached && cached.timestamp && Date.now() - cached.timestamp < CACHE_TTL) {
       console.log('Returning cached prices');
@@ -1537,7 +1546,7 @@ app.post("/make-server-e5bc10d1/token-prices", async (c) => {
       'PARAI': 0.059,
       'PAI': 0.059,
       'BONK': 0.00003,
-      'SUPRA': 0,
+      'SUPRA': 0.0013, // Approximate Supra price
     };
     
     const ids = symbols.map(s => symbolToId[s] || s.toLowerCase()).join(',');
@@ -1546,7 +1555,7 @@ app.post("/make-server-e5bc10d1/token-prices", async (c) => {
     
     // Fetch from CoinGecko with timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout for faster fallback
     
     try {
       // Apply rate limiting
@@ -1743,7 +1752,8 @@ app.post("/make-server-e5bc10d1/solana-balance", async (c) => {
           { programId: TOKEN_PROGRAM },
           { encoding: 'jsonParsed' }
         ]
-      })
+      }),
+      signal: AbortSignal.timeout(15000) // 15 second timeout
     });
     
     console.log(`[Solana] 🔍 Token Program response status: ${tokensResponse.status}`);
@@ -1770,7 +1780,8 @@ app.post("/make-server-e5bc10d1/solana-balance", async (c) => {
           { programId: TOKEN_2022_PROGRAM },
           { encoding: 'jsonParsed' }
         ]
-      })
+      }),
+      signal: AbortSignal.timeout(15000) // 15 second timeout
     });
     
     console.log(`[Solana] 🔍 Token-2022 Program response status: ${tokens2022Response.status}`);
@@ -1792,37 +1803,42 @@ app.post("/make-server-e5bc10d1/solana-balance", async (c) => {
     if (allTokenAccounts.length > 0) {
       console.log(`[Solana] Found ${allTokenAccounts.length} token accounts on ${networkLabel}`);
       
+      // FAST MODE: Skip metadata fetching to avoid timeouts
+      // We'll use a mapping of known tokens instead
+      const KNOWN_TOKENS: Record<string, { symbol: string; name: string }> = {
+        // Native & Wrapped SOL
+        'So11111111111111111111111111111111111111112': { symbol: 'SOL', name: 'Solana' },
+        'So11111111111111111111111111111111111111111': { symbol: 'wSOL', name: 'Wrapped SOL' },
+        
+        // Stablecoins
+        'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': { symbol: 'USDC', name: 'USD Coin' },
+        'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': { symbol: 'USDT', name: 'Tether USD' },
+        
+        // Liquid Staking Tokens
+        'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So': { symbol: 'mSOL', name: 'Marinade Staked SOL' },
+        'J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn': { symbol: 'jitoSOL', name: 'Jito Staked SOL' },
+        '7dHbWXmci3dT8UFYWYZweBLXgycu7Y3iL6trKn1Y7ARj': { symbol: 'stSOL', name: 'Lido Staked SOL' },
+        'bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1': { symbol: 'bSOL', name: 'BlazeStake Staked SOL' },
+        
+        // Popular Memecoins
+        'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263': { symbol: 'BONK', name: 'Bonk' },
+        'ukHH6c7mMyiWCf1b9pnWe25TSpkDDt3H5pQZgZ74J82': { symbol: 'BOME', name: 'Book of Meme' },
+        
+        // DeFi Tokens
+        'SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt': { symbol: 'SRM', name: 'Serum' },
+        'RLBxxFkseAZ4RgJH3Sqn8jXxhmGoz9jWxDNJMh8pL7a': { symbol: 'RLB', name: 'Rollbit Coin' },
+        'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN': { symbol: 'JUP', name: 'Jupiter' },
+      };
+      
       for (const account of allTokenAccounts) {
         const info = account.account.data.parsed.info;
         const amount = info.tokenAmount.uiAmount;
         
         if (amount > 0) {
-          // Get token metadata from Helius
-          let tokenName = 'Unknown Token';
-          let tokenSymbol = 'TOKEN';
-          let logoUrl = '';
-          
-          try {
-            const metadataResponse = await fetch(heliusUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                jsonrpc: '2.0',
-                id: 1,
-                method: 'getAsset',
-                params: { id: info.mint }
-              })
-            });
-            
-            const metadata = await metadataResponse.json();
-            if (metadata.result) {
-              tokenName = metadata.result.content?.metadata?.name || tokenName;
-              tokenSymbol = metadata.result.content?.metadata?.symbol || tokenSymbol;
-              logoUrl = metadata.result.content?.links?.image || '';
-            }
-          } catch (e) {
-            console.warn(`[Solana] Could not fetch metadata for ${info.mint}:`, e);
-          }
+          // Use known token mapping or fallback to mint address
+          const knownToken = KNOWN_TOKENS[info.mint];
+          const tokenSymbol = knownToken?.symbol || info.mint.substring(0, 8) + '...';
+          const tokenName = knownToken?.name || 'Unknown Token';
           
           tokens.push({
             symbol: tokenSymbol,
@@ -1831,10 +1847,12 @@ app.post("/make-server-e5bc10d1/solana-balance", async (c) => {
             mint: info.mint,
             decimals: info.tokenAmount.decimals,
             network: 'solana',
-            logoUrl
+            logoUrl: '' // Will be handled by TokenLogo component on frontend
           });
         }
       }
+      
+      console.log(`[Solana] ⚡ Fast mode: Using known token mapping (${tokens.length} tokens)`);
     }
     
     console.log(`[Solana] Found ${tokens.length} tokens with balance on ${networkLabel}`);
@@ -2481,17 +2499,17 @@ app.get("/make-server-e5bc10d1/coingecko-coins", async (c) => {
     const cacheKey = `coingecko:coins:page${page}:per${perPage}:v2`;
     const cached = await kv.get(cacheKey);
     
-    // Cache for 2 hours to reduce API calls and avoid rate limits
-    const CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours instead of 30 minutes
+    // Cache for 24 hours to reduce API calls and avoid rate limits
+    const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours - crypto prices don't change that much
     if (cached && cached.timestamp && Date.now() - cached.timestamp < CACHE_TTL) {
-      console.log('Returning cached CoinGecko data');
+      console.log('✅ Returning cached CoinGecko data (fresh cache)');
       return c.json(cached.data);
     }
     
-    // If we have stale cache (older than 2 hours but exists), return it immediately
+    // If we have stale cache (older than 24 hours but exists), return it immediately
     // This prevents 429 errors - we prefer stale data over no data
     if (cached && cached.data) {
-      console.log('Using stale cache to avoid rate limiting');
+      console.log('⚠️ Using stale cache to avoid rate limiting (better than 429 error)');
       return c.json(cached.data);
     }
     
@@ -2514,13 +2532,20 @@ app.get("/make-server-e5bc10d1/coingecko-coins", async (c) => {
       
       // If rate limited (429) - try to return any cache we have, or use minimal fallback
       if (response.status === 429) {
+        console.log('⚠️⚠️⚠️ RATE LIMITED BY COINGECKO (429) ⚠️⚠️⚠️');
+        
         if (cached && cached.data) {
-          console.log('⚠️ Rate limited! Returning stale cache data...');
+          console.log('✅ Returning stale cache data (any cache is better than error)');
           return c.json(cached.data);
         }
         
-        // No cache available - return minimal fallback data for top coins
-        console.log('⚠️ Rate limited with no cache! Returning minimal fallback data...');
+        // No cache available - return empty array for page > 1, minimal data for page 1
+        if (parseInt(page) > 1) {
+          console.log('⚠️ Rate limited on page > 1 with no cache - returning empty array (signals end of list)');
+          return c.json([]);
+        }
+        
+        console.log('⚠️ Rate limited on page 1 with no cache! Returning minimal fallback data...');
         const fallbackCoins = [
           { id: 'bitcoin', symbol: 'BTC', name: 'Bitcoin', image: 'https://cryptologos.cc/logos/bitcoin-btc-logo.png', current_price: 43250, market_cap: 845000000000, market_cap_rank: 1, price_change_percentage_24h: 1.5, total_volume: 25000000000 },
           { id: 'ethereum', symbol: 'ETH', name: 'Ethereum', image: 'https://cryptologos.cc/logos/ethereum-eth-logo.png', current_price: 2856, market_cap: 343000000000, market_cap_rank: 2, price_change_percentage_24h: -2.1, total_volume: 15000000000 },
@@ -2562,13 +2587,37 @@ app.get("/make-server-e5bc10d1/coingecko-coins", async (c) => {
     const page = c.req.query('page') || '1';
     const perPage = c.req.query('per_page') || '100';
     const cacheKey = `coingecko:coins:page${page}:per${perPage}:v2`;
-    const cached = await kv.get(cacheKey);
-    if (cached && cached.data) {
-      console.log('Error occurred, returning expired cache as fallback');
-      return c.json(cached.data);
+    
+    try {
+      const cached = await kv.get(cacheKey);
+      if (cached && cached.data) {
+        console.log('Error occurred, returning expired cache as fallback');
+        return c.json(cached.data);
+      }
+    } catch (cacheError) {
+      console.error('Cache retrieval also failed:', cacheError);
     }
     
-    return c.json({ error: error.message || 'Failed to fetch coins from CoinGecko' }, 500);
+    // If page 1 and no cache, return minimal fallback data to keep app functional
+    if (parseInt(page) === 1) {
+      console.log('⚠️ Returning minimal fallback data for page 1');
+      const fallbackCoins = [
+        { id: 'bitcoin', symbol: 'BTC', name: 'Bitcoin', image: 'https://cryptologos.cc/logos/bitcoin-btc-logo.png', current_price: 95000, market_cap: 1800000000000, market_cap_rank: 1, price_change_percentage_24h: 1.5, total_volume: 40000000000 },
+        { id: 'ethereum', symbol: 'ETH', name: 'Ethereum', image: 'https://cryptologos.cc/logos/ethereum-eth-logo.png', current_price: 3400, market_cap: 410000000000, market_cap_rank: 2, price_change_percentage_24h: -0.8, total_volume: 20000000000 },
+        { id: 'solana', symbol: 'SOL', name: 'Solana', image: 'https://cryptologos.cc/logos/solana-sol-logo.png', current_price: 190, market_cap: 90000000000, market_cap_rank: 4, price_change_percentage_24h: 2.3, total_volume: 5000000000 },
+        { id: 'binancecoin', symbol: 'BNB', name: 'BNB', image: 'https://cryptologos.cc/logos/bnb-bnb-logo.png', current_price: 680, market_cap: 100000000000, market_cap_rank: 5, price_change_percentage_24h: 1.2, total_volume: 2000000000 },
+        { id: 'ripple', symbol: 'XRP', name: 'XRP', image: 'https://cryptologos.cc/logos/xrp-xrp-logo.png', current_price: 2.5, market_cap: 140000000000, market_cap_rank: 3, price_change_percentage_24h: 5.4, total_volume: 8000000000 },
+        { id: 'cardano', symbol: 'ADA', name: 'Cardano', image: 'https://cryptologos.cc/logos/cardano-ada-logo.png', current_price: 1.05, market_cap: 37000000000, market_cap_rank: 8, price_change_percentage_24h: -1.5, total_volume: 1500000000 },
+        { id: 'dogecoin', symbol: 'DOGE', name: 'Dogecoin', image: 'https://cryptologos.cc/logos/dogecoin-doge-logo.png', current_price: 0.38, market_cap: 56000000000, market_cap_rank: 6, price_change_percentage_24h: 3.8, total_volume: 4000000000 },
+        { id: 'tron', symbol: 'TRX', name: 'TRON', image: 'https://cryptologos.cc/logos/tron-trx-logo.png', current_price: 0.24, market_cap: 21000000000, market_cap_rank: 10, price_change_percentage_24h: 0.5, total_volume: 800000000 },
+        { id: 'usd-coin', symbol: 'USDC', name: 'USDC', image: 'https://cryptologos.cc/logos/usd-coin-usdc-logo.png', current_price: 1.00, market_cap: 40000000000, market_cap_rank: 7, price_change_percentage_24h: 0.0, total_volume: 8000000000 },
+        { id: 'tether', symbol: 'USDT', name: 'Tether', image: 'https://cryptologos.cc/logos/tether-usdt-logo.png', current_price: 1.00, market_cap: 140000000000, market_cap_rank: 3, price_change_percentage_24h: 0.0, total_volume: 100000000000 },
+      ];
+      return c.json(fallbackCoins);
+    }
+    
+    // For other pages, return empty array
+    return c.json([]);
   }
 });
 
@@ -3645,14 +3694,7 @@ app.post("/make-server-e5bc10d1/send-token", async (c) => {
         // Connect to Solana mainnet
         const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
         
-        // Calculate app fee (0.5% with minimum 0.001 SOL)
-        const feePercentage = 0.005; // 0.5%
-        const minimumFee = 0.001; // SOL
-        const calculatedFee = sendAmount * feePercentage;
-        const appFee = Math.max(calculatedFee, minimumFee);
-        
-        // App owner wallet address for receiving fees
-        const APP_FEE_WALLET = Deno.env.get('APP_FEE_WALLET') || 'CWvFSW6gFYi7KaSpAWA1DvWJvxkCrMV1ZdMphBKXhPdX'; // Replace with your wallet
+        // No app fee anymore
         
         // Rent-exempt minimum for Solana accounts (approx 0.00089088 SOL)
         const RENT_EXEMPT_MINIMUM = 0.00089088;
@@ -3660,18 +3702,17 @@ app.post("/make-server-e5bc10d1/send-token", async (c) => {
         const SAFETY_BUFFER = 0.0002; // Additional safety buffer
         const MIN_REMAINING_BALANCE = RENT_EXEMPT_MINIMUM + NETWORK_FEE + SAFETY_BUFFER; // ~0.00109588 SOL
         
-        console.log(`Transaction breakdown: Amount=${sendAmount} SOL, App Fee=${appFee} SOL (${(feePercentage * 100)}%)`);
+        console.log(`Transaction breakdown: Amount=${sendAmount} SOL, No App Fee`);
         
-        // Check if user has enough balance for amount + fee + rent-exempt minimum
-        const totalRequired = sendAmount + appFee + MIN_REMAINING_BALANCE;
+        // Check if user has enough balance for amount + rent-exempt minimum
+        const totalRequired = sendAmount + MIN_REMAINING_BALANCE;
         if (currentBalance < totalRequired) {
           return c.json({ 
-            error: `Insufficient balance. You need ${totalRequired.toFixed(6)} SOL (${sendAmount} send + ${appFee} fee + ${MIN_REMAINING_BALANCE.toFixed(6)} rent reserve) but have ${currentBalance} SOL`,
+            error: `Insufficient balance. You need ${totalRequired.toFixed(6)} SOL (${sendAmount} send + ${MIN_REMAINING_BALANCE.toFixed(6)} rent reserve) but have ${currentBalance} SOL`,
             required: totalRequired,
             available: currentBalance,
             breakdown: {
               sendAmount,
-              appFee,
               rentReserve: MIN_REMAINING_BALANCE,
               total: totalRequired
             }
@@ -3679,37 +3720,27 @@ app.post("/make-server-e5bc10d1/send-token", async (c) => {
         }
         
         // Verify that after transaction, account will remain rent-exempt
-        const balanceAfterTransaction = currentBalance - sendAmount - appFee;
+        const balanceAfterTransaction = currentBalance - sendAmount;
         if (balanceAfterTransaction < MIN_REMAINING_BALANCE) {
           return c.json({
-            error: `Transaction would leave account below rent-exempt minimum. After sending ${sendAmount} SOL and paying ${appFee} SOL fee, you would have ${balanceAfterTransaction.toFixed(6)} SOL, but need at least ${MIN_REMAINING_BALANCE.toFixed(6)} SOL to keep account active.`,
+            error: `Transaction would leave account below rent-exempt minimum. After sending ${sendAmount} SOL, you would have ${balanceAfterTransaction.toFixed(6)} SOL, but need at least ${MIN_REMAINING_BALANCE.toFixed(6)} SOL to keep account active.`,
             balanceAfter: balanceAfterTransaction,
             minimumRequired: MIN_REMAINING_BALANCE,
-            suggestion: `Try sending a maximum of ${Math.max(0, currentBalance - appFee - MIN_REMAINING_BALANCE).toFixed(6)} SOL instead.`
+            suggestion: `Try sending a maximum of ${Math.max(0, currentBalance - MIN_REMAINING_BALANCE).toFixed(6)} SOL instead.`
           }, 400);
         }
         
-        // Create transaction with two instructions
+        // Create transaction with single instruction (no fee instruction)
         const recipientPubkey = new PublicKey(recipientAddress);
-        const feeWalletPubkey = new PublicKey(APP_FEE_WALLET);
         const lamports = Math.floor(sendAmount * 1e9); // Convert SOL to lamports
-        const feeLamports = Math.floor(appFee * 1e9);
         
         const transaction = new Transaction()
-          // Instruction 1: Main transfer to recipient
+          // Single instruction: Transfer to recipient (no app fee)
           .add(
             SystemProgram.transfer({
               fromPubkey: keypair.publicKey,
               toPubkey: recipientPubkey,
               lamports: lamports,
-            })
-          )
-          // Instruction 2: Fee transfer to app owner
-          .add(
-            SystemProgram.transfer({
-              fromPubkey: keypair.publicKey,
-              toPubkey: feeWalletPubkey,
-              lamports: feeLamports,
             })
           );
         
@@ -3722,8 +3753,8 @@ app.post("/make-server-e5bc10d1/send-token", async (c) => {
         
         console.log('Transaction successful! Signature:', signature);
         
-        // Update balance in database (deduct amount + fee)
-        const totalDeducted = sendAmount + appFee;
+        // Update balance in database (deduct amount only, no fee)
+        const totalDeducted = sendAmount;
         const oldBalance = tokens[tokenSymbol].amount;
         tokens[tokenSymbol].amount = currentBalance - totalDeducted;
         console.log(`[Balance Update] ${tokenSymbol}: ${oldBalance} -> ${tokens[tokenSymbol].amount} (deducted: ${totalDeducted})`);

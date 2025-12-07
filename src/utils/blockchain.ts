@@ -12,7 +12,7 @@ export interface ChainBalance {
  * Fetch Solana balance with retry logic
  */
 export async function fetchSolanaBalance(address: string, networkMode: NetworkMode = 'mainnet'): Promise<ChainBalance> {
-  const maxRetries = 3;
+  const maxRetries = 1; // Reduce to 1 attempt for faster response
   let lastError: Error | null = null;
   
   const networkLabel = networkMode === 'mainnet' ? 'mainnet-beta' : networkMode;
@@ -20,6 +20,10 @@ export async function fetchSolanaBalance(address: string, networkMode: NetworkMo
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`[Blockchain] Fetching Solana balance for ${address.substring(0, 8)}... (attempt ${attempt}/${maxRetries}) on ${networkLabel}`);
+      
+      // Reduce timeout for faster failure
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout (reduced from 30s)
       
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/solana-balance`,
@@ -29,13 +33,23 @@ export async function fetchSolanaBalance(address: string, networkMode: NetworkMo
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${publicAnonKey}`
           },
-          body: JSON.stringify({ address, networkMode })
+          body: JSON.stringify({ address, networkMode }),
+          signal: controller.signal
         }
       );
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`[Blockchain] ❌ Error fetching Solana balance (attempt ${attempt}):`, errorText);
+        
+        // If server is unavailable, fail fast
+        if (response.status >= 500) {
+          console.warn('[Blockchain] ⚠️ Server error, failing fast');
+          break;
+        }
+        
         throw new Error(`Failed to fetch Solana balance: ${response.status}`);
       }
 
@@ -51,19 +65,33 @@ export async function fetchSolanaBalance(address: string, networkMode: NetworkMo
       };
     } catch (error: any) {
       lastError = error;
-      console.error(`[Blockchain] ❌ Attempt ${attempt} failed:`, error.message);
       
-      // Wait before retry (exponential backoff)
-      if (attempt < maxRetries) {
-        const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        console.log(`[Blockchain] Retrying in ${waitTime}ms...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
+      // Handle abort/timeout errors
+      if (error.name === 'AbortError') {
+        console.error(`[Blockchain] ❌ Request timed out after 15s (RPC is slow or rate limited)`);
+      } else {
+        console.error(`[Blockchain] ❌ Attempt ${attempt} failed:`, error.message);
       }
+      
+      // No retry - fail fast for better UX
+      break;
     }
   }
   
-  // All retries failed
-  console.error('[Blockchain] ❌ All Solana balance fetch attempts failed:', lastError?.message);
+  // All retries failed - return gracefully with zero balance
+  console.warn('[Blockchain] ⚠️ Could not fetch Solana balance from server, using zero balance');
+  console.warn('[Blockchain] 💡 Tip: This usually means RPC is slow or rate limited. Wallet will retry automatically.');
+  if (lastError?.message) {
+    console.warn('[Blockchain] ⚠️ Last error:', lastError.message);
+  }
+  
+  // Dispatch event so UI can show a helpful message
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('blockchainTimeout', {
+      detail: { chain: 'solana', error: lastError?.message }
+    }));
+  }
+  
   return {
     native: 0,
     tokens: [],
@@ -75,7 +103,7 @@ export async function fetchSolanaBalance(address: string, networkMode: NetworkMo
  * Fetch Ethereum balance with retry logic
  */
 export async function fetchEthereumBalance(address: string, networkMode: NetworkMode = 'mainnet'): Promise<ChainBalance> {
-  const maxRetries = 3;
+  const maxRetries = 2; // Reduce retries to avoid long waits
   let lastError: Error | null = null;
   
   const networkLabel = networkMode === 'mainnet' ? 'mainnet' : networkMode === 'testnet' ? 'sepolia' : 'sepolia';
@@ -83,6 +111,10 @@ export async function fetchEthereumBalance(address: string, networkMode: Network
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`[Blockchain] Fetching Ethereum balance for ${address.substring(0, 10)}... (attempt ${attempt}/${maxRetries}) on ${networkLabel}`);
+      
+      // Add timeout for Ethereum requests too
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
       
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/ethereum-balance`,
@@ -92,9 +124,12 @@ export async function fetchEthereumBalance(address: string, networkMode: Network
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${publicAnonKey}`
           },
-          body: JSON.stringify({ address, networkMode })
+          body: JSON.stringify({ address, networkMode }),
+          signal: controller.signal
         }
       );
+      
+      clearTimeout(timeoutId);
 
       // Server now returns 200 even on error (graceful degradation)
       const data = await response.json();
@@ -118,11 +153,25 @@ export async function fetchEthereumBalance(address: string, networkMode: Network
       };
     } catch (error: any) {
       lastError = error;
-      console.error(`[Blockchain] ❌ Attempt ${attempt} failed:`, error.message);
       
-      // Wait before retry (exponential backoff)
+      // Handle abort/timeout errors
+      if (error.name === 'AbortError') {
+        console.error(`[Blockchain] ❌ Attempt ${attempt} timed out after 30s`);
+        console.warn('[Blockchain] ⚠️ Ethereum RPC is slow, skipping retries');
+        break;
+      } else {
+        console.error(`[Blockchain] ❌ Attempt ${attempt} failed:`, error.message);
+      }
+      
+      // Don't retry on network errors
+      if (error.message === 'Failed to fetch') {
+        console.warn('[Blockchain] ⚠️ Network error detected, skipping retries');
+        break;
+      }
+      
+      // Wait before retry (shorter backoff)
       if (attempt < maxRetries) {
-        const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        const waitTime = 1000; // Fixed 1s wait
         console.log(`[Blockchain] Retrying in ${waitTime}ms...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
@@ -333,6 +382,10 @@ export async function fetchTokenPrices(symbols: string[]): Promise<Record<string
   try {
     console.log('[Blockchain] Fetching token prices for:', symbols.join(', '));
     
+    // Add timeout to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 second timeout (allows backend to respond)
+    
     const response = await fetch(
       `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/token-prices`,
       {
@@ -341,9 +394,12 @@ export async function fetchTokenPrices(symbols: string[]): Promise<Record<string
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${publicAnonKey}`
         },
-        body: JSON.stringify({ symbols })
+        body: JSON.stringify({ symbols }),
+        signal: controller.signal
       }
     );
+    
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       console.error('[Blockchain] ❌ Error fetching token prices:', response.status);
@@ -355,10 +411,14 @@ export async function fetchTokenPrices(symbols: string[]): Promise<Record<string
     
     return data.prices || {};
   } catch (error: any) {
-    console.error('[Blockchain] ❌ Error fetching token prices:', error.message);
+    if (error.name === 'AbortError') {
+      console.warn('[Blockchain] ⚠️ Token prices request timed out after 12s, using fallback prices');
+    } else {
+      console.warn('[Blockchain] ⚠️ Error fetching token prices:', error.message);
+    }
     
-    // 🔥 FALLBACK: Use hardcoded prices when API is down
-    console.log('[Blockchain] 💾 Using fallback prices (offline mode)');
+    // 🔥 FALLBACK: Use hardcoded prices when API is unavailable
+    console.log('[Blockchain] 💾 Using cached fallback prices');
     const fallbackPrices: Record<string, number> = {
       'SOL': 245.00,
       'ETH': 3200.00,

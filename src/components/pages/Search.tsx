@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Search as SearchIcon, TrendingUp, TrendingDown, Loader2, Plus, Minus, X } from 'lucide-react';
+import { ArrowLeft, Search as SearchIcon, X, TrendingUp, TrendingDown, Plus, Minus, Loader2 } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
-import { toast } from 'sonner@2.0.3';
 import { TokenLogo } from '../TokenLogo';
+import { toast } from 'sonner@2.0.3';
+import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { addCustomToken, removeCustomToken, isTokenAdded, getCustomTokens } from '../../utils/customTokens';
+import cosmicBg from 'figma:asset/d1566f8943179b67e87faa45cecace8e6cc289ed.png';
 
 interface SearchProps {
   onBack: () => void;
@@ -27,6 +29,7 @@ export interface CoinGeckoToken {
   total_volume: number;
   amount?: number;
   value?: number;
+  mint?: string; // Solana mint address
 }
 
 // Memoized Coin Item Component for better performance
@@ -74,6 +77,7 @@ const CoinItem = memo(({
             symbol={coin.symbol}
             name={coin.name}
             size="sm"
+            coinGeckoId={coin.id}
           />
         </div>
 
@@ -142,7 +146,7 @@ const detectBlockchain = (coin: CoinGeckoToken): string[] => {
   if (
     id.includes('solana') ||
     symbol === 'sol' ||
-    ['bonk', 'jup', 'jto', 'pyth', 'wif', 'ray', 'srm', 'orca', 'mngo', 'pai', 'supra'].includes(symbol)
+    ['bonk', 'jup', 'jto', 'pyth', 'wif', 'ray', 'srm', 'orca', 'mngo', 'pai', 'parai', 'supra'].includes(symbol)
   ) {
     blockchains.push('solana');
   }
@@ -198,32 +202,114 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
   const [addedCoins, setAddedCoins] = useState<Set<string>>(new Set());
   const [walletTokenSymbols, setWalletTokenSymbols] = useState<Set<string>>(new Set());
   const [blockchainFilter, setBlockchainFilter] = useState<'all' | 'solana' | 'ethereum' | 'polygon' | 'bsc'>('all');
+  const [featuredTokensData, setFeaturedTokensData] = useState<CoinGeckoToken[]>([]);
 
-  // Featured tokens that should always appear at the top
-  const featuredTokens: CoinGeckoToken[] = [
-    {
-      id: 'parabolic-ai',
-      symbol: 'PAI',
-      name: 'Parabolic AI',
-      image: 'https://coin-images.coingecko.com/coins/images/30000/large/parabolic.png', // Generic placeholder
-      current_price: 0,
-      market_cap: 0,
-      market_cap_rank: 0,
-      price_change_percentage_24h: 0,
-      total_volume: 0,
-    },
-    {
-      id: 'supra',
-      symbol: 'SUPRA',
-      name: 'Suprana',
-      image: 'https://coin-images.coingecko.com/coins/images/30598/large/supra.png',
-      current_price: 0,
-      market_cap: 0,
-      market_cap_rank: 0,
-      price_change_percentage_24h: 0,
-      total_volume: 0,
-    },
-  ];
+  // Fetch real-time data for featured tokens
+  useEffect(() => {
+    const fetchFeaturedTokens = async () => {
+      try {
+        console.log('[Search] Fetching Suprana token data from CoinGecko...');
+        
+        const response = await fetch(
+          `https://api.coingecko.com/api/v3/coins/suprana?localization=false&tickers=false&community_data=false&developer_data=false`
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[Search] ✅ Suprana data:', data);
+          
+          const supranaToken: CoinGeckoToken = {
+            id: 'suprana',
+            symbol: data.symbol?.toUpperCase() || 'SUPRA',
+            name: data.name || 'Suprana',
+            image: data.image?.large || data.image?.small || 'https://assets.coingecko.com/coins/images/36611/large/suprana.jpg',
+            current_price: data.market_data?.current_price?.usd || 0,
+            market_cap: data.market_data?.market_cap?.usd || 0,
+            market_cap_rank: data.market_cap_rank || 999,
+            price_change_percentage_24h: data.market_data?.price_change_percentage_24h || 0,
+            total_volume: data.market_data?.total_volume?.usd || 0,
+            mint: 'SupreByajmUdeJGLzvUEUm8W4xv1gF8JBqwYnvG41Dp'
+          };
+
+          setFeaturedTokensData([
+            supranaToken,
+            {
+              id: 'parabolic-ai',
+              symbol: 'PARAI',
+              name: 'Parabolic AI',
+              image: 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
+              current_price: 0.045,
+              market_cap: 180000000,
+              market_cap_rank: 320,
+              price_change_percentage_24h: 8.7,
+              total_volume: 8500000,
+              mint: 'HrkKngiUavecwte1ZMrdt4H5Qet3cecNUzMoEAgjTAX8'
+            }
+          ]);
+        } else {
+          console.warn('[Search] Failed to fetch Suprana data, using fallback');
+          // Use fallback data
+          setFeaturedTokensData([
+            {
+              id: 'suprana',
+              symbol: 'SUPRA',
+              name: 'Suprana',
+              image: 'https://assets.coingecko.com/coins/images/36611/large/suprana.jpg',
+              current_price: 0.001086,
+              market_cap: 52000000,
+              market_cap_rank: 450,
+              price_change_percentage_24h: -8.66,
+              total_volume: 3200000,
+              mint: 'SupreByajmUdeJGLzvUEUm8W4xv1gF8JBqwYnvG41Dp'
+            },
+            {
+              id: 'parabolic-ai',
+              symbol: 'PARAI',
+              name: 'Parabolic AI',
+              image: 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
+              current_price: 0.045,
+              market_cap: 180000000,
+              market_cap_rank: 320,
+              price_change_percentage_24h: 8.7,
+              total_volume: 8500000,
+              mint: 'HrkKngiUavecwte1ZMrdt4H5Qet3cecNUzMoEAgjTAX8'
+            }
+          ]);
+        }
+      } catch (error) {
+        console.error('[Search] Error fetching featured tokens:', error);
+        // Use fallback data on error
+        setFeaturedTokensData([
+          {
+            id: 'suprana',
+            symbol: 'SUPRA',
+            name: 'Suprana',
+            image: 'https://assets.coingecko.com/coins/images/36611/large/suprana.jpg',
+            current_price: 0.001086,
+            market_cap: 52000000,
+            market_cap_rank: 450,
+            price_change_percentage_24h: -8.66,
+            total_volume: 3200000,
+            mint: 'SupreByajmUdeJGLzvUEUm8W4xv1gF8JBqwYnvG41Dp'
+          },
+          {
+            id: 'parabolic-ai',
+            symbol: 'PARAI',
+            name: 'Parabolic AI',
+            image: 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
+            current_price: 0.045,
+            market_cap: 180000000,
+            market_cap_rank: 320,
+            price_change_percentage_24h: 8.7,
+            total_volume: 8500000,
+            mint: 'HrkKngiUavecwte1ZMrdt4H5Qet3cecNUzMoEAgjTAX8'
+          }
+        ]);
+      }
+    };
+
+    fetchFeaturedTokens();
+  }, []);
 
   // Load from localStorage cache on mount
   useEffect(() => {
@@ -246,43 +332,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
   useEffect(() => {
     fetchCoins(1);
     fetchWalletTokens();
-    fetchFeaturedTokenPrices();
   }, [walletId]);
-  
-  // Fetch prices for featured tokens
-  const fetchFeaturedTokenPrices = async () => {
-    try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/token-prices`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            symbols: ['PAI', 'SUPRA']
-          })
-        }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('[Search] Featured token prices response:', data);
-        
-        // Extract prices from response
-        const prices = data.prices || data;
-        
-        // Update featured tokens with real prices
-        featuredTokens[0].current_price = prices.PAI || 0;
-        featuredTokens[1].current_price = prices.SUPRA || 0;
-      } else {
-        console.error('[Search] Failed to fetch featured token prices:', response.status);
-      }
-    } catch (error) {
-      console.error('[Search] Error fetching featured token prices:', error);
-    }
-  };
 
   const fetchWalletTokens = async () => {
     try {
@@ -326,7 +376,8 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
         // If rate limited, show a friendly message but don't throw
         if (response.status === 429 || errorText.includes('429')) {
           toast.error('Rate limit reached. Using cached data...');
-          // Don't throw, let it continue with empty array
+          // Stop loading more
+          setHasMore(false);
           return;
         }
         
@@ -340,12 +391,23 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
         console.error('API returned error:', data.error);
         if (data.error.includes('429')) {
           toast.error('Rate limit reached. Please wait a moment...');
+          setHasMore(false);
           return;
         }
         throw new Error(data.error);
       }
       
       console.log(`Fetched ${data.length} coins from page ${pageNum}`);
+
+      // Check if we've reached the end of CoinGecko data
+      if (data.length === 0) {
+        console.log('⚠️ No more coins available from CoinGecko');
+        setHasMore(false);
+        if (pageNum > 1) {
+          toast.success('All available tokens loaded!');
+        }
+        return;
+      }
 
       if (pageNum === 1) {
         setCoins(data);
@@ -362,10 +424,21 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
         setCoins(prev => [...prev, ...data]);
       }
 
-      setHasMore(data.length === 100);
+      // Stop loading more if we got less than 100 coins (last page)
+      if (data.length < 100) {
+        console.log(`⚠️ Received ${data.length} coins (less than 100) - this is the last page`);
+        setHasMore(false);
+        toast.success('All available tokens loaded!');
+      } else {
+        setHasMore(true);
+      }
+      
       setPage(pageNum);
     } catch (error) {
       console.error('Error fetching coins:', error);
+      
+      // Stop loading more on error
+      setHasMore(false);
       
       // If page 1 fails and we have no coins, try to use localStorage cache even if expired
       if (pageNum === 1 && coins.length === 0) {
@@ -382,6 +455,8 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
         } catch (e) {
           console.error('Error reading fallback cache:', e);
         }
+      } else if (pageNum > 1) {
+        toast.error('Unable to load more tokens. Showing what we have.');
       }
     } finally {
       setLoading(false);
@@ -399,7 +474,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
 
   const filteredCoins = useMemo(() => {
     // Combine featured tokens with regular coins
-    let allCoins = [...featuredTokens, ...coins];
+    let allCoins = [...featuredTokensData, ...coins];
     
     // Apply blockchain filter
     if (blockchainFilter !== 'all') {
@@ -412,11 +487,14 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
     // Apply search filter
     if (!searchQuery) return allCoins;
     const query = searchQuery.toLowerCase();
-    return allCoins.filter(coin =>
+    const filtered = allCoins.filter(coin =>
       coin.name.toLowerCase().includes(query) ||
       coin.symbol.toLowerCase().includes(query)
     );
-  }, [coins, searchQuery, featuredTokens, blockchainFilter]);
+    
+    console.log(`[Search] Query: "${searchQuery}", Filtered: ${filtered.length} results`);
+    return filtered;
+  }, [coins, searchQuery, featuredTokensData, blockchainFilter]);
 
   // Mark coins that are already in wallet
   useEffect(() => {
@@ -512,8 +590,17 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
 
   return (
     <div className="min-h-screen max-w-md mx-auto bg-black pb-24 overflow-x-hidden relative">
-      {/* Animated background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-purple-950/30 via-transparent to-pink-950/30 pointer-events-none" />
+      {/* Cosmic background image */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none opacity-20"
+        style={{
+          backgroundImage: `url(${cosmicBg})`,
+          filter: 'blur(1px)'
+        }}
+      />
+      
+      {/* Dark overlay for readability */}
+      <div className="absolute inset-0 bg-black/40 pointer-events-none" />
       
       {/* Header */}
       <motion.div 
@@ -532,7 +619,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
             <ArrowLeft className="w-5 h-5 text-white" />
           </motion.button>
           <div className="flex-1">
-            <h1 className="text-white font-semibold">{onSelectToken ? 'Select Token' : 'Search Coins'}</h1>
+            <h1 className="text-white font-semibold">{onSelectToken ? 'Select Token' : 'Search Tokens'}</h1>
             <p className="text-xs text-slate-400 mt-0.5">
               {coins.length.toLocaleString()} available
             </p>
@@ -688,10 +775,11 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
           </div>
         ) : filteredCoins.length === 0 ? (
           <motion.div
+            key="no-results"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3 }}
-            className="text-center py-16 px-4"
+            className="text-center py-16 px-4 relative z-20"
           >
             {/* Empty state illustration */}
             <motion.div

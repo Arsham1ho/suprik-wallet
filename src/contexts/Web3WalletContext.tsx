@@ -204,16 +204,23 @@ export function Web3WalletProvider({ children }: Web3WalletProviderProps) {
       // Retrieve encrypted wallet
       const encrypted = retrieveWallet(walletId);
       if (!encrypted) {
-        throw new Error('Wallet not found');
+        console.error('[Web3Wallet] ❌ Wallet not found for ID:', walletId);
+        console.error('[Web3Wallet] 💡 Available wallet keys:', 
+          Object.keys(localStorage).filter(k => k.startsWith('saturn_wallet_'))
+        );
+        throw new Error('Wallet not found. Please check your wallet ID or re-import your recovery phrase.');
       }
       
       // Decrypt
       const seedPhrase = decryptSeedPhrase(encrypted, password);
+      if (!seedPhrase) {
+        throw new Error('Invalid password or corrupted wallet data');
+      }
       
       // Verify wallet ID matches
       const derivedWalletId = getPublicKey(seedPhrase, 0);
       if (derivedWalletId !== walletId) {
-        throw new Error('Invalid wallet');
+        throw new Error('Invalid wallet - ID mismatch');
       }
       
       // Derive accounts

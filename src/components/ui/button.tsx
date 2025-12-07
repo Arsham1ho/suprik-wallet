@@ -10,6 +10,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        theme: "text-black hover:opacity-90 active:opacity-80",
         destructive:
           "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:
@@ -46,10 +47,16 @@ function Button({
   }) {
   const Comp = asChild ? Slot : "button";
 
+  // Apply dynamic theme color for 'theme' variant
+  const style = variant === "theme" ? {
+    backgroundColor: "var(--color-accent)"
+  } : undefined;
+
   return (
     <Comp
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
+      style={style}
       {...props}
     />
   );

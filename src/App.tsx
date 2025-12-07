@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { WelcomeAnimation } from './components/WelcomeAnimation';
+import { WelcomePage } from './components/WelcomePage';
+import { IntroVideo } from './components/IntroVideo';
 import { AccountCreatedAnimation } from './components/AccountCreatedAnimation';
 import { PageTransition } from './components/PageTransition';
 import { Landing } from './components/Landing';
@@ -15,7 +17,7 @@ import { InstallPWA } from './components/mobile/InstallPWA';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner@2.0.3';
 import { ThemeProvider } from './utils/ThemeContext';
-import { WalletProvider } from './utils/WalletContext';
+import { WalletProvider, useWallet } from './utils/WalletContext';
 import { LanguageProvider } from './utils/i18n/LanguageContext';
 import { NetworkProvider } from './utils/NetworkContext';
 import { isWalletLocked, type BiometricSettings } from './utils/biometric';
@@ -25,9 +27,12 @@ import { installPWAIconsToCache } from './utils/generatePWAIcons';
 import { SecureStorage, WalletStorage } from './utils/wallet';
 import { UnlockWallet } from './components/UnlockWallet';
 import { initializeEnvironment } from './utils/initEnv';
+import { AccountManager } from './utils/accountManager';
 
 export default function App() {
   const [showWelcome, setShowWelcome] = useState(true);
+  const [showWelcomePage, setShowWelcomePage] = useState(false);
+  const [showIntroVideo, setShowIntroVideo] = useState(false);
   const [showAccountCreated, setShowAccountCreated] = useState(false);
   const [showPageTransition, setShowPageTransition] = useState(false);
   const [nextPage, setNextPage] = useState<'signin-options' | 'signup-options' | null>(null);
@@ -66,7 +71,11 @@ export default function App() {
         console.log('[App] 🔐 Detected OAuth callback, processing...');
         setProcessingOAuth(true);
         setShowWelcome(false);
+        setShowWelcomePage(false);
+        setShowIntroVideo(false);
         sessionStorage.setItem('hasSeenWelcome', 'true');
+        sessionStorage.setItem('hasSeenWelcomePage', 'true');
+        sessionStorage.setItem('hasSeenVideo', 'true');
         
         try {
           const { createSupabaseClient } = await import('./utils/supabase/client');
@@ -189,10 +198,26 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Check if user has seen welcome animation in this session
+    // Check if user has seen the onboarding flow in this session
     const hasSeenWelcome = sessionStorage.getItem('hasSeenWelcome');
-    if (hasSeenWelcome) {
+    const hasSeenWelcomePage = sessionStorage.getItem('hasSeenWelcomePage');
+    const hasSeenVideo = sessionStorage.getItem('hasSeenVideo');
+    
+    if (hasSeenWelcome && hasSeenWelcomePage && hasSeenVideo) {
+      // User has completed full onboarding
       setShowWelcome(false);
+      setShowWelcomePage(false);
+      setShowIntroVideo(false);
+    } else if (hasSeenWelcome && hasSeenWelcomePage) {
+      // Show video next
+      setShowWelcome(false);
+      setShowWelcomePage(false);
+      setShowIntroVideo(true);
+    } else if (hasSeenWelcome) {
+      // Show welcome page next
+      setShowWelcome(false);
+      setShowWelcomePage(true);
+      setShowIntroVideo(false);
     }
 
     // Check if wallet exists in localStorage (new client-side architecture)
@@ -201,12 +226,25 @@ export default function App() {
     
     if (hasWallet && savedWalletId) {
       console.log('[App] 🔐 Wallet found in localStorage, needs unlock');
+      
+      // Check for wallet format migration
+      SecureStorage.migrateIfNeeded().then(migrated => {
+        if (!migrated) {
+          console.log('[App] ⚠️ Wallet migration needed - old format detected');
+          toast.info('Please re-import your recovery phrase to update wallet format');
+        }
+      });
+      
       setWalletId(savedWalletId);
       setNeedsUnlock(true);
       setCurrentPage('unlock');
-      // Skip welcome animation if wallet exists
+      // Skip all onboarding if wallet exists
       setShowWelcome(false);
+      setShowWelcomePage(false);
+      setShowIntroVideo(false);
       sessionStorage.setItem('hasSeenWelcome', 'true');
+      sessionStorage.setItem('hasSeenWelcomePage', 'true');
+      sessionStorage.setItem('hasSeenVideo', 'true');
       setCheckingLock(false);
     } else {
       // Check legacy wallet_id for backward compatibility
@@ -217,7 +255,11 @@ export default function App() {
         setIsAuthenticated(true);
         checkBiometricLock(legacyWalletId);
         setShowWelcome(false);
+        setShowWelcomePage(false);
+        setShowIntroVideo(false);
         sessionStorage.setItem('hasSeenWelcome', 'true');
+        sessionStorage.setItem('hasSeenWelcomePage', 'true');
+        sessionStorage.setItem('hasSeenVideo', 'true');
       } else {
         setCheckingLock(false);
       }
@@ -342,21 +384,67 @@ export default function App() {
     WalletStorage.clear();
     localStorage.removeItem('wallet_id'); // Clear legacy key too
     sessionStorage.removeItem('hasSeenWelcome'); // Reset welcome animation
+    sessionStorage.removeItem('hasSeenWelcomePage'); // Reset welcome page
+    sessionStorage.removeItem('hasSeenVideo'); // Reset intro video
     setWalletId(null);
     setIsAuthenticated(false);
     setNeedsUnlock(false);
     setCurrentPage('landing');
     setShowWelcome(true); // Show welcome animation on next visit
+    setShowWelcomePage(false);
+    setShowIntroVideo(false);
   };
 
-  const handleSwitchAccount = (newWalletId: string) => {
-    localStorage.setItem('wallet_id', newWalletId);
-    setWalletId(newWalletId);
+  const handleLockWallet = () => {
+    console.log('[App] 🔒 Locking wallet - returning to unlock screen');
+    // Don't clear wallet data, just set to locked state
+    setNeedsUnlock(true);
+    setIsAuthenticated(false);
+    setCurrentPage('unlock');
+    toast.success('Wallet locked');
+  };
+
+  const handleSwitchAccount = (newAccountId: string) => {
+    console.log('[App] 🔄 Switching account to:', newAccountId);
+    
+    // Update active account in AccountManager
+    AccountManager.setActiveAccount(newAccountId);
+    
+    // Update walletId in localStorage and state
+    localStorage.setItem('wallet_id', newAccountId);
+    setWalletId(newAccountId);
+    
+    // Trigger a wallet context refresh by dispatching event
+    window.dispatchEvent(new CustomEvent('accountSwitched', { detail: { accountId: newAccountId } }));
+    
+    console.log('[App] ✅ Account switched successfully to:', newAccountId);
   };
 
   const handleWelcomeComplete = () => {
     setShowWelcome(false);
+    setShowWelcomePage(true);
     sessionStorage.setItem('hasSeenWelcome', 'true');
+  };
+
+  const handleWelcomePageContinue = () => {
+    setShowWelcomePage(false);
+    setShowIntroVideo(true);
+    sessionStorage.setItem('hasSeenWelcomePage', 'true');
+  };
+
+  const handleIntroVideoComplete = () => {
+    console.log('[App] ✅ Intro video completed - navigating to Create Account page');
+    console.log('[App] Current state:', { 
+      showIntroVideo, 
+      currentPage,
+      showWelcome,
+      showWelcomePage,
+      showAccountCreated,
+      showPageTransition 
+    });
+    setShowIntroVideo(false);
+    sessionStorage.setItem('hasSeenVideo', 'true');
+    console.log('[App] ✅ showIntroVideo set to false - should show Landing page now');
   };
 
   const handlePageTransitionComplete = () => {
@@ -373,9 +461,13 @@ export default function App() {
         <LanguageProvider walletId={walletId}>
           <NetworkProvider>
             <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
-              <div className="w-full max-w-[430px] min-h-screen bg-black shadow-2xl relative overflow-hidden">
+              <div className="w-full max-w-[430px] min-h-screen shadow-2xl relative overflow-hidden" style={{ backgroundColor: '#0f1729' }}>
                 {showWelcome ? (
                   <WelcomeAnimation onComplete={handleWelcomeComplete} />
+                ) : showWelcomePage ? (
+                  <WelcomePage onContinue={handleWelcomePageContinue} />
+                ) : showIntroVideo ? (
+                  <IntroVideo onComplete={handleIntroVideoComplete} />
                 ) : showAccountCreated ? (
                   <AccountCreatedAnimation onComplete={handleAccountCreatedComplete} />
                 ) : showPageTransition ? (
@@ -383,8 +475,8 @@ export default function App() {
                 ) : processingOAuth ? (
                   <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4">
                     <div className="relative">
-                      <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-500"></div>
-                      <div className="absolute inset-0 animate-ping rounded-full h-16 w-16 border border-purple-500/30"></div>
+                      <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-theme-accent"></div>
+                      <div className="absolute inset-0 animate-ping rounded-full h-16 w-16 border border-theme-accent" style={{ opacity: 0.3 }}></div>
                     </div>
                     <div className="text-center space-y-2">
                       <p className="text-white font-medium">Setting up your wallet...</p>
@@ -486,7 +578,7 @@ export default function App() {
                       <>
                         {checkingLock ? (
                           <div className="min-h-screen bg-black flex items-center justify-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-theme-accent"></div>
                           </div>
                         ) : isLocked ? (
                           <BiometricLock walletId={walletId} onUnlock={handleUnlock} />
@@ -494,6 +586,7 @@ export default function App() {
                           <MainApp 
                             accessToken={walletId}
                             onSignOut={handleSignOut}
+                            onLockWallet={handleLockWallet}
                             onSwitchAccount={handleSwitchAccount}
                           />
                         )}

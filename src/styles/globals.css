@@ -13,6 +13,12 @@
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
   
+  /* Theme Colors - Default (Classic Purple) */
+  --color-primary: #9333ea;
+  --color-primary-dark: #7e22ce;
+  --color-secondary: #2563eb;
+  --color-accent: #a855f7;
+  
   --font-size: 16px;
   --background: #ffffff;
   --foreground: oklch(0.145 0 0);
@@ -391,4 +397,29 @@ html, body {
 
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+/* Theme-based color utilities */
+.bg-theme-primary {
+  background-color: var(--color-primary) !important;
+}
+
+.bg-theme-accent {
+  background-color: var(--color-accent) !important;
+}
+
+.text-theme-accent {
+  color: var(--color-accent) !important;
+}
+
+.text-theme-primary {
+  color: var(--color-primary) !important;
+}
+
+.border-theme-accent {
+  border-color: var(--color-accent) !important;
+}
+
+.border-theme-primary {
+  border-color: var(--color-primary) !important;
 }

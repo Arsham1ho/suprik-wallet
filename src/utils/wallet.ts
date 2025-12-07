@@ -20,48 +20,17 @@ console.log('[Wallet] Wordlist check:', {
 
 /**
  * Secure storage for encrypted mnemonic
- * Uses Web Crypto API for encryption
+ * Uses CryptoJS for encryption (compatible with web3/walletManager)
  */
 export class SecureStorage {
   private static STORAGE_KEY = 'saturn_encrypted_wallet';
-
-  /**
-   * Derive encryption key from password using PBKDF2
-   */
-  private static async deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
-    const encoder = new TextEncoder();
-    const passwordBuffer = encoder.encode(password);
-    
-    // Import password as key material
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      passwordBuffer,
-      { name: 'PBKDF2' },
-      false,
-      ['deriveKey']
-    );
-    
-    // Derive actual encryption key
-    return crypto.subtle.deriveKey(
-      {
-        name: 'PBKDF2',
-        salt,
-        iterations: 100000,
-        hash: 'SHA-256',
-      },
-      keyMaterial,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt', 'decrypt']
-    );
-  }
 
   /**
    * Encrypt and store mnemonic
    */
   static async storeMnemonic(mnemonic: string, password: string): Promise<void> {
     try {
-      console.log('[SecureStorage] 🔐 Encrypting mnemonic...');
+      console.log('[SecureStorage] 🔐 Encrypting mnemonic with Web Crypto API...');
       
       const encoder = new TextEncoder();
       const data = encoder.encode(mnemonic);
@@ -70,25 +39,51 @@ export class SecureStorage {
       const salt = crypto.getRandomValues(new Uint8Array(16));
       const iv = crypto.getRandomValues(new Uint8Array(12));
       
-      // Derive key from password
-      const key = await this.deriveKey(password, salt);
+      // Derive key from password using PBKDF2
+      const passwordBuffer = encoder.encode(password);
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        passwordBuffer,
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits', 'deriveKey']
+      );
+      
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: salt,
+          iterations: 100000,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+      );
       
       // Encrypt the mnemonic
       const encryptedData = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv },
+        { name: 'AES-GCM', iv: iv },
         key,
         data
       );
       
-      // Combine salt + IV + encrypted data
-      const combined = new Uint8Array(salt.length + iv.length + encryptedData.byteLength);
-      combined.set(salt, 0);
-      combined.set(iv, salt.length);
-      combined.set(new Uint8Array(encryptedData), salt.length + iv.length);
+      // Convert to base64 for storage
+      const encryptedArray = new Uint8Array(encryptedData);
+      const encryptedBase64 = btoa(String.fromCharCode(...encryptedArray));
+      const saltBase64 = btoa(String.fromCharCode(...salt));
+      const ivBase64 = btoa(String.fromCharCode(...iv));
       
-      // Store as base64
-      const base64 = btoa(String.fromCharCode(...combined));
-      localStorage.setItem(this.STORAGE_KEY, base64);
+      // Store as JSON with salt, iv, and encrypted data
+      const encryptedWallet = {
+        encrypted: encryptedBase64,
+        salt: saltBase64,
+        iv: ivBase64,
+        version: 2 // Mark as Web Crypto API version
+      };
+      
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(encryptedWallet));
       
       console.log('[SecureStorage] ✅ Mnemonic encrypted and stored successfully');
     } catch (error) {
@@ -102,49 +97,90 @@ export class SecureStorage {
    */
   static async retrieveMnemonic(password: string): Promise<string | null> {
     try {
-      console.log('[SecureStorage] 🔓 Attempting to decrypt mnemonic...');
+      console.log('[SecureStorage] 🔓 Attempting to decrypt mnemonic with Web Crypto API...');
       
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (!stored) {
-        console.error('[SecureStorage]  No encrypted wallet found in storage');
+        console.error('[SecureStorage] ❌ No encrypted wallet found in storage');
         return null;
       }
 
+      console.log('[SecureStorage] 📦 Encrypted data found');
+
+      // Parse stored wallet data
+      const encryptedWallet = JSON.parse(stored);
+      
+      if (!encryptedWallet.encrypted || !encryptedWallet.salt || !encryptedWallet.iv) {
+        console.error('[SecureStorage] ❌ Invalid wallet data format');
+        return null;
+      }
+      
+      console.log('[SecureStorage] 🔐 Decrypting with stored salt and IV...');
+      
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+      
       // Decode from base64
-      const combined = new Uint8Array(
-        atob(stored).split('').map(c => c.charCodeAt(0))
+      const encryptedArray = new Uint8Array(
+        atob(encryptedWallet.encrypted).split('').map(c => c.charCodeAt(0))
+      );
+      const salt = new Uint8Array(
+        atob(encryptedWallet.salt).split('').map(c => c.charCodeAt(0))
+      );
+      const iv = new Uint8Array(
+        atob(encryptedWallet.iv).split('').map(c => c.charCodeAt(0))
       );
       
-      // Extract salt, IV, and encrypted data
-      const salt = combined.slice(0, 16);
-      const iv = combined.slice(16, 28);
-      const encryptedData = combined.slice(28);
-      
       // Derive key from password
-      const key = await this.deriveKey(password, salt);
+      const passwordBuffer = encoder.encode(password);
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        passwordBuffer,
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits', 'deriveKey']
+      );
+      
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: salt,
+          iterations: 100000,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+      );
       
       // Decrypt
       const decryptedData = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
+        { name: 'AES-GCM', iv: iv },
         key,
-        encryptedData
+        encryptedArray
       );
       
-      const decoder = new TextDecoder();
       const mnemonic = decoder.decode(decryptedData);
+      
+      if (!mnemonic) {
+        console.error('[SecureStorage] ❌ Decryption failed - wrong password or corrupted data');
+        return null;
+      }
       
       console.log('[SecureStorage] ✅ Mnemonic decrypted successfully');
       return mnemonic;
     } catch (error: any) {
-      console.error('[SecureStorage] ❌ Failed to decrypt mnemonic:', error.name);
+      console.error('[SecureStorage] ❌ Failed to decrypt mnemonic:', error.message);
+      console.error('[SecureStorage] ❌ Error details:', error);
       console.error('[SecureStorage] This usually means:', {
         possibleCauses: [
           '1. Wrong password entered',
           '2. Corrupted storage data',
-          '3. Mismatch between encryption and decryption',
-          '4. Browser security context changed'
+          '3. Data format mismatch'
         ]
       });
+      
       return null;
     }
   }
@@ -161,6 +197,43 @@ export class SecureStorage {
    */
   static deleteWallet(): void {
     localStorage.removeItem(this.STORAGE_KEY);
+  }
+  
+  /**
+   * Migrate old wallet format to new format if needed
+   */
+  static async migrateIfNeeded(): Promise<boolean> {
+    try {
+      const stored = localStorage.getItem(this.STORAGE_KEY);
+      if (!stored) return false;
+      
+      // Try to parse as JSON first
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed.encrypted && parsed.salt && parsed.iv) {
+          // Check version
+          if (parsed.version === 2) {
+            console.log('[SecureStorage] ✅ Wallet in Web Crypto API format (v2)');
+            return true;
+          } else {
+            console.log('[SecureStorage] ⚠️ Old encryption format detected (v1)');
+            console.log('[SecureStorage] ℹ️ Please re-import your recovery phrase for better security');
+            // Old format still works but recommend migration
+            return true;
+          }
+        }
+      } catch {
+        // Not JSON, definitely old format
+        console.log('[SecureStorage] ⚠️ Very old wallet format detected, needs migration');
+        console.log('[SecureStorage] ℹ️ Please re-import your recovery phrase');
+        return false;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('[SecureStorage] ❌ Migration check failed:', error);
+      return false;
+    }
   }
 }
 

@@ -1,17 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
-import { Input } from './ui/input';
 import { Button } from './ui/button';
-import { Search as SearchIcon, Plus, Minus, Loader2, TrendingUp, TrendingDown, X } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Input } from './ui/input';
+import { Search, TrendingUp, TrendingDown, Plus, Loader2, Minus, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
-import { TokenLogo } from './TokenLogo';
 import { toast } from 'sonner@2.0.3';
+import { useLanguage } from '../utils/i18n/LanguageContext';
+import { TokenLogo } from './TokenLogo';
 
 interface AddTokenDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  walletId: string;
   onTokenAdded?: () => void;
 }
 
@@ -27,37 +27,20 @@ interface CoinGeckoToken {
   total_volume: number;
 }
 
-export function AddTokenDialog({ open, onOpenChange, walletId, onTokenAdded }: AddTokenDialogProps) {
+export function AddTokenDialog({ open, onOpenChange, onTokenAdded }: AddTokenDialogProps) {
+  const { formatPrice, convertPrice } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [coins, setCoins] = useState<CoinGeckoToken[]>([]);
   const [filteredCoins, setFilteredCoins] = useState<CoinGeckoToken[]>([]);
   const [loading, setLoading] = useState(true);
   const [addingCoin, setAddingCoin] = useState<string | null>(null);
   const [addedCoins, setAddedCoins] = useState<Set<string>>(new Set());
-  const [walletTokenSymbols, setWalletTokenSymbols] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (open) {
       fetchCoins();
-      fetchWalletTokens();
     }
   }, [open]);
-
-  const fetchWalletTokens = async () => {
-    try {
-      console.log('[AddTokenDialog] Loading wallet tokens from localStorage...');
-      
-      // In client-side architecture, we don't have a server-side wallet token list
-      // Instead, we'll just use an empty set since tokens are managed by blockchain APIs
-      // Users can add any token they want and balances will be fetched from blockchain
-      const tokenSymbols = new Set<string>();
-      setWalletTokenSymbols(tokenSymbols);
-      
-      console.log('[AddTokenDialog] ✅ Wallet tokens initialized (client-side mode)');
-    } catch (error) {
-      console.error('[AddTokenDialog] Error initializing wallet tokens:', error);
-    }
-  };
 
   useEffect(() => {
     if (searchQuery.trim()) {
@@ -69,16 +52,7 @@ export function AddTokenDialog({ open, onOpenChange, walletId, onTokenAdded }: A
     } else {
       setFilteredCoins(coins.slice(0, 50)); // Show top 50 by default
     }
-    
-    // Mark coins that are already in wallet
-    const added = new Set<string>();
-    coins.forEach(coin => {
-      if (walletTokenSymbols.has(coin.symbol.toUpperCase())) {
-        added.add(coin.id);
-      }
-    });
-    setAddedCoins(added);
-  }, [searchQuery, coins, walletTokenSymbols]);
+  }, [searchQuery, coins]);
 
   const fetchCoins = async () => {
     try {
@@ -145,7 +119,6 @@ export function AddTokenDialog({ open, onOpenChange, walletId, onTokenAdded }: A
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            walletId,
             coinId: coin.id,
             symbol: coin.symbol.toUpperCase(),
             name: coin.name,
@@ -194,7 +167,6 @@ export function AddTokenDialog({ open, onOpenChange, walletId, onTokenAdded }: A
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            walletId,
             symbol: coin.symbol.toUpperCase()
           })
         }
@@ -229,13 +201,6 @@ export function AddTokenDialog({ open, onOpenChange, walletId, onTokenAdded }: A
     }
   };
 
-  const formatPrice = (price: number) => {
-    if (price >= 1000) return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    if (price >= 1) return `$${price.toFixed(2)}`;
-    if (price >= 0.01) return `$${price.toFixed(4)}`;
-    return `$${price.toFixed(8)}`;
-  };
-
   const formatMarketCap = (marketCap: number) => {
     if (marketCap >= 1e12) return `$${(marketCap / 1e12).toFixed(2)}T`;
     if (marketCap >= 1e9) return `$${(marketCap / 1e9).toFixed(2)}B`;
@@ -251,7 +216,7 @@ export function AddTokenDialog({ open, onOpenChange, walletId, onTokenAdded }: A
           <DialogHeader>
             <DialogTitle className="text-xl">Add Token</DialogTitle>
             <DialogDescription className="text-slate-400 text-sm">
-              Search and add tokens from CoinGecko
+              Search and add tokens to your wallet
             </DialogDescription>
           </DialogHeader>
         </div>
@@ -259,7 +224,7 @@ export function AddTokenDialog({ open, onOpenChange, walletId, onTokenAdded }: A
         {/* Search Input */}
         <div className="px-4 pt-4 pb-2">
           <div className="relative">
-            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
               type="text"
               placeholder="Search by name or symbol..."
@@ -291,7 +256,7 @@ export function AddTokenDialog({ open, onOpenChange, walletId, onTokenAdded }: A
           ) : filteredCoins.length === 0 ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
-                <SearchIcon className="w-12 h-12 text-slate-700 mx-auto mb-3" />
+                <Search className="w-12 h-12 text-slate-700 mx-auto mb-3" />
                 <p className="text-slate-400">No tokens found</p>
                 <p className="text-xs text-slate-500 mt-1">Try a different search term</p>
               </div>

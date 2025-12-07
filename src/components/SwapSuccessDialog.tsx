@@ -90,8 +90,16 @@ export function SwapSuccessDialog({
                 }}
                 className="relative"
               >
-                <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-full p-4">
-                  <CheckCircle2 className="w-12 h-12 text-white" strokeWidth={2.5} />
+                <div className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center bg-black">
+                  <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                  >
+                    <source src="https://fileport.io/fSL6hqvdrCvb" type="video/mp4" />
+                  </video>
                 </div>
               </motion.div>
               

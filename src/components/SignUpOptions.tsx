@@ -2,6 +2,7 @@ import { Button } from './ui/button';
 import { ArrowLeft, Key, Mail } from 'lucide-react';
 import { motion } from 'motion/react';
 import { GradientButton } from './GradientButton';
+import backgroundImage from 'figma:asset/7fff6c0f4086de297821ed0e75fcf92b1f55b37f.png';
 
 interface SignUpOptionsProps {
   onSelectRecoveryPhrase: () => void;
@@ -13,8 +14,17 @@ interface SignUpOptionsProps {
 
 export function SignUpOptions({ onSelectRecoveryPhrase, onSelectEmail, onSelectGoogle, onSelectApple, onBack }: SignUpOptionsProps) {
   return (
-    <div className="min-h-screen bg-black text-white w-full overflow-y-auto">
-      <div className="px-6 py-6 w-full pb-20">
+    <div 
+      className="min-h-screen text-white w-full overflow-y-auto relative"
+      style={{
+        background: `url(${backgroundImage}) center/cover no-repeat`,
+        backgroundColor: '#050510',
+      }}
+    >
+      {/* Dark overlay for text readability */}
+      <div className="absolute inset-0 bg-black/30" />
+      
+      <div className="px-6 py-6 w-full pb-20 relative z-10">
         {/* Header */}
         <motion.div 
           className="flex items-center mb-8"
@@ -25,7 +35,7 @@ export function SignUpOptions({ onSelectRecoveryPhrase, onSelectEmail, onSelectG
             variant="ghost"
             size="icon"
             onClick={onBack}
-            className="text-slate-400 hover:text-white hover:bg-slate-900 -ml-2 transition-all"
+            className="text-slate-400 hover:text-white hover:bg-slate-900/50 -ml-2 transition-all"
           >
             <ArrowLeft className="w-5 h-5" />
           </Button>
@@ -53,7 +63,7 @@ export function SignUpOptions({ onSelectRecoveryPhrase, onSelectEmail, onSelectG
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
-              <div className="bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-2xl p-6 text-left hover:border-purple-500/50 transition-all group relative overflow-hidden">
+              <div className="bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-2xl p-6 text-left hover:border-purple-500/50 transition-all group relative overflow-hidden backdrop-blur-sm">
                 {/* Recommended Badge */}
                 <div className="absolute top-4 right-4 rounded-full bg-purple-500/20 border border-purple-500/40 px-3 py-1 px-[8px] py-[4px]">
                   <span className="text-xs text-purple-300 font-semibold">Recommended</span>
@@ -84,7 +94,7 @@ export function SignUpOptions({ onSelectRecoveryPhrase, onSelectEmail, onSelectG
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
             >
-              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-all relative overflow-hidden">
+              <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-all relative overflow-hidden backdrop-blur-sm">
                 {/* Coming Soon Banner */}
                 <div className="absolute top-4 right-4 z-10">
                   <div className="px-3 py-1.5 bg-gradient-to-r from-purple-600/30 to-blue-600/30 border border-purple-500/40 rounded-full backdrop-blur-sm">
@@ -141,7 +151,7 @@ export function SignUpOptions({ onSelectRecoveryPhrase, onSelectEmail, onSelectG
           </div>
 
           {/* Info Box */}
-          <div className="bg-blue-950/20 border border-blue-900/30 rounded-xl p-4">
+          <div className="bg-blue-950/30 border border-blue-900/40 rounded-xl p-4 backdrop-blur-sm">
             <p className="text-sm text-blue-200/90">
               <span className="text-blue-400 font-semibold">💡 Tip:</span> When you sign up with Google or Apple, we automatically create a recovery phrase for you. You can view and save it later in Settings.
             </p>

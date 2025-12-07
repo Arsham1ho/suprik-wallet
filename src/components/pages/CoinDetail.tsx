@@ -10,6 +10,7 @@ import { PlanetAvatar } from '../PlanetAvatar';
 import { AnimalAvatar } from '../AnimalAvatar';
 import { toast } from 'sonner@2.0.3';
 import { copyToClipboard } from '../../utils/clipboard';
+import { useLanguage } from '../../utils/i18n/LanguageContext';
 import {
   Sheet,
   SheetContent,
@@ -45,6 +46,7 @@ interface CoinDetails {
 type TimePeriod = '1H' | '1D' | '1W' | '1M' | 'YTD';
 
 export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDetailProps) {
+  const { formatPrice, convertPrice } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [coinDetails, setCoinDetails] = useState<CoinDetails | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('1D');
@@ -97,22 +99,25 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
   useEffect(() => {
     const interval = setInterval(() => {
       console.log('Auto-refreshing coin price...');
-      fetchCoinDetails();
+      fetchCoinDetails(true); // Background refresh without loading state
     }, 30000); // 30 seconds
 
     return () => clearInterval(interval);
   }, [token.mint, selectedPeriod]);
 
-  const fetchCoinDetails = async () => {
+  const fetchCoinDetails = async (backgroundRefresh: boolean = false) => {
     try {
-      // Only show chart loading if we already have data (not initial load)
-      if (coinDetails) {
-        setChartLoading(true);
-      } else {
-        setLoading(true);
+      // Don't show loading on background refresh
+      if (!backgroundRefresh) {
+        // Only show chart loading if we already have data (not initial load)
+        if (coinDetails) {
+          setChartLoading(true);
+        } else {
+          setLoading(true);
+        }
       }
       
-      console.log('Fetching coin details for:', token.mint, 'period:', selectedPeriod);
+      console.log('[CoinDetail] Fetching coin details for:', token.mint, 'Symbol:', token.symbol, 'Period:', selectedPeriod);
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coin-details/${token.mint}?period=${selectedPeriod}`,
         {
@@ -124,7 +129,7 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('Coin details fetch error:', response.status, errorData);
+        console.error('[CoinDetail] Fetch error:', response.status, errorData);
         throw new Error(errorData.error || 'Failed to fetch coin details');
       }
 
@@ -157,8 +162,10 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         });
       }
     } finally {
-      setLoading(false);
-      setChartLoading(false);
+      if (!backgroundRefresh) {
+        setLoading(false);
+        setChartLoading(false);
+      }
     }
   };
 
@@ -337,14 +344,27 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
     const clampedIndex = Math.max(0, Math.min(index, chartData.length - 1));
     const point = chartData[clampedIndex];
     
-    if (point) {
-      const y = paddedRange > 0 ? 100 - ((point.price - paddedMin) / paddedRange) * 100 : 50;
-      setHoveredPoint({
-        time: point.time,
-        price: point.price,
-        x: (clampedIndex / (chartData.length - 1)) * 100,
-        y: y,
-      });
+    if (point && typeof point.price === 'number' && !isNaN(point.price)) {
+      // Calculate x position - handle single data point case
+      const xPos = chartData.length > 1 
+        ? (clampedIndex / (chartData.length - 1)) * 100 
+        : 50;
+      
+      // Calculate y position with validation
+      let yPos = 50; // default to center
+      if (paddedRange > 0 && !isNaN(paddedMin) && !isNaN(paddedRange)) {
+        yPos = 100 - ((point.price - paddedMin) / paddedRange) * 100;
+      }
+      
+      // Validate final values before setting state
+      if (!isNaN(xPos) && !isNaN(yPos) && isFinite(xPos) && isFinite(yPos)) {
+        setHoveredPoint({
+          time: point.time,
+          price: point.price,
+          x: xPos,
+          y: yPos,
+        });
+      }
     }
   };
 
@@ -354,42 +374,8 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
 
   // Format numbers with intelligent precision
   const formatCurrency = (value: number) => {
-    if (!isFinite(value) || value === 0) return '$0.00';
-    
-    // Ensure value is positive for calculations
-    const absValue = Math.abs(value);
-    
-    // For very small values (< $0.01), show more decimal places
-    if (absValue < 0.01) {
-      // Calculate decimals but clamp to max 20 (Intl.NumberFormat limit)
-      const calculatedDecimals = Math.ceil(-Math.log10(absValue)) + 2;
-      const decimals = Math.min(20, Math.max(2, calculatedDecimals));
-      
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-      }).format(value);
-    }
-    
-    // For small values (< $1), show 4 decimal places
-    if (absValue < 1) {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: 4,
-        maximumFractionDigits: 4,
-      }).format(value);
-    }
-    
-    // For normal values, show 2 decimal places
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
+    // Use the language context formatPrice for proper currency conversion
+    return formatPrice(value);
   };
 
   const formatTime = (isoString: string) => {
@@ -920,29 +906,37 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
       <Sheet open={showMoreMenu} onOpenChange={setShowMoreMenu}>
         <SheetContent 
           side="bottom" 
-          className="bg-slate-950 border-slate-800 rounded-t-2xl p-0"
+          className="bg-slate-900 border-t border-slate-800 rounded-t-3xl p-0 h-auto max-w-[430px] mx-auto pb-safe"
         >
-          <SheetHeader className="px-5 pt-5 pb-3">
-            <SheetTitle className="text-white text-left text-base">More Options</SheetTitle>
-            <SheetDescription className="text-slate-400 text-left text-xs">
+          {/* Drag Handle */}
+          <div className="w-full flex justify-center pt-3 pb-2">
+            <div className="w-12 h-1 bg-slate-700 rounded-full" />
+          </div>
+          
+          <SheetHeader className="px-6 pb-4 space-y-1">
+            <SheetTitle className="text-white text-left text-lg">
+              More Options
+            </SheetTitle>
+            <SheetDescription className="text-slate-400 text-left text-sm">
               Additional actions for {token.symbol}
             </SheetDescription>
           </SheetHeader>
-          <div className="space-y-2 px-5 pb-8">
+          
+          <div className="space-y-1 px-4 pb-6">
             {/* Share */}
             <button
               onClick={async () => {
                 await handleShare();
                 setShowMoreMenu(false);
               }}
-              className="w-full flex items-center gap-3 p-3 bg-slate-900/50 hover:bg-slate-900 rounded-xl transition-colors active:scale-95"
+              className="w-full flex items-center gap-4 p-4 hover:bg-slate-800/50 rounded-2xl transition-all active:scale-[0.98]"
             >
-              <div className="w-9 h-9 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
-                <Share2 className="w-4 h-4 text-green-400" />
+              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-green-500/20 to-emerald-500/10 flex items-center justify-center shrink-0">
+                <Share2 className="w-5 h-5 text-green-400" />
               </div>
-              <div className="flex-1 text-left min-w-0">
-                <div className="text-sm font-semibold text-white">Share Token</div>
-                <div className="text-xs text-slate-400">Share {token.symbol} details</div>
+              <div className="flex-1 text-left">
+                <div className="text-base text-white mb-0.5">Share Token</div>
+                <div className="text-sm text-slate-400">Share {token.symbol} details</div>
               </div>
             </button>
 
@@ -952,14 +946,14 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
                 window.open(blockExplorer.url, '_blank', 'noopener,noreferrer');
                 setShowMoreMenu(false);
               }}
-              className="w-full flex items-center gap-3 p-3 bg-slate-900/50 hover:bg-slate-900 rounded-xl transition-colors active:scale-95"
+              className="w-full flex items-center gap-4 p-4 hover:bg-slate-800/50 rounded-2xl transition-all active:scale-[0.98]"
             >
-              <div className="w-9 h-9 rounded-full bg-purple-500/20 flex items-center justify-center shrink-0">
-                <ExternalLink className="w-4 h-4 text-purple-400" />
+              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-purple-500/20 to-violet-500/10 flex items-center justify-center shrink-0">
+                <ExternalLink className="w-5 h-5 text-purple-400" />
               </div>
-              <div className="flex-1 text-left min-w-0">
-                <div className="text-sm font-semibold text-white">View on {blockExplorer.name}</div>
-                <div className="text-xs text-slate-400">Open in block explorer</div>
+              <div className="flex-1 text-left">
+                <div className="text-base text-white mb-0.5">View on {blockExplorer.name}</div>
+                <div className="text-sm text-slate-400">Open in block explorer</div>
               </div>
             </button>
 
@@ -974,14 +968,14 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
                 }
                 setShowMoreMenu(false);
               }}
-              className="w-full flex items-center gap-3 p-3 bg-slate-900/50 hover:bg-slate-900 rounded-xl transition-colors active:scale-95"
+              className="w-full flex items-center gap-4 p-4 hover:bg-slate-800/50 rounded-2xl transition-all active:scale-[0.98]"
             >
-              <div className="w-9 h-9 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
-                <LayoutGrid className="w-4 h-4 text-blue-400" />
+              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-500/20 to-cyan-500/10 flex items-center justify-center shrink-0">
+                <LayoutGrid className="w-5 h-5 text-blue-400" />
               </div>
               <div className="flex-1 text-left min-w-0">
-                <div className="text-sm font-semibold text-white">Copy Contract Address</div>
-                <div className="text-xs text-slate-400 truncate">{token.mint.slice(0, 20)}...</div>
+                <div className="text-base text-white mb-0.5">Copy Contract Address</div>
+                <div className="text-sm text-slate-400 truncate">{token.mint.slice(0, 24)}...</div>
               </div>
             </button>
           </div>

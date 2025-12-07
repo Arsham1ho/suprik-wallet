@@ -12,7 +12,8 @@ import {
   BookUser,
   Wallet,
   ChevronDown,
-  Server
+  Server,
+  HelpCircle
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
@@ -29,6 +30,7 @@ import { ThemeCustomization } from '../ThemeCustomization';
 import { AddressBook } from '../AddressBook';
 import { DevModeDialog } from '../DevModeDialog';
 import { RpcSettings } from './RpcSettings';
+import { HelpAndSupport } from './HelpAndSupport';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { toast } from 'sonner@2.0.3';
 import { PlanetAvatar } from '../PlanetAvatar';
@@ -43,18 +45,24 @@ import { deriveAddresses } from '../../utils/wallet';
 interface SettingsProps {
   onSignOut: () => void;
   walletId: string;
+  onLockWallet?: () => void;
   onSwitchAccount?: (walletId: string) => void;
 }
 
-type SettingsPage = 'main' | 'account' | 'preferences' | 'security' | 'about' | 'invite' | 'nft' | 'theme' | 'addressBook' | 'feeWallet' | 'apiKeys' | 'balanceChecker' | 'verifyToken' | 'rpc';
+type SettingsPage = 'main' | 'account' | 'preferences' | 'security' | 'about' | 'invite' | 'nft' | 'theme' | 'addressBook' | 'feeWallet' | 'apiKeys' | 'balanceChecker' | 'verifyToken' | 'rpc' | 'helpSupport';
 
-export function Settings({ onSignOut, walletId, onSwitchAccount }: SettingsProps) {
+export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount }: SettingsProps) {
   const [currentPage, setCurrentPage] = useState<SettingsPage>('main');
   const [devMode, setDevMode] = useState(false);
   const [devDialogOpen, setDevDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
   const { isTestnet, toggleNetwork } = useNetwork();
+
+  // Scroll to top when page changes
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentPage]);
 
   useEffect(() => {
     loadDevMode();
@@ -275,6 +283,12 @@ export function Settings({ onSignOut, walletId, onSwitchAccount }: SettingsProps
     );
   }
 
+  if (currentPage === 'helpSupport') {
+    return (
+      <HelpAndSupport onBack={() => setCurrentPage('main')} />
+    );
+  }
+
   // Main settings page
   return (
     <div className="min-h-screen bg-black text-white pb-20 w-full">
@@ -294,7 +308,7 @@ export function Settings({ onSignOut, walletId, onSwitchAccount }: SettingsProps
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <h3 className="text-slate-400 text-sm px-2">Account</h3>
+          <h3 className="text-slate-400 text-sm px-2">General</h3>
           
           <button
             onClick={() => setCurrentPage('account')}
@@ -313,43 +327,7 @@ export function Settings({ onSignOut, walletId, onSwitchAccount }: SettingsProps
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
           </button>
-        </motion.div>
 
-        {/* Wallet */}
-        <motion.div 
-          className="space-y-3 mb-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-          <h3 className="text-slate-400 text-sm px-2">Wallet</h3>
-          
-          <button
-            onClick={() => setCurrentPage('addressBook')}
-            className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-blue-500 flex items-center justify-center">
-                <BookUser className="w-5 h-5 text-white" />
-              </div>
-              <div className="text-left">
-                <p className="text-white font-medium">Address Book</p>
-                <p className="text-slate-400 text-sm">Manage saved addresses</p>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-slate-600" />
-          </button>
-        </motion.div>
-
-        {/* Preferences */}
-        <motion.div 
-          className="space-y-3 mb-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <h3 className="text-slate-400 text-sm px-2">Preferences</h3>
-          
           <button
             onClick={() => setCurrentPage('preferences')}
             className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
@@ -365,7 +343,23 @@ export function Settings({ onSignOut, walletId, onSwitchAccount }: SettingsProps
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
           </button>
-          
+
+          <button
+            onClick={() => setCurrentPage('security')}
+            className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-white" />
+              </div>
+              <div className="text-left">
+                <p className="text-white font-medium">Security & Privacy</p>
+                <p className="text-slate-400 text-sm">Recovery phrase, password & logs</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-slate-600" />
+          </button>
+
           <button
             onClick={() => setCurrentPage('theme')}
             className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
@@ -383,38 +377,12 @@ export function Settings({ onSignOut, walletId, onSwitchAccount }: SettingsProps
           </button>
         </motion.div>
 
-        {/* Security */}
-        <motion.div 
-          className="space-y-3 mb-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <h3 className="text-slate-400 text-sm px-2">Security</h3>
-          
-          <button
-            onClick={() => setCurrentPage('security')}
-            className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
-                <Shield className="w-5 h-5 text-white" />
-              </div>
-              <div className="text-left">
-                <p className="text-white font-medium">Security & Privacy</p>
-                <p className="text-slate-400 text-sm">Recovery phrase, password & logs</p>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-slate-600" />
-          </button>
-        </motion.div>
-
         {/* Developer Settings */}
         <motion.div 
           className="space-y-3 mb-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
+          transition={{ delay: 0.1 }}
         >
           <h3 className="text-slate-400 text-sm px-2">Developer</h3>
           
@@ -492,10 +460,42 @@ export function Settings({ onSignOut, walletId, onSwitchAccount }: SettingsProps
           className="space-y-3 mb-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+          transition={{ delay: 0.2 }}
         >
           <h3 className="text-slate-400 text-sm px-2">Support</h3>
           
+          <button
+            onClick={() => setCurrentPage('helpSupport')}
+            className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+                <HelpCircle className="w-5 h-5 text-white" />
+              </div>
+              <div className="text-left">
+                <p className="text-white font-medium">Help & Support</p>
+                <p className="text-slate-400 text-sm">Get assistance and support</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-slate-600" />
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('invite')}
+            className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
+                <Users className="w-5 h-5 text-white" />
+              </div>
+              <div className="text-left">
+                <p className="text-white font-medium">Invite Friends</p>
+                <p className="text-slate-400 text-sm">Share Suprik with others</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-slate-600" />
+          </button>
+
           <button
             onClick={() => setCurrentPage('about')}
             className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
@@ -511,22 +511,6 @@ export function Settings({ onSignOut, walletId, onSwitchAccount }: SettingsProps
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
           </button>
-
-          <button
-            onClick={() => setCurrentPage('invite')}
-            className="w-full p-4 rounded-xl bg-gradient-to-r from-purple-500/10 to-blue-500/10 hover:from-purple-500/20 hover:to-blue-500/20 transition-all flex items-center justify-between border border-purple-500/30"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
-                <Users className="w-5 h-5 text-white" />
-              </div>
-              <div className="text-left">
-                <p className="text-white font-medium">Invite Friends</p>
-                <p className="text-purple-300 text-sm">Share Suplet with others</p>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-purple-600" />
-          </button>
         </motion.div>
 
         {/* Lock Wallet */}
@@ -537,7 +521,13 @@ export function Settings({ onSignOut, walletId, onSwitchAccount }: SettingsProps
           transition={{ delay: 0.6 }}
         >
           <Button
-            onClick={onSignOut}
+            onClick={() => {
+              if (onLockWallet) {
+                onLockWallet();
+              } else {
+                toast.error('Lock function not available');
+              }
+            }}
             variant="outline"
             className="w-full h-12 border-slate-800 bg-slate-900/50 hover:bg-slate-800/50 text-white backdrop-blur-sm transition-all"
           >

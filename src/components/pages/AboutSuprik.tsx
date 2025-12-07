@@ -2,6 +2,7 @@ import { ArrowLeft, Info, Github, Twitter, Globe, Mail, Heart, Shield, Zap, User
 import { motion } from 'motion/react';
 import { Button } from '../ui/button';
 import { Separator } from '../ui/separator';
+import suprikLogo from 'figma:asset/5aa4d38c7eec78d8bd26f08104423d0aa0e3b5f4.png';
 
 interface AboutSuprikProps {
   onBack: () => void;
@@ -59,9 +60,9 @@ export function AboutSuprik({ onBack }: AboutSuprikProps) {
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-            className="text-8xl mb-6"
+            className="mb-6 flex justify-center"
           >
-            🪐
+            <img src={suprikLogo} alt="Suprik Logo" className="w-32 h-32 rounded-full" />
           </motion.div>
           <h2 className="text-3xl font-bold mb-2 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
             Suprik Wallet
