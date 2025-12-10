@@ -74,6 +74,7 @@
         '@': path.resolve(__dirname, './src'),
       },
     },
+    root: '.',
     build: {
       target: 'esnext',
       outDir: 'build',

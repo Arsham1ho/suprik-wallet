@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, Plus, ChevronRight, Copy, User } from 'lucide-react';
 import { AnimalAvatar } from './AnimalAvatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { copyToClipboard } from '../utils/clipboard';
 
 interface Account {

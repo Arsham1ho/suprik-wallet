@@ -32,7 +32,7 @@ import { DevModeDialog } from '../DevModeDialog';
 import { RpcSettings } from './RpcSettings';
 import { HelpAndSupport } from './HelpAndSupport';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { PlanetAvatar } from '../PlanetAvatar';
 import { AnimalAvatar } from '../AnimalAvatar';
 import { useNetwork } from '../../utils/NetworkContext';

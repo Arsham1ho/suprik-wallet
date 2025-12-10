@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from './ui/button';
 import { GradientButton } from './GradientButton';
 import { ArrowLeft, Mail, Lock, Eye, EyeOff, KeyRound } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { createSupabaseClient } from '../utils/supabase/client';

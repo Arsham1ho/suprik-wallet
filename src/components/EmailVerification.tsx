@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
 import { GradientButton } from './GradientButton';
 import { ArrowLeft, Mail } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { motion } from 'motion/react';
 

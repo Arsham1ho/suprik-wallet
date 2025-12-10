@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Separator } from '../ui/separator';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface InviteFriendsProps {
   onBack: () => void;

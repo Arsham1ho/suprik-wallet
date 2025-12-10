@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { CheckCircle2, ArrowDown, X, ExternalLink, Copy } from 'lucide-react';
 import { TokenLogo } from './TokenLogo';
 import { useLanguage } from '../utils/i18n/LanguageContext';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface SwapSuccessDialogProps {
   open: boolean;

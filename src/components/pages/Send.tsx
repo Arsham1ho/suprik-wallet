@@ -4,7 +4,7 @@ import { GradientButton } from '../GradientButton';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { ChevronLeft, Send as SendIcon, Check, AlertCircle, Loader2, Search, X, Camera } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { PublicKey } from '@solana/web3.js';

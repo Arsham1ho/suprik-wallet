@@ -4,7 +4,7 @@ import { Input } from './ui/input';
 import { Card } from './ui/card';
 import { Eye, EyeOff, Check, X, AlertCircle, ExternalLink } from 'lucide-react';
 import { motion } from 'motion/react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { areApiKeysConfigured } from '../utils/env';
 
 export function ApiKeySetup() {

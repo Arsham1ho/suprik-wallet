@@ -8,7 +8,7 @@ import { TokenLogo } from '../TokenLogo';
 import { TokenReceiveDialog } from '../TokenReceiveDialog';
 import { PlanetAvatar } from '../PlanetAvatar';
 import { AnimalAvatar } from '../AnimalAvatar';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
 import {

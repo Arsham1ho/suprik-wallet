@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Check, Copy, Info, ExternalLink, Share2, Download, X, Link, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { copyToClipboard } from '../utils/clipboard';
 import QRCode from 'qrcode';
 import type { Token } from './pages/Home';

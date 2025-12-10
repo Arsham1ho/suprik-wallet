@@ -6,7 +6,7 @@ import { useWallet } from '../../utils/WalletContext';
 import { useNetwork } from '../../utils/NetworkContext';
 import { fetchSolanaBalance, fetchEthereumBalance, fetchBitcoinBalance } from '../../utils/blockchain';
 import { copyToClipboard } from '../../utils/clipboard';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface BalanceCheckerProps {
   onBack: () => void;

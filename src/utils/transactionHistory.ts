@@ -1,9 +1,13 @@
 /**
  * Saturn Wallet - Transaction History Utilities
  * Fetch transaction history from Solana and Ethereum blockchains
+ * Also handles local swap history storage
  */
 
 import { getHeliusApiKey, getAlchemyApiKey } from './env';
+
+// Local storage key for swap history
+const SWAP_HISTORY_KEY = 'suprik_swap_history';
 
 export interface TransactionItem {
   id: string;
@@ -282,4 +286,80 @@ export async function fetchAllTransactionHistory(
   
   console.log('[TxHistory] ✅ Total transactions:', allTransactions.length);
   return allTransactions;
+}
+
+/**
+ * Save a swap transaction to local storage
+ */
+export function saveSwapToHistory(swap: {
+  signature: string;
+  fromToken: string;
+  toToken: string;
+  fromAmount: number;
+  toAmount: number;
+  rate?: number;
+  fee?: number;
+  feeAmount?: number;
+  walletAddress: string;
+}): void {
+  try {
+    const history = getLocalSwapHistory();
+
+    const newSwap: TransactionItem = {
+      id: swap.signature,
+      type: 'swap',
+      token: swap.fromToken,
+      amount: swap.fromAmount,
+      date: new Date().toISOString(),
+      timestamp: new Date().toISOString(),
+      status: 'confirmed',
+      signature: swap.signature,
+      network: 'solana',
+      fromToken: swap.fromToken,
+      toToken: swap.toToken,
+      fromAmount: swap.fromAmount,
+      toAmount: swap.toAmount,
+      rate: swap.rate,
+      fee: swap.fee,
+      feeAmount: swap.feeAmount,
+      from: swap.walletAddress,
+    };
+
+    // Add to beginning of array (most recent first)
+    history.unshift(newSwap);
+
+    // Keep only last 100 swaps
+    const trimmed = history.slice(0, 100);
+
+    localStorage.setItem(SWAP_HISTORY_KEY, JSON.stringify(trimmed));
+    console.log('[TxHistory] ✅ Saved swap to history:', swap.fromToken, '→', swap.toToken);
+
+    // Dispatch event to notify Activity page
+    window.dispatchEvent(new CustomEvent('swapHistoryUpdated'));
+  } catch (error) {
+    console.error('[TxHistory] Error saving swap to history:', error);
+  }
+}
+
+/**
+ * Get local swap history from storage
+ */
+export function getLocalSwapHistory(): TransactionItem[] {
+  try {
+    const stored = localStorage.getItem(SWAP_HISTORY_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('[TxHistory] Error reading swap history:', error);
+  }
+  return [];
+}
+
+/**
+ * Clear local swap history
+ */
+export function clearSwapHistory(): void {
+  localStorage.removeItem(SWAP_HISTORY_KEY);
+  console.log('[TxHistory] Cleared swap history');
 }

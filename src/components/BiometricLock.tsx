@@ -1,7 +1,14 @@
-import { Button } from './ui/button';
-import { authenticateBiometric, getBiometricTypeName, isBiometricAvailable } from '../utils/biometric';
-import { toast } from 'sonner@2.0.3';
-import { SuprikLogo } from './SuprikLogo';
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { Fingerprint, Lock, Loader2 } from "lucide-react";
+import { Button } from "./ui/button";
+import {
+  authenticateBiometric,
+  getBiometricTypeName,
+  isBiometricAvailable,
+} from "../utils/biometric";
+import { toast } from "sonner@2.0.3";
+import { SuprikLogo } from "./SuprikLogo";
 
 interface BiometricLockProps {
   walletId: string;
@@ -20,21 +27,23 @@ export function BiometricLock({ walletId, onUnlock }: BiometricLockProps) {
     const checkAvailability = async () => {
       const available = await isBiometricAvailable();
       setBiometricAvailable(available);
-      
+
       if (!available) {
-        console.log('[BiometricLock] Biometric not available, auto-unlocking...');
-        toast.info('Biometric authentication not available on this device');
+        console.log(
+          "[BiometricLock] Biometric not available, auto-unlocking..."
+        );
+        toast.info("Biometric authentication not available on this device");
         // Auto-unlock if biometric is not available
         setTimeout(() => onUnlock(), 1000);
         return;
       }
-      
+
       // Small delay for smooth animation
       setTimeout(() => {
         handleAuthenticate();
       }, 500);
     };
-    
+
     checkAvailability();
   }, []);
 
@@ -43,31 +52,34 @@ export function BiometricLock({ walletId, onUnlock }: BiometricLockProps) {
       onUnlock();
       return;
     }
-    
+
     setIsAuthenticating(true);
     setShowPulse(false);
-    
+
     try {
-      const result = await authenticateBiometric(walletId, 'Unlock Suprik Wallet');
-      
+      const result = await authenticateBiometric(
+        walletId,
+        "Unlock Suprik Wallet"
+      );
+
       if (result.success) {
-        toast.success('Wallet unlocked');
+        toast.success("Wallet unlocked");
         onUnlock();
       } else {
-        setAttempts(prev => prev + 1);
-        
+        setAttempts((prev) => prev + 1);
+
         if (result.cancelled) {
-          toast.error('Authentication cancelled');
+          toast.error("Authentication cancelled");
         } else {
-          toast.error(result.error || 'Authentication failed');
+          toast.error(result.error || "Authentication failed");
         }
-        
+
         // Re-enable pulse after failed attempt
         setTimeout(() => setShowPulse(true), 1000);
       }
     } catch (error) {
-      console.error('[BiometricLock] Error:', error);
-      toast.error('Authentication error');
+      console.error("[BiometricLock] Error:", error);
+      toast.error("Authentication error");
       setTimeout(() => setShowPulse(true), 1000);
     } finally {
       setIsAuthenticating(false);
@@ -85,21 +97,25 @@ export function BiometricLock({ walletId, onUnlock }: BiometricLockProps) {
         >
           {/* Logo/Icon */}
           <motion.div
-            animate={showPulse ? {
-              scale: [1, 1.05, 1],
-              opacity: [1, 0.8, 1],
-            } : {}}
+            animate={
+              showPulse
+                ? {
+                    scale: [1, 1.05, 1],
+                    opacity: [1, 0.8, 1],
+                  }
+                : {}
+            }
             transition={{
               duration: 2,
               repeat: showPulse ? Infinity : 0,
-              ease: "easeInOut"
+              ease: "easeInOut",
             }}
             className="flex justify-center"
           >
             <div className="relative">
               {/* Outer glow ring */}
               <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full blur-2xl opacity-30 animate-pulse" />
-              
+
               {/* Main icon container */}
               <div className="relative w-32 h-32 rounded-full bg-gradient-to-br from-purple-600 via-purple-500 to-pink-500 p-1">
                 <div className="w-full h-full rounded-full bg-black flex items-center justify-center">
@@ -115,12 +131,8 @@ export function BiometricLock({ walletId, onUnlock }: BiometricLockProps) {
 
           {/* Title */}
           <div className="space-y-2">
-            <h1 className="text-3xl text-white">
-              Suprik Wallet
-            </h1>
-            <p className="text-slate-400">
-              Locked
-            </p>
+            <h1 className="text-3xl text-white">Suprik Wallet</h1>
+            <p className="text-slate-400">Locked</p>
           </div>
 
           {/* Instructions */}
@@ -130,9 +142,7 @@ export function BiometricLock({ walletId, onUnlock }: BiometricLockProps) {
             transition={{ delay: 0.2 }}
             className="space-y-4"
           >
-            <p className="text-slate-300">
-              Use {biometricType} to unlock
-            </p>
+            <p className="text-slate-300">Use {biometricType} to unlock</p>
 
             {/* Unlock Button */}
             <Button

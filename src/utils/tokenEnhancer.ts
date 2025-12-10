@@ -8,6 +8,8 @@ interface EnhancedTokenData {
   price: number;
   logoUrl: string;
   change24h: number;
+  name?: string;
+  symbol?: string;
 }
 
 // Well-known token logos (as fallback)
@@ -29,6 +31,27 @@ const MINT_TO_COINGECKO: Record<string, string> = {
   'So11111111111111111111111111111111111111112': 'solana',
 };
 
+// Stablecoins with known fixed prices - DON'T fetch from DexScreener (returns wrong prices)
+const STABLECOIN_PRICES: Record<string, number> = {
+  'USDC': 1.00,
+  'USDT': 1.00,
+  'DAI': 1.00,
+  'BUSD': 1.00,
+  'TUSD': 1.00,
+  'USDP': 1.00,
+  'GUSD': 1.00,
+  'FRAX': 1.00,
+  'LUSD': 1.00,
+  'SUSD': 1.00,
+  'PYUSD': 1.00,
+};
+
+// Stablecoin mint addresses (Solana)
+const STABLECOIN_MINTS: Set<string> = new Set([
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+  'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+]);
+
 /**
  * Enhance a single token with real price and logo from DexScreener
  */
@@ -38,12 +61,26 @@ export async function enhanceToken(
   currentLogoUrl?: string
 ): Promise<EnhancedTokenData> {
   console.log(`[TokenEnhancer] 🔍 Enhancing ${symbol} (${mint})`);
-  
+
   // Default values
   let price = 0;
   let logoUrl = currentLogoUrl || KNOWN_LOGOS[symbol] || '';
   let change24h = 0;
-  
+  let tokenName: string | undefined;
+  let tokenSymbol: string | undefined;
+
+  // 🛡️ STABLECOIN PROTECTION: Use fixed $1.00 price for stablecoins
+  // DexScreener returns incorrect prices for stablecoins (shows trading pair prices)
+  const upperSymbol = symbol?.toUpperCase();
+  if (STABLECOIN_PRICES[upperSymbol] !== undefined || STABLECOIN_MINTS.has(mint)) {
+    console.log(`[TokenEnhancer] 💵 ${symbol} is a stablecoin - using fixed price $1.00`);
+    return {
+      price: STABLECOIN_PRICES[upperSymbol] || 1.00,
+      logoUrl: logoUrl || KNOWN_LOGOS[upperSymbol] || '',
+      change24h: 0
+    };
+  }
+
   // Try to get data from DexScreener for Solana tokens
   if (mint.length > 32 && !mint.includes('-')) {
     try {
@@ -67,7 +104,14 @@ export async function enhanceToken(
           if (bestPair.info?.imageUrl) {
             logoUrl = bestPair.info.imageUrl;
           }
-          
+
+          // Get token name and symbol from DexScreener (for unknown tokens)
+          if (bestPair.baseToken) {
+            tokenName = bestPair.baseToken.name;
+            tokenSymbol = bestPair.baseToken.symbol;
+            console.log(`[TokenEnhancer] 📛 DexScreener metadata: name="${tokenName}", symbol="${tokenSymbol}"`);
+          }
+
           console.log(`[TokenEnhancer] ✅ DexScreener: ${symbol} = $${price}, change: ${change24h}%`);
           console.log(`[TokenEnhancer] 🖼️  Logo: ${logoUrl ? 'Found' : 'Not found'}`);
         }
@@ -102,33 +146,38 @@ export async function enhanceToken(
     }
   }
   
-  return { price, logoUrl, change24h };
+  return { price, logoUrl, change24h, name: tokenName, symbol: tokenSymbol };
 }
 
 /**
  * Enhance multiple tokens in parallel
+ * Returns a map with BOTH symbol AND mint as keys for flexible lookup
  */
 export async function enhanceTokens(
   tokens: Array<{ mint: string; symbol: string; logoUrl?: string }>
 ): Promise<Map<string, EnhancedTokenData>> {
   console.log(`[TokenEnhancer] 🚀 Enhancing ${tokens.length} tokens...`);
-  
+
   const results = await Promise.all(
-    tokens.map(token => 
+    tokens.map(token =>
       enhanceToken(token.mint, token.symbol, token.logoUrl)
-        .then(data => ({ symbol: token.symbol, data }))
+        .then(data => ({ mint: token.mint, symbol: token.symbol, data }))
         .catch(error => {
           console.error(`[TokenEnhancer] ❌ Failed to enhance ${token.symbol}:`, error);
-          return { symbol: token.symbol, data: { price: 0, logoUrl: token.logoUrl || '', change24h: 0 } };
+          return { mint: token.mint, symbol: token.symbol, data: { price: 0, logoUrl: token.logoUrl || '', change24h: 0 } };
         })
     )
   );
-  
+
   const map = new Map<string, EnhancedTokenData>();
-  results.forEach(({ symbol, data }) => {
+  results.forEach(({ mint, symbol, data }) => {
+    // Store by both symbol AND mint for flexible lookup
     map.set(symbol, data);
+    if (mint) {
+      map.set(mint, data);
+    }
   });
-  
-  console.log(`[TokenEnhancer] ✅ Enhanced ${map.size} tokens`);
+
+  console.log(`[TokenEnhancer] ✅ Enhanced ${map.size} tokens (stored by symbol and mint)`);
   return map;
 }

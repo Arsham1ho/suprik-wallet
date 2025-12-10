@@ -5,7 +5,7 @@ import { Input } from './ui/input';
 import { Search, TrendingUp, TrendingDown, Plus, Loader2, Minus, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { useLanguage } from '../utils/i18n/LanguageContext';
 import { TokenLogo } from './TokenLogo';
 

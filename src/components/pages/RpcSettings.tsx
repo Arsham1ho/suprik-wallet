@@ -4,7 +4,7 @@ import { ChevronRight, Wifi, WifiOff, CheckCircle, AlertCircle, Loader2, Server 
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { useNetwork, NetworkMode, getNetworkEndpoints } from '../../utils/NetworkContext';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Connection } from '@solana/web3.js';
 
 interface RpcSettingsProps {

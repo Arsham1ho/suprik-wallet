@@ -27,6 +27,67 @@ export interface WalletAddresses {
   sui: string;
 }
 
+// Known correct logos for major tokens (override any API/on-chain data)
+// These are authoritative and won't be overwritten by potentially incorrect metadata
+const VERIFIED_TOKEN_LOGOS: Record<string, string> = {
+  'SOL': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
+  'USDC': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png',
+  'USDT': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png',
+  'ETH': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png',
+  'BTC': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/bitcoin/info/logo.png',
+  'BONK': 'https://arweave.net/hQiPZOsRZXGXBJd_82PhVdlM_hACsT_q6wqwf5cSY7I',
+  'WIF': 'https://bafkreibk3covs5ltyqxa272uodhculbr6kea6betidfwy3ajsav2vjzyum.ipfs.nftstorage.link',
+  'JUP': 'https://static.jup.ag/jup/icon.png',
+  'RAY': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R/logo.png',
+  'ORCA': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE/logo.png',
+  'MSOL': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So/logo.png',
+  'PYTH': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3/logo.png',
+  'PARAI': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
+  'PAI': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
+  'SUP': 'https://coin-images.coingecko.com/coins/images/67062/large/Suprana4-transparent-200x200x.png?1751626734',
+  'HNT': 'https://cryptologos.cc/logos/helium-hnt-logo.png',
+};
+
+// Stablecoins - never override their price (always $1.00)
+const STABLECOIN_SYMBOLS = new Set(['USDC', 'USDT', 'DAI', 'BUSD', 'TUSD', 'USDP', 'GUSD', 'FRAX', 'LUSD', 'SUSD', 'PYUSD']);
+
+// Verified token metadata by mint address
+// This provides authoritative token info when blockchain metadata is missing/incorrect
+interface TokenMetadata {
+  symbol: string;
+  name: string;
+  logo?: string;
+}
+
+const VERIFIED_TOKEN_METADATA: Record<string, TokenMetadata> = {
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': { symbol: 'USDC', name: 'USD Coin' },
+  'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': { symbol: 'USDT', name: 'Tether USD' },
+  'So11111111111111111111111111111111111111112': { symbol: 'SOL', name: 'Solana' },
+  'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263': { symbol: 'BONK', name: 'Bonk' },
+  'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN': { symbol: 'JUP', name: 'Jupiter' },
+  'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm': { symbol: 'WIF', name: 'dogwifhat' },
+  '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R': { symbol: 'RAY', name: 'Raydium' },
+  'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE': { symbol: 'ORCA', name: 'Orca' },
+  'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So': { symbol: 'MSOL', name: 'Marinade Staked SOL' },
+  'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3': { symbol: 'PYTH', name: 'Pyth Network' },
+  'HrkKngiUavecwte1ZMrdt4H5Qet3cecNUzMoEAgjTAX8': {
+    symbol: 'PAI',
+    name: 'Parabolic AI',
+    logo: 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png'
+  },
+  'SupreByajmUdeJGLzvUEUm8W4xv1gF8JBqwYnvG41Dp': {
+    symbol: 'SUP',
+    name: 'Suprana',
+    logo: 'https://coin-images.coingecko.com/coins/images/67062/large/Suprana4-transparent-200x200x.png?1751626734'
+  },
+  'hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux': {
+    symbol: 'HNT',
+    name: 'Helium',
+    logo: 'https://cryptologos.cc/logos/helium-hnt-logo.png'
+  },
+};
+
+
 /**
  * Fetch token logos from CoinGecko (with caching)
  */
@@ -175,14 +236,18 @@ export async function loadAllTokens(
     
     // SOL - show if has balance OR in mainnet mode (Phantom behavior)
     if (balances.solana.native > 0 || !isTestnet) {
+      const solAmount = Number(balances.solana.native) || 0;
+      const solPrice = Number(prices['SOL']) || 0;
+      const solValue = solAmount * solPrice;
+
       tokens.push({
         id: tokens.length + 1,
         mint: 'solana',
         name: 'Solana',
         symbol: 'SOL',
-        amount: balances.solana.native,
-        value: balances.solana.native * (prices['SOL'] || 0),
-        price: prices['SOL'] || 0,
+        amount: solAmount,
+        value: isNaN(solValue) ? 0 : solValue,
+        price: isNaN(solPrice) ? 0 : solPrice,
         change: 0,
         logo: '◎',
         logoUrl: 'https://cryptologos.cc/logos/solana-sol-logo.png',
@@ -205,39 +270,94 @@ export async function loadAllTokens(
         // In testnet: only show tokens with balance
         // In mainnet: show ALL tokens (like Phantom)
         if (token.amount > 0 || !isTestnet) {
+          // 🔍 Check for verified metadata FIRST (highest priority for unknown tokens)
+          const verifiedMeta = token.mint ? VERIFIED_TOKEN_METADATA[token.mint] : null;
+
+          // Use verified metadata if available, otherwise fall back to blockchain data
+          let finalSymbol = verifiedMeta?.symbol || token.symbol || 'UNKNOWN';
+          let finalName = verifiedMeta?.name || token.name || finalSymbol || 'Unknown Token';
+
           console.log(`[TokenLoader] ✅ Adding token #${idx + 1}:`, {
-            symbol: token.symbol,
-            name: token.name,
+            symbol: finalSymbol,
+            name: finalName,
             amount: token.amount,
             mint: token.mint,
-            logoUrl: token.logoUrl // Log the logoUrl from Helius
+            logoUrl: token.logoUrl,
+            verifiedMeta: verifiedMeta ? 'YES' : 'NO'
           });
-          
-          // Use logoUrl from Helius (DAS API) first, then fallback to CoinGecko
-          let tokenLogoUrl = token.logoUrl || logos[token.symbol] || '';
-          
+
+          // PRIORITY ORDER for logo:
+          // 1. Verified token metadata logo (hardcoded, always correct)
+          // 2. Verified token logos by symbol
+          // 3. Enhanced data from DexScreener
+          // 4. Helius DAS API (may have incorrect metadata)
+          // 5. CoinGecko logos
+
+          // Start with verified metadata logo (HIGHEST PRIORITY)
+          let tokenLogoUrl = verifiedMeta?.logo || '';
+
+          // Then try verified logos by symbol
+          if (!tokenLogoUrl) {
+            tokenLogoUrl = VERIFIED_TOKEN_LOGOS[finalSymbol] || '';
+          }
+
           // Check if enhanced data is available (from DexScreener)
-          const enhancedToken = enhancedData.get(token.symbol);
+          // Try by symbol first, then by mint address
+          let enhancedToken = enhancedData.get(finalSymbol);
+
+          // For unknown tokens, try to find by mint address
+          if (!enhancedToken && token.mint) {
+            enhancedToken = enhancedData.get(token.mint);
+          }
+
           if (enhancedToken) {
-            if (enhancedToken.logoUrl) {
+            // 🔧 FIX: Use DexScreener name/symbol for unknown tokens
+            if ((finalName === 'Unknown Token' || finalSymbol === 'UNKNOWN') && enhancedToken.name && enhancedToken.symbol) {
+              console.log(`[TokenLoader] 🔧 Fixing unknown token with DexScreener data: ${enhancedToken.name} (${enhancedToken.symbol})`);
+              finalName = enhancedToken.name;
+              finalSymbol = enhancedToken.symbol;
+            }
+
+            // Only use enhanced logo if we don't have a verified one
+            if (!tokenLogoUrl && enhancedToken.logoUrl) {
               tokenLogoUrl = enhancedToken.logoUrl;
             }
-            if (enhancedToken.price > 0) {
-              prices[token.symbol] = enhancedToken.price;
+            // 🛡️ STABLECOIN PROTECTION: Never override stablecoin prices
+            // DexScreener returns trading pair prices which are wrong for stablecoins
+            const isStablecoin = STABLECOIN_SYMBOLS.has(finalSymbol.toUpperCase());
+            if (enhancedToken.price > 0 && !isStablecoin) {
+              prices[finalSymbol] = enhancedToken.price;
+            } else if (isStablecoin) {
+              prices[finalSymbol] = 1.00; // Force stablecoin price to $1.00
+              console.log(`[TokenLoader] 💵 ${finalSymbol} is stablecoin - using fixed $1.00 price`);
             }
-            console.log(`[TokenLoader] 🔥 Enhanced ${token.symbol}: price=$${enhancedToken.price}, logo=${enhancedToken.logoUrl ? 'YES' : 'NO'}`);
+            console.log(`[TokenLoader] 🔥 Enhanced ${finalSymbol}: price=$${prices[finalSymbol]}, logo=${enhancedToken.logoUrl ? 'YES' : 'NO'}${isStablecoin ? ' (STABLECOIN)' : ''}`);
           }
-          
+
+          // Fallback to Helius/CoinGecko only if no verified logo
+          if (!tokenLogoUrl) {
+            tokenLogoUrl = token.logoUrl || logos[finalSymbol] || '';
+          }
+
+          console.log(`[TokenLoader] 🖼️ Logo for ${finalSymbol}: ${tokenLogoUrl ? 'FOUND' : 'MISSING'} (verified: ${!!verifiedMeta?.logo || !!VERIFIED_TOKEN_LOGOS[finalSymbol]})`);
+
+          // Calculate price safely (ensure it's a valid number)
+          // 🛡️ FINAL SAFEGUARD: Force stablecoins to $1.00
+          const isStablecoinFinal = STABLECOIN_SYMBOLS.has(finalSymbol.toUpperCase());
+          const tokenPrice = isStablecoinFinal ? 1.00 : (Number(prices[finalSymbol]) || 0);
+          const tokenAmount = Number(token.amount) || 0;
+          const tokenValue = tokenAmount * tokenPrice;
+
           tokens.push({
             id: tokens.length + 1,
-            mint: token.mint || token.symbol.toLowerCase(),
-            name: token.name || token.symbol || 'Unknown Token',
-            symbol: token.symbol || 'UNKNOWN',
-            amount: token.amount || 0,
-            value: (token.amount || 0) * (prices[token.symbol] || 0),
-            price: prices[token.symbol] || 0,
-            change: enhancedToken?.change24h || 0,
-            logo: token.symbol?.charAt(0) || '?',
+            mint: token.mint || finalSymbol.toLowerCase(),
+            name: finalName,
+            symbol: finalSymbol,
+            amount: tokenAmount,
+            value: isNaN(tokenValue) ? 0 : tokenValue,
+            price: isNaN(tokenPrice) ? 0 : tokenPrice,
+            change: Number(enhancedToken?.change24h) || 0,
+            logo: finalSymbol.charAt(0) || '?',
             logoUrl: tokenLogoUrl,
             color: 'from-cyan-500 to-blue-600',
             network: 'solana'

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RefreshCw, Grid2X2, Send as SendIcon, Plus, Search, DollarSign, QrCode, ChevronDown, Loader2 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useWallet } from '../../utils/WalletContext';
 import { fetchAllBalances, fetchTokenPrices } from '../../utils/blockchain';
@@ -177,6 +177,9 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
   const [sendBtnTapped, setSendBtnTapped] = useState(false);
   const [swapBtnTapped, setSwapBtnTapped] = useState(false);
   const [buyBtnTapped, setBuyBtnTapped] = useState(false);
+
+  // Ref to track wallet state for interval callback (avoids recreating interval)
+  const walletStateRef = useRef({ isUnlocked: wallet.isUnlocked, addresses: wallet.addresses });
   const [accounts, setAccounts] = useState([
     {
       id: walletId,
@@ -240,20 +243,18 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
     };
 
     window.addEventListener('storage', handleStorageChange);
-    
-    // Check every second for changes (for same-tab updates)
+
+    // Check periodically for same-tab updates (reduced frequency to avoid battery drain)
     const interval = setInterval(() => {
       const currentBg = localStorage.getItem('balanceBackground') || 'atom';
-      if (currentBg !== balanceBackground) {
-        setBalanceBackground(currentBg);
-      }
-    }, 1000);
+      setBalanceBackground(prev => prev !== currentBg ? currentBg : prev);
+    }, 5000); // Check every 5 seconds instead of 1
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(interval);
     };
-  }, [balanceBackground]);
+  }, []); // Empty dependency array - interval only created once
 
   // Listen for blockchain timeout events
   useEffect(() => {
@@ -487,21 +488,27 @@ Check console for full details!
     cleanupDuplicateTokens();
   }, [walletId]); // Only run on mount and when walletId changes
   
+  // Keep wallet state ref updated
+  useEffect(() => {
+    walletStateRef.current = { isUnlocked: wallet.isUnlocked, addresses: wallet.addresses };
+  }, [wallet.isUnlocked, wallet.addresses]);
+
   // Auto-refresh interval - separated to prevent memory leaks
   useEffect(() => {
     // 🚀 OPTIMIZATION: Auto-refresh every 10 seconds (like Phantom) - prices are cached for 60s
     const priceInterval = setInterval(() => {
-      if (wallet.isUnlocked && wallet.addresses) {
+      // Use ref to get current wallet state without recreating interval
+      if (walletStateRef.current.isUnlocked && walletStateRef.current.addresses) {
         console.log('[Home] ⚡ Auto-refreshing balances (fast mode)...');
         setLastPriceUpdate(new Date());
         loadBlockchainBalances(true);
       }
     }, 10000); // 10 seconds - faster than before!
-    
+
     return () => {
       clearInterval(priceInterval);
     };
-  }, [wallet.addresses, wallet.isUnlocked]); // Re-create interval when wallet state changes
+  }, []); // Empty dependency - interval created only once
   
   // Event listeners - separated to run only once
   useEffect(() => {
@@ -1076,9 +1083,24 @@ Check console for full details!
     }
   };
 
-  const totalBalance = tokens.reduce((sum, token) => sum + token.value, 0);
-  const totalChange = tokens.reduce((sum, token) => sum + (token.amount * token.price * token.change / 100), 0);
+  // Calculate total balance with NaN protection
+  const totalBalance = tokens.reduce((sum, token) => {
+    const value = Number(token.value) || 0;
+    return sum + (isNaN(value) ? 0 : value);
+  }, 0);
+  const totalChange = tokens.reduce((sum, token) => {
+    const change = (Number(token.amount) || 0) * (Number(token.price) || 0) * (Number(token.change) || 0) / 100;
+    return sum + (isNaN(change) ? 0 : change);
+  }, 0);
   const totalChangePercent = totalBalance > 0 ? (totalChange / totalBalance) * 100 : 0;
+
+  // Debug logging for balance issues
+  console.log('[Home] 💰 Balance calculation:', {
+    tokenCount: tokens.length,
+    totalBalance,
+    totalChange,
+    tokenValues: tokens.map(t => ({ symbol: t.symbol, value: t.value, amount: t.amount, price: t.price }))
+  });
 
   // Animate balance changes smoothly
   useEffect(() => {

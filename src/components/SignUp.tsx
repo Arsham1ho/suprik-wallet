@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { GradientButton } from './GradientButton';
 import { ArrowLeft, Eye, EyeOff, Copy, Check } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Card } from './ui/card';
 import { copyToClipboard } from '../utils/clipboard';
 import { motion, AnimatePresence } from 'motion/react';
@@ -27,7 +27,12 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
 
   // Generate mnemonic on mount
   useEffect(() => {
-    generateMnemonic().then(setSeedPhrase);
+    generateMnemonic()
+      .then(setSeedPhrase)
+      .catch((error) => {
+        console.error('[SignUp] Failed to generate mnemonic:', error);
+        toast.error('Failed to generate wallet. Please refresh and try again.');
+      });
   }, []);
 
   const handleCopy = async () => {

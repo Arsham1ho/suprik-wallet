@@ -15,7 +15,7 @@ import { MainApp } from './components/MainApp';
 import { BiometricLock } from './components/BiometricLock';
 import { InstallPWA } from './components/mobile/InstallPWA';
 import { Toaster } from './components/ui/sonner';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ThemeProvider } from './utils/ThemeContext';
 import { WalletProvider, useWallet } from './utils/WalletContext';
 import { LanguageProvider } from './utils/i18n/LanguageContext';

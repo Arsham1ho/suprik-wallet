@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Loader2 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { createSupabaseClient } from '../utils/supabase/client';
 import { generateMnemonic, deriveWalletId, SecureStorage, WalletStorage } from '../utils/wallet';
 import { useWallet } from '../utils/WalletContext';

@@ -4,7 +4,7 @@ import { ArrowLeft, Search as SearchIcon, X, TrendingUp, TrendingDown, Plus, Min
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { TokenLogo } from '../TokenLogo';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { addCustomToken, removeCustomToken, isTokenAdded, getCustomTokens } from '../../utils/customTokens';
@@ -134,44 +134,85 @@ const CoinItem = memo(({
 
 CoinItem.displayName = 'CoinItem';
 
+// Comprehensive list of Solana-native tokens (by CoinGecko ID and symbol)
+const SOLANA_TOKEN_IDS = new Set([
+  'solana', 'bonk', 'jupiter-exchange-solana', 'jito-governance-token', 'pyth-network',
+  'dogwifcoin', 'raydium', 'serum', 'orca', 'mango-markets', 'marinade-staked-sol',
+  'msol', 'render-token', 'helium', 'helium-mobile', 'hivemapper', 'grass',
+  'tensor', 'parcl', 'jito-staked-sol', 'blazestake-staked-sol', 'samoyedcoin',
+  'bonfida', 'step-finance', 'cope', 'dust-protocol', 'stepn', 'green-satoshi-token',
+  'magic-eden', 'phantom', 'drift-protocol', 'marinade', 'lido-staked-sol',
+  'kin', 'star-atlas', 'star-atlas-dao', 'aurory', 'genopets', 'defi-land',
+  'zebec-protocol', 'port-finance', 'tulip-protocol', 'solend', 'francium',
+  'larix', 'hubble', 'saber', 'sunny-aggregator', 'quarry', 'lifinity',
+  'cropper-finance', 'aldrin', 'dexlab', 'cyclos', 'goosefx', 'zeta',
+  'hxro', 'mango', 'friktion', 'katana', 'psyoptions', 'synchrony',
+  'mean-dao', 'symmetry', 'investin', 'solrise-finance', 'ratio-finance',
+  'parrot-protocol', 'apricot-finance', 'jet-protocol', 'oxygen', 'mercurial-finance',
+  'cashio', 'uxd-protocol', 'port-protocol', 'kamino', 'marginfi',
+  'popcat', 'cat-in-a-dogs-world', 'book-of-meme', 'slerf', 'wen-4',
+  'jeo-boden', 'mother-iggy', 'pundu', 'gigachad-2', 'myro',
+  'silly-dragon', 'analos', 'harambe', 'bonk-2', 'dogwifhat',
+  'parabolic-ai', 'suprana', 'io-net', 'wormhole', 'nosana',
+  'access-protocol', 'grape-protocol', 'ninja-protocol', 'solanium',
+  'liq-protocol', 'genesysgo-shadow', 'only1', 'media-network',
+]);
+
+const SOLANA_TOKEN_SYMBOLS = new Set([
+  'sol', 'bonk', 'jup', 'jto', 'pyth', 'wif', 'ray', 'srm', 'orca', 'mngo',
+  'msol', 'rndr', 'hnt', 'mobile', 'honey', 'tnsr', 'prcl', 'jitosol', 'bsol',
+  'samo', 'fida', 'step', 'cope', 'dust', 'gmt', 'gst', 'me', 'drift',
+  'kin', 'atlas', 'polis', 'aury', 'gene', 'dfl', 'zbc', 'port', 'tulip',
+  'slnd', 'fran', 'larix', 'hbb', 'sbr', 'sunny', 'qry', 'lfnty',
+  'crp', 'rin', 'dxl', 'cys', 'gofx', 'zex', 'hxro', 'ftt', 'kat',
+  'psy', 'mean', 'symm', 'ivn', 'slrs', 'ratio', 'prt', 'apt', 'jet',
+  'oxy', 'mer', 'cash', 'uxd', 'kmno', 'mfi', 'popcat', 'mew', 'bome',
+  'slerf', 'wen', 'boden', 'mother', 'pundu', 'giga', 'myro', 'silly',
+  'anal', 'haram', 'pai', 'parai', 'sup', 'supra', 'io', 'w', 'nos',
+  'acs', 'grape', 'ninja', 'slim', 'liq', 'shdw', 'like', 'media',
+]);
+
 // Helper function to detect blockchain based on token metadata
 const detectBlockchain = (coin: CoinGeckoToken): string[] => {
   const symbol = coin.symbol.toLowerCase();
   const name = coin.name.toLowerCase();
   const id = coin.id.toLowerCase();
-  
+
   const blockchains: string[] = [];
-  
-  // Solana tokens (common identifiers)
+
+  // Solana tokens - check comprehensive lists
   if (
+    SOLANA_TOKEN_IDS.has(id) ||
+    SOLANA_TOKEN_SYMBOLS.has(symbol) ||
     id.includes('solana') ||
-    symbol === 'sol' ||
-    ['bonk', 'jup', 'jto', 'pyth', 'wif', 'ray', 'srm', 'orca', 'mngo', 'pai', 'parai', 'supra'].includes(symbol)
+    name.includes('solana') ||
+    (coin.mint && coin.mint.length > 30) // Has Solana mint address
   ) {
     blockchains.push('solana');
   }
-  
+
   // Ethereum tokens (most popular tokens are on Ethereum)
   if (
     id.includes('ethereum') ||
     symbol === 'eth' ||
-    ['usdt', 'usdc', 'dai', 'uni', 'link', 'aave', 'comp', 'snx', 'mkr', 'crv', 'ens', 'ldo'].includes(symbol) ||
+    ['usdt', 'usdc', 'dai', 'uni', 'link', 'aave', 'comp', 'snx', 'mkr', 'crv', 'ens', 'ldo', 'wbtc', 'weth', 'shib', 'pepe', 'ape', 'sand', 'mana', 'axs', 'gala', 'imx', 'blur'].includes(symbol) ||
     name.includes('ethereum') ||
     name.includes('erc-20') ||
     name.includes('erc20')
   ) {
     blockchains.push('ethereum');
   }
-  
+
   // Polygon tokens
   if (
     id.includes('polygon') ||
     symbol === 'matic' ||
+    symbol === 'pol' ||
     name.includes('polygon')
   ) {
     blockchains.push('polygon');
   }
-  
+
   // BSC tokens
   if (
     id.includes('binance') ||
@@ -182,12 +223,12 @@ const detectBlockchain = (coin: CoinGeckoToken): string[] => {
   ) {
     blockchains.push('bsc');
   }
-  
+
   // If no specific blockchain detected, assume it's multi-chain or ethereum (most common)
   if (blockchains.length === 0) {
     blockchains.push('ethereum');
   }
-  
+
   return blockchains;
 };
 
@@ -361,7 +402,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
       console.log(`Fetching coins page ${pageNum}...`);
       
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=${pageNum}&per_page=100`,
+        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=${pageNum}&per_page=250`,
         {
           headers: {
             'Authorization': `Bearer ${publicAnonKey}`
@@ -410,23 +451,35 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
       }
 
       if (pageNum === 1) {
-        setCoins(data);
+        // Deduplicate data by id
+        const seenIds = new Set<string>();
+        const uniqueData = data.filter((coin: CoinGeckoToken) => {
+          if (seenIds.has(coin.id)) return false;
+          seenIds.add(coin.id);
+          return true;
+        });
+        setCoins(uniqueData);
         // Cache the first page in localStorage
         try {
           localStorage.setItem('coingecko_coins_cache', JSON.stringify({
-            data,
+            data: uniqueData,
             timestamp: Date.now()
           }));
         } catch (e) {
           console.error('Error caching data:', e);
         }
       } else {
-        setCoins(prev => [...prev, ...data]);
+        // Deduplicate when appending new pages
+        setCoins(prev => {
+          const existingIds = new Set(prev.map(c => c.id));
+          const newCoins = data.filter((coin: CoinGeckoToken) => !existingIds.has(coin.id));
+          return [...prev, ...newCoins];
+        });
       }
 
-      // Stop loading more if we got less than 100 coins (last page)
-      if (data.length < 100) {
-        console.log(`⚠️ Received ${data.length} coins (less than 100) - this is the last page`);
+      // Stop loading more if we got less than 250 coins (last page)
+      if (data.length < 250) {
+        console.log(`⚠️ Received ${data.length} coins (less than 250) - this is the last page`);
         setHasMore(false);
         toast.success('All available tokens loaded!');
       } else {
@@ -475,7 +528,17 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
   const filteredCoins = useMemo(() => {
     // Combine featured tokens with regular coins
     let allCoins = [...featuredTokensData, ...coins];
-    
+
+    // Remove duplicates by coin.id (keep first occurrence - featured tokens first)
+    const seenIds = new Set<string>();
+    allCoins = allCoins.filter(coin => {
+      if (seenIds.has(coin.id)) {
+        return false;
+      }
+      seenIds.add(coin.id);
+      return true;
+    });
+
     // Apply blockchain filter
     if (blockchainFilter !== 'all') {
       allCoins = allCoins.filter(coin => {
@@ -483,7 +546,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
         return blockchains.includes(blockchainFilter);
       });
     }
-    
+
     // Apply search filter
     if (!searchQuery) return allCoins;
     const query = searchQuery.toLowerCase();
@@ -491,7 +554,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
       coin.name.toLowerCase().includes(query) ||
       coin.symbol.toLowerCase().includes(query)
     );
-    
+
     console.log(`[Search] Query: "${searchQuery}", Filtered: ${filtered.length} results`);
     return filtered;
   }, [coins, searchQuery, featuredTokensData, blockchainFilter]);

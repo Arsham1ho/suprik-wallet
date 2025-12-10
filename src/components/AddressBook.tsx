@@ -5,7 +5,7 @@ import { Label } from './ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { UserPlus, Edit2, Trash2, Copy, Check, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { useLanguage } from '../utils/i18n/LanguageContext';

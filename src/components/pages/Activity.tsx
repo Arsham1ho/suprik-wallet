@@ -4,11 +4,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { useWallet } from '../../utils/WalletContext';
 import { useNetwork } from '../../utils/NetworkContext';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
-import { fetchAllTransactionHistory, type TransactionItem } from '../../utils/transactionHistory';
+import { fetchAllTransactionHistory, getLocalSwapHistory, type TransactionItem } from '../../utils/transactionHistory';
 import { TokenLogo } from '../TokenLogo';
 
 interface ActivityProps {
@@ -42,12 +42,20 @@ export function Activity({ walletId }: ActivityProps) {
       console.log('[Activity] Balance update event received, refreshing activities...');
       fetchActivities();
     };
-    
+
+    // Listen for swap history updates
+    const handleSwapHistoryUpdate = () => {
+      console.log('[Activity] Swap history updated, refreshing activities...');
+      fetchActivities();
+    };
+
     window.addEventListener('walletBalanceUpdated', handleBalanceUpdate);
-    
+    window.addEventListener('swapHistoryUpdated', handleSwapHistoryUpdate);
+
     return () => {
       clearInterval(pollingInterval);
       window.removeEventListener('walletBalanceUpdated', handleBalanceUpdate);
+      window.removeEventListener('swapHistoryUpdated', handleSwapHistoryUpdate);
     };
   }, [walletId, network.isTestnet]); // Removed wallet.addresses to prevent unnecessary re-renders
 
@@ -65,10 +73,12 @@ export function Activity({ walletId }: ActivityProps) {
       console.log('[Activity] 🔄 Fetching transaction history from blockchain...');
       console.log('[Activity] Network mode:', network.isTestnet ? 'TESTNET' : 'MAINNET');
       
-      // 🧪 TESTNET MODE: No transactions available in testnet
+      // 🧪 TESTNET MODE: Show local swap history only (blockchain txs not available)
       if (network.isTestnet) {
-        console.log('[Activity] ⚠️ Testnet mode: No transaction history available');
-        setActivities([]);
+        console.log('[Activity] ⚠️ Testnet mode: Showing local swap history only');
+        const localSwaps = getLocalSwapHistory();
+        console.log('[Activity] 📱 Local swap history:', localSwaps.length, 'swaps');
+        setActivities(localSwaps);
         return;
       }
       
@@ -77,6 +87,10 @@ export function Activity({ walletId }: ActivityProps) {
         setActivities([]);
         return;
       }
+
+      // Get local swap history first (always available)
+      const localSwaps = getLocalSwapHistory();
+      console.log('[Activity] 📱 Local swap history:', localSwaps.length, 'swaps');
 
       // Fetch from blockchain APIs (mainnet only)
       const transactions = await fetchAllTransactionHistory(
@@ -88,7 +102,19 @@ export function Activity({ walletId }: ActivityProps) {
       );
 
       console.log('[Activity] ✅ Loaded', transactions.length, 'transactions from blockchain');
-      setActivities(transactions);
+
+      // Merge local swaps with blockchain transactions
+      // Avoid duplicates by checking signatures
+      const existingSignatures = new Set(transactions.map(tx => tx.signature).filter(Boolean));
+      const uniqueLocalSwaps = localSwaps.filter(swap => !existingSignatures.has(swap.signature));
+
+      // Combine and sort by date (most recent first)
+      const allActivities = [...transactions, ...uniqueLocalSwaps].sort((a, b) => {
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      });
+
+      console.log('[Activity] 📊 Total activities:', allActivities.length, '(blockchain:', transactions.length, ', local swaps:', uniqueLocalSwaps.length, ')');
+      setActivities(allActivities);
     } catch (error: any) {
       console.error('[Activity] ❌ Error fetching activities:', error);
       toast.error('Failed to load transaction history');

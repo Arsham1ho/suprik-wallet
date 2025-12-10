@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from './ui/button';
 import { GradientButton } from './GradientButton';
 import { ArrowLeft } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { validateMnemonic, deriveWalletId, SecureStorage, WalletStorage } from '../utils/wallet';
 import { Card } from './ui/card';

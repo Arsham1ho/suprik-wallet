@@ -3,7 +3,7 @@ import { Button } from '../ui/button';
 import { ChevronRight, Check, Copy, ExternalLink, Wallet, TrendingUp, DollarSign, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface FeeWalletInfoProps {
   onBack: () => void;

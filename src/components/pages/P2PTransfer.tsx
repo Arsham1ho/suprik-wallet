@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { useWallet } from '../../utils/WalletContext';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
 import { fetchAllBalances, fetchTokenPrices } from '../../utils/blockchain';

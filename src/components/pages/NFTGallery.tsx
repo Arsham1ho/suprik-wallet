@@ -3,7 +3,7 @@ import { Button } from '../ui/button';
 import { ArrowLeft, ExternalLink, Loader2, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
 

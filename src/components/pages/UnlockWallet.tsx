@@ -9,7 +9,7 @@ import { Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card } from '../ui/card';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { useWeb3Wallet } from '../../contexts/Web3WalletContext';
 
 interface UnlockWalletProps {

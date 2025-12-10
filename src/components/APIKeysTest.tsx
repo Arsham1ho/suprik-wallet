@@ -3,7 +3,7 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { RefreshCw, CheckCircle, XCircle, AlertCircle, ExternalLink } from 'lucide-react';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export function APIKeysTest() {
   const [testing, setTesting] = useState(false);
