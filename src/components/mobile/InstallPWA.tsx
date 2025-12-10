@@ -149,7 +149,7 @@ export function InstallPWA() {
                   <Download className="w-8 h-8 text-white" />
                 </div>
                 <h2 className="text-2xl text-white mb-2">
-                  Install Suplet Wallet
+                  Install Suprik Wallet
                 </h2>
                 <p className="text-slate-400 text-sm">
                   {instructions.platform} Instructions

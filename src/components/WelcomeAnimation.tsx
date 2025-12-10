@@ -198,7 +198,7 @@ export function WelcomeAnimation({ onComplete }: WelcomeAnimationProps) {
           Welcome
         </h1>
         <p className="text-slate-400 text-lg">
-          to Suplet Wallet
+          to Suprik Wallet
         </p>
 
         {/* Loading dots */}

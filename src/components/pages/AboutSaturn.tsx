@@ -3,11 +3,11 @@ import { motion } from 'motion/react';
 import { Button } from '../ui/button';
 import { Separator } from '../ui/separator';
 
-interface AboutSupletProps {
+interface AboutSuprikProps {
   onBack: () => void;
 }
 
-export function AboutSuplet({ onBack }: AboutSupletProps) {
+export function AboutSuprik({ onBack }: AboutSuprikProps) {
   const features = [
     {
       icon: Shield,
@@ -44,7 +44,7 @@ export function AboutSuplet({ onBack }: AboutSupletProps) {
           >
             <ArrowLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-xl">About Suplet</h1>
+          <h1 className="text-xl">About Suprik</h1>
         </div>
       </div>
 
@@ -64,7 +64,7 @@ export function AboutSuplet({ onBack }: AboutSupletProps) {
             🪐
           </motion.div>
           <h2 className="text-3xl font-bold mb-2 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-            Suplet Wallet
+            Suprik Wallet
           </h2>
           <p className="text-slate-400 mb-1">Version 1.0.0</p>
           <p className="text-slate-500 text-sm">Your Gateway to the Crypto Universe</p>
@@ -82,8 +82,8 @@ export function AboutSuplet({ onBack }: AboutSupletProps) {
             <h3 className="text-white font-medium">About</h3>
           </div>
           <p className="text-slate-300 text-sm leading-relaxed">
-            Suplet is a modern, secure cryptocurrency wallet designed for the next generation of digital asset management. 
-            Built with cutting-edge technology and user experience in mind, Suplet makes it easy to store, send, and swap 
+            Suprik is a modern, secure cryptocurrency wallet designed for the next generation of digital asset management. 
+            Built with cutting-edge technology and user experience in mind, Suprik makes it easy to store, send, and swap 
             your favorite cryptocurrencies across multiple blockchains.
           </p>
         </motion.div>
@@ -203,7 +203,7 @@ export function AboutSuplet({ onBack }: AboutSupletProps) {
           <div className="bg-slate-900/50 border border-slate-800/30 rounded-xl p-4">
             <h4 className="text-white font-medium mb-2 text-sm">License</h4>
             <p className="text-slate-400 text-xs">
-              Suplet Wallet is open source software. Licensed under MIT License.
+              Suprik Wallet is open source software. Licensed under MIT License.
             </p>
           </div>
 
@@ -226,7 +226,7 @@ export function AboutSuplet({ onBack }: AboutSupletProps) {
           className="text-center py-6"
         >
           <p className="text-slate-600 text-xs">
-            © 2025 Suplet Wallet. All rights reserved.
+            © 2025 Suprik Wallet. All rights reserved.
           </p>
           <p className="text-slate-700 text-xs mt-1">
             Not affiliated with any blockchain or cryptocurrency project.

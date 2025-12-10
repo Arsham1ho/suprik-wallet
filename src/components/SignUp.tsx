@@ -171,7 +171,7 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
                 transition={{ delay: 0.4 }}
               >
                 <p className="text-amber-200/90 text-sm leading-relaxed">
-                  <strong className="text-amber-400 font-semibold">Warning:</strong> Suplet cannot recover your wallet if you lose your secret recovery phrase.
+                  <strong className="text-amber-400 font-semibold">Warning:</strong> Suprik cannot recover your wallet if you lose your secret recovery phrase.
                 </p>
               </motion.div>
 
@@ -310,7 +310,7 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
               <div className="space-y-2">
                 <h1 className="text-3xl font-bold">Create Password</h1>
                 <p className="text-slate-400 leading-relaxed">
-                  This password encrypts your wallet on this device. You'll need it to unlock Suplet.
+                  This password encrypts your wallet on this device. You'll need it to unlock Suprik.
                 </p>
               </div>
 

@@ -1,12 +1,12 @@
-// Dynamic Suplet Logo - No external assets needed
+// Dynamic Suprik Logo - No external assets needed
 // This works in all environments including Vercel
 
-interface SupletLogoProps {
+interface SuprikLogoProps {
   size?: number;
   className?: string;
 }
 
-export function SupletLogo({ size = 120, className = '' }: SupletLogoProps) {
+export function SuprikLogo({ size = 120, className = '' }: SuprikLogoProps) {
   return (
     <div 
       className={`relative ${className}`}
@@ -137,7 +137,7 @@ export function SupletLogo({ size = 120, className = '' }: SupletLogoProps) {
 }
 
 // For backward compatibility - export as an image URL
-export function getSupletLogoSVGDataUrl(): string {
+export function getSuprikLogoSVGDataUrl(): string {
   const svg = `
     <svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>

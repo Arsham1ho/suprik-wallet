@@ -46,7 +46,7 @@ export function SuprikLogo({ size = 160, animate = true, className = '' }: Supri
         }}
       >
         <ImageWithFallback
-          src="/src/assets/suprik-logo.png"
+          src="/suprik-logo.png"
           alt="Suprik Wallet Logo"
           className="w-full h-full object-contain"
           style={{
@@ -58,5 +58,5 @@ export function SuprikLogo({ size = 160, animate = true, className = '' }: Supri
   );
 }
 
-// Alias for backward compatibility
-export const SupletLogo = SuprikLogo;
+// Alias for backward compatibility (SupletLogo name used in some places)
+export { SuprikLogo as SupletLogo };

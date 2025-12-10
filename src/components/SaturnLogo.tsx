@@ -1,12 +1,12 @@
 import { motion } from 'motion/react';
 
-interface SupletLogoProps {
+interface SuprikLogoProps {
   size?: number;
   animate?: boolean;
   className?: string;
 }
 
-export function SupletLogo({ size = 160, animate = true, className = '' }: SupletLogoProps) {
+export function SuprikLogo({ size = 160, animate = true, className = '' }: SuprikLogoProps) {
   return (
     <div className={`relative ${className}`} style={{ width: size, height: size }}>
       {/* Outer glow */}

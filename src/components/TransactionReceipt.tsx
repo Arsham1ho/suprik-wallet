@@ -217,7 +217,7 @@ export function TransactionReceipt({ transaction }: TransactionReceiptProps) {
         {/* Footer */}
         <div className="text-center pt-4 border-t border-slate-700/50">
           <p className="text-slate-500 text-xs">
-            Powered by Suplet Wallet • {new Date().getFullYear()}
+            Powered by Suprik Wallet • {new Date().getFullYear()}
           </p>
         </div>
       </div>
