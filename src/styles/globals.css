@@ -430,6 +430,15 @@ html, body {
   min-height: -webkit-fill-available;
 }
 
+/* Ensure bg-black covers full height on mobile */
+.bg-black {
+  background-color: #000000;
+  min-height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+}
+
 /* iOS Safari specific overrides */
 @supports (-webkit-touch-callout: none) {
   .min-h-screen,
@@ -441,6 +450,25 @@ html, body {
   [class*="h-screen"] {
     height: -webkit-fill-available !important;
   }
+
+  .bg-black {
+    min-height: -webkit-fill-available !important;
+  }
+}
+
+/* Fix for fixed inset-0 elements on iOS */
+.fixed.inset-0,
+[class*="fixed"][class*="inset-0"] {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  height: -webkit-fill-available !important;
 }
 
 /* Hide scrollbars completely */
