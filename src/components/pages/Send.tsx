@@ -1133,7 +1133,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
         
       {/* Header */}
       <div className="bg-black/95 backdrop-blur-xl border-b border-slate-800/50 sticky top-0 z-20">
-        <div className="max-w-[430px] mx-auto px-6 py-4">
+        <div className="w-full md:max-w-[430px] mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center gap-4">
             <button
               onClick={handleBack}
@@ -1147,7 +1147,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
       </div>
 
       {/* Progress Indicator */}
-      <div className="max-w-[430px] mx-auto px-6 py-4 relative z-10">
+      <div className="w-full md:max-w-[430px] mx-auto px-4 sm:px-6 py-4 relative z-10">
         <div className="flex items-center gap-2">
           {['select-token', 'enter-address', 'enter-amount', 'review'].map((s, idx) => (
             <div key={s} className="flex items-center flex-1">
@@ -1162,7 +1162,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
       </div>
 
       {/* Content */}
-      <div className="max-w-[430px] mx-auto px-6 relative z-10">
+      <div className="w-full md:max-w-[430px] mx-auto px-4 sm:px-6 relative z-10">
         <AnimatePresence mode="wait">
           {/* Step 1: Select Token */}
           {step === 'select-token' && (

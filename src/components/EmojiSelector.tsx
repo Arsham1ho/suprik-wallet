@@ -152,7 +152,7 @@ export function EmojiSelector({ open, onOpenChange, onSelect, currentEmoji }: Em
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-slate-950 border-slate-800 text-white max-w-[430px] w-full max-h-[90vh] p-4 sm:p-6">
+      <DialogContent className="bg-slate-950 border-slate-800 text-white w-full md:max-w-[430px] max-h-[90vh] p-4 sm:p-6">
         <DialogHeader className="pb-3">
           <DialogTitle className="text-base sm:text-lg">Choose Your Avatar</DialogTitle>
           <DialogDescription className="text-slate-400 text-xs sm:text-sm">

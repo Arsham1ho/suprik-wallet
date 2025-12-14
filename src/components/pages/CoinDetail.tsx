@@ -906,7 +906,7 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
       <Sheet open={showMoreMenu} onOpenChange={setShowMoreMenu}>
         <SheetContent 
           side="bottom" 
-          className="bg-slate-900 border-t border-slate-800 rounded-t-3xl p-0 h-auto max-w-[430px] mx-auto pb-safe"
+          className="bg-slate-900 border-t border-slate-800 rounded-t-3xl p-0 h-auto w-full md:max-w-[430px] mx-auto pb-safe"
         >
           {/* Drag Handle */}
           <div className="w-full flex justify-center pt-3 pb-2">

@@ -423,3 +423,155 @@ html, body {
 .border-theme-primary {
   border-color: var(--color-primary) !important;
 }
+
+/* ===========================================
+   RESPONSIVE WALLET CONTAINER SYSTEM
+   - Desktop/Laptop: Fixed 430px centered (app-like)
+   - Mobile: Full width, responsive to device
+   =========================================== */
+
+/* Main wallet container - responsive wrapper */
+.wallet-container {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh; /* Dynamic viewport height for mobile browsers */
+  position: relative;
+  overflow: hidden;
+  background-color: #0f1729;
+}
+
+/* Desktop/Laptop: Fixed width centered layout */
+@media (min-width: 768px) {
+  .wallet-container {
+    max-width: 430px;
+    margin: 0 auto;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  }
+
+  .wallet-outer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: linear-gradient(to bottom right, #020617, #0f172a, #020617);
+  }
+}
+
+/* Mobile: Full width responsive */
+@media (max-width: 767px) {
+  .wallet-container {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .wallet-outer {
+    min-height: 100vh;
+    min-height: 100dvh;
+    background-color: #0f1729;
+  }
+
+  /* Ensure content uses full width on mobile */
+  .wallet-content {
+    width: 100%;
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+
+  /* Responsive text sizing for smaller phones */
+  .wallet-container h1 {
+    font-size: clamp(1.5rem, 5vw, 2rem);
+  }
+
+  .wallet-container h2 {
+    font-size: clamp(1.25rem, 4vw, 1.5rem);
+  }
+
+  .wallet-container p {
+    font-size: clamp(0.875rem, 3.5vw, 1rem);
+  }
+}
+
+/* Extra small phones (iPhone SE, older devices) */
+@media (max-width: 375px) {
+  .wallet-content {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  /* Compact spacing for small screens */
+  .wallet-container .gap-3 {
+    gap: 8px;
+  }
+
+  .wallet-container .gap-4 {
+    gap: 10px;
+  }
+
+  .wallet-container .px-4 {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .wallet-container .px-6 {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+}
+
+/* Bottom navigation responsive */
+.wallet-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (min-width: 768px) {
+  .wallet-bottom-nav {
+    max-width: 430px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+/* Modal/Dialog responsive - full screen on mobile, centered on desktop */
+.wallet-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+@media (min-width: 768px) {
+  .wallet-modal-content {
+    max-width: 430px;
+    margin: 0 auto;
+    height: 100%;
+  }
+}
+
+/* Responsive grid adjustments */
+@media (max-width: 359px) {
+  /* 4-column grids become more compact */
+  .wallet-container .grid-cols-4 {
+    gap: 6px;
+  }
+}
+
+/* Responsive button sizing */
+@media (max-width: 767px) {
+  .wallet-container button {
+    min-height: 44px; /* iOS touch target minimum */
+    font-size: clamp(0.875rem, 3.5vw, 1rem);
+  }
+}
+
+/* Responsive input fields */
+@media (max-width: 767px) {
+  .wallet-container input,
+  .wallet-container textarea {
+    font-size: 16px; /* Prevents iOS zoom on focus */
+    min-height: 48px;
+  }
+}

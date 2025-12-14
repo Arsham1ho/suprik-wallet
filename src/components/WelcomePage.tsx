@@ -19,8 +19,8 @@ export function WelcomePage({ onContinue }: WelcomePageProps) {
       }}
     >
       {/* Mobile Container */}
-      <div 
-        className="w-full max-w-[430px] h-full flex flex-col relative"
+      <div
+        className="w-full md:max-w-[430px] h-full flex flex-col relative"
         style={{
           touchAction: 'none',
           overscrollBehavior: 'none'

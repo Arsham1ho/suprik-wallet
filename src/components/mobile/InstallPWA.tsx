@@ -77,7 +77,7 @@ export function InstallPWA() {
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-20 left-4 right-4 z-50 max-w-[430px] mx-auto"
+            className="fixed bottom-20 left-4 right-4 z-50 w-auto md:max-w-[430px] mx-auto"
           >
             <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl p-4 shadow-2xl border border-purple-400/20">
               <div className="flex items-start gap-3">
@@ -140,7 +140,7 @@ export function InstallPWA() {
               animate={{ y: 0 }}
               exit={{ y: 100 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900 rounded-t-3xl max-w-[430px] w-full p-6 border-t border-slate-700"
+              className="bg-slate-900 rounded-t-3xl w-full md:max-w-[430px] p-6 border-t border-slate-700"
             >
               <div className="w-12 h-1 bg-slate-700 rounded-full mx-auto mb-6" />
               

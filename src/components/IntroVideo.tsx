@@ -50,8 +50,8 @@ export function IntroVideo({ onComplete }: IntroVideoProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden" style={{ backgroundColor: '#0f1729' }}>
       {/* Mobile Container */}
-      <div 
-        className="w-full max-w-[430px] h-full flex flex-col relative"
+      <div
+        className="w-full md:max-w-[430px] h-full flex flex-col relative"
         style={{
           touchAction: 'none',
           overscrollBehavior: 'none'
