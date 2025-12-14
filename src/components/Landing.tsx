@@ -10,11 +10,16 @@ interface LandingProps {
 
 export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
   return (
-    <div 
-      className="h-screen text-white flex items-center justify-center overflow-hidden relative select-none"
+    <div
+      className="wallet-outer text-white flex items-center justify-center overflow-hidden relative select-none"
       style={{
         position: 'fixed',
-        inset: 0,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100%',
+        height: '100%',
         touchAction: 'none',
         WebkitUserSelect: 'none',
         userSelect: 'none',
@@ -24,8 +29,9 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
     >
       {/* Mobile Container */}
       <div
-        className="w-full md:max-w-[430px] h-full flex flex-col relative"
+        className="wallet-container w-full md:max-w-[430px] flex flex-col relative"
         style={{
+          height: '100%',
           touchAction: 'none',
           overscrollBehavior: 'none',
           backgroundImage: `url(${backgroundImage})`,

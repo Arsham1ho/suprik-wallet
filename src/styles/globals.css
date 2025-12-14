@@ -368,7 +368,36 @@ html, body {
   overscroll-behavior-y: none;
   -webkit-overflow-scrolling: touch;
   width: 100%;
+  /* Fix for Safari/iOS - use multiple height values for fallback */
+  height: 100%;
+  min-height: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+  margin: 0;
+  padding: 0;
+  background-color: #0f1729;
+}
+
+/* iOS Safari specific fix for viewport height */
+@supports (-webkit-touch-callout: none) {
+  html, body {
+    height: -webkit-fill-available;
+    min-height: -webkit-fill-available;
+  }
+
+  #root {
+    height: 100%;
+    min-height: -webkit-fill-available;
+  }
+}
+
+#root {
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: #0f1729;
+  overflow: hidden;
 }
 
 /* Hide scrollbars completely */
@@ -433,11 +462,28 @@ html, body {
 /* Main wallet container - responsive wrapper */
 .wallet-container {
   width: 100%;
+  height: 100%;
+  min-height: 100%;
   min-height: 100vh;
-  min-height: 100dvh; /* Dynamic viewport height for mobile browsers */
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
   position: relative;
   overflow: hidden;
+  overflow-y: auto;
   background-color: #0f1729;
+}
+
+/* iOS Safari specific fix */
+@supports (-webkit-touch-callout: none) {
+  .wallet-container {
+    height: -webkit-fill-available;
+    min-height: -webkit-fill-available;
+  }
+
+  .wallet-outer {
+    height: -webkit-fill-available;
+    min-height: -webkit-fill-available;
+  }
 }
 
 /* Desktop/Laptop: Fixed width centered layout */
@@ -452,6 +498,7 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
+    height: 100%;
     min-height: 100vh;
     background: linear-gradient(to bottom right, #020617, #0f172a, #020617);
   }
@@ -462,11 +509,15 @@ html, body {
   .wallet-container {
     max-width: 100%;
     width: 100%;
+    height: 100%;
   }
 
   .wallet-outer {
+    height: 100%;
+    min-height: 100%;
     min-height: 100vh;
     min-height: 100dvh;
+    min-height: -webkit-fill-available;
     background-color: #0f1729;
   }
 

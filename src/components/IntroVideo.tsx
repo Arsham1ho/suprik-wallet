@@ -48,11 +48,12 @@ export function IntroVideo({ onComplete }: IntroVideoProps) {
   }, [onComplete]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden" style={{ backgroundColor: '#0f1729' }}>
+    <div className="wallet-outer fixed z-50 flex items-center justify-center overflow-hidden" style={{ top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', backgroundColor: '#0f1729' }}>
       {/* Mobile Container */}
       <div
-        className="w-full md:max-w-[430px] h-full flex flex-col relative"
+        className="wallet-container w-full md:max-w-[430px] flex flex-col relative"
         style={{
+          height: '100%',
           touchAction: 'none',
           overscrollBehavior: 'none'
         }}
