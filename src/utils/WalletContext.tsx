@@ -84,19 +84,54 @@ export function WalletProvider({
 
   const unlock = async (password: string): Promise<boolean> => {
     try {
-      const decryptedMnemonic = await SecureStorage.retrieveMnemonic(password);
-      
-      if (!decryptedMnemonic) {
-        console.error('[WalletContext] Failed to decrypt mnemonic');
+      const decryptedData = await SecureStorage.retrieveMnemonic(password);
+
+      if (!decryptedData) {
+        console.error('[WalletContext] Failed to decrypt wallet data');
         return false;
       }
 
+      // Check if this is a private key import
+      if (decryptedData.startsWith('PRIVKEY:')) {
+        console.log('[WalletContext] ✅ Private key import detected');
+        const privateKeyBase58 = decryptedData.substring(8);
+
+        // For private key imports, we stored the public key separately
+        const importedPubkey = localStorage.getItem('saturn_imported_pubkey');
+
+        if (!importedPubkey) {
+          console.error('[WalletContext] Missing imported public key');
+          return false;
+        }
+
+        // Store the private key data (not a mnemonic, but we reuse the field)
+        setMnemonic(decryptedData);
+        setIsUnlocked(true);
+
+        // For private key imports, we only have Solana address
+        // Other chains will show placeholder addresses
+        setAddresses({
+          solana: importedPubkey,
+          ethereum: '0x0000000000000000000000000000000000000000',
+          base: '0x0000000000000000000000000000000000000000',
+          polygon: '0x0000000000000000000000000000000000000000',
+          bitcoin: 'Private key import - Solana only',
+          sui: 'Private key import - Solana only',
+        });
+
+        console.log('[WalletContext] 🔑 Private key wallet unlocked:', {
+          solana: importedPubkey,
+        });
+
+        return true;
+      }
+
       console.log('[WalletContext] ✅ Mnemonic decrypted successfully');
-      setMnemonic(decryptedMnemonic);
+      setMnemonic(decryptedData);
       setIsUnlocked(true);
 
       // Derive addresses
-      const derivedAddresses = await deriveAddresses(decryptedMnemonic, currentAccount);
+      const derivedAddresses = await deriveAddresses(decryptedData, currentAccount);
       setAddresses(derivedAddresses);
       
       console.log('[WalletContext] 🔑 Addresses derived:', {

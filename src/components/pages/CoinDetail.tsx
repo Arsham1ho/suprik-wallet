@@ -458,38 +458,54 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <motion.h2 
-            key={`price-${currentPrice.toFixed(6)}`}
-            initial={{ opacity: 0.7 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4 }}
-            className="text-5xl font-bold mb-3"
-          >
-            {formatCurrency(currentPrice)}
-          </motion.h2>
-          <div className="flex flex-col items-center gap-2">
-            <div className="flex items-center gap-3">
-              <motion.span 
-                key={`change-${changeAmount.toFixed(6)}`}
+          {loading ? (
+            <>
+              {/* Loading skeleton for price */}
+              <div className="h-12 w-48 bg-slate-800/50 rounded-lg animate-pulse mx-auto mb-3" />
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="h-6 w-20 bg-slate-800/50 rounded animate-pulse" />
+                  <div className="h-6 w-16 bg-slate-800/50 rounded animate-pulse" />
+                </div>
+                <div className="h-4 w-16 bg-slate-800/50 rounded animate-pulse" />
+              </div>
+            </>
+          ) : (
+            <>
+              <motion.h2
+                key={`price-${currentPrice.toFixed(6)}`}
                 initial={{ opacity: 0.7 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.4 }}
-                className={`text-lg font-semibold ${change24h >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                className="text-5xl font-bold mb-3"
               >
-                {change24h >= 0 ? '+' : ''}{formatCurrency(changeAmount)}
-              </motion.span>
-              <motion.span 
-                key={`percent-${change24h.toFixed(4)}`}
-                initial={{ opacity: 0.7, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.4 }}
-                className={`px-2 py-1 rounded-md text-sm font-semibold ${change24h >= 0 ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}
-              >
-                {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
-              </motion.span>
-            </div>
-            <span className="text-xs text-slate-500">Past {selectedPeriod}</span>
-          </div>
+                {formatCurrency(currentPrice)}
+              </motion.h2>
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex items-center gap-3">
+                  <motion.span
+                    key={`change-${changeAmount.toFixed(6)}`}
+                    initial={{ opacity: 0.7 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.4 }}
+                    className={`text-lg font-semibold ${change24h >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                  >
+                    {change24h >= 0 ? '+' : ''}{formatCurrency(changeAmount)}
+                  </motion.span>
+                  <motion.span
+                    key={`percent-${change24h.toFixed(4)}`}
+                    initial={{ opacity: 0.7, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.4 }}
+                    className={`px-2 py-1 rounded-md text-sm font-semibold ${change24h >= 0 ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}
+                  >
+                    {change24h >= 0 ? '+' : ''}{change24h.toFixed(2)}%
+                  </motion.span>
+                </div>
+                <span className="text-xs text-slate-500">Past {selectedPeriod}</span>
+              </div>
+            </>
+          )}
         </motion.div>
 
         {/* Chart */}
