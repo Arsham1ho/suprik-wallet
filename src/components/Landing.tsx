@@ -37,13 +37,14 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
+          backgroundAttachment: 'fixed',
         }}
       >
 
         {/* Content */}
-        <div className="flex-1 flex flex-col px-6 py-6 relative z-10">
+        <div className="flex flex-col px-6 py-6 relative z-10">
           {/* Hero Section */}
-          <div className="flex-1 flex flex-col items-center justify-start pt-4">
+          <div className="flex flex-col items-center justify-start pt-4">
             {/* Logo Circle - Light purple with atom icon */}
             <div className="relative mb-6 select-none pointer-events-none">
               {/* Outer glow */}
