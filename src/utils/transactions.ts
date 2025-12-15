@@ -5,29 +5,32 @@
  */
 
 import { mnemonicToSeed } from '@scure/bip39';
-import { HDKey } from '@scure/bip32';
+import { HDKey } from 'micro-ed25519-hdkey';
 
 /**
  * Derive Solana keypair from mnemonic (CLIENT-SIDE)
+ * Uses micro-ed25519-hdkey (SLIP-0010) for derivation - same as Phantom wallet
  */
 export async function deriveSolanaKeypair(mnemonic: string, accountIndex: number = 0) {
   // Convert mnemonic to seed
   const seed = await mnemonicToSeed(mnemonic);
-  
-  // Derive Solana path: m/44'/501'/accountIndex'/0'
-  const hdKey = HDKey.fromMasterSeed(seed);
-  const derivedKey = hdKey.derive(`m/44'/501'/${accountIndex}'/0'`);
-  
-  if (!derivedKey.privateKey) {
-    throw new Error('Failed to derive private key');
+
+  // Derive Solana path using micro-ed25519-hdkey (SLIP-0010, same as Phantom)
+  // Path: m/44'/501'/accountIndex'/0'
+  const path = `m/44'/501'/${accountIndex}'/0'`;
+  const hdkey = HDKey.fromMasterSeed(seed);
+  const derived = hdkey.derive(path);
+
+  if (!derived.privateKey) {
+    throw new Error('Failed to derive Solana private key');
   }
-  
+
   // Import Solana web3.js dynamically
   const { Keypair } = await import('@solana/web3.js');
-  
-  // Create keypair from private key
-  const keypair = Keypair.fromSeed(derivedKey.privateKey);
-  
+
+  // Create keypair from derived private key (32 bytes)
+  const keypair = Keypair.fromSeed(derived.privateKey);
+
   return keypair;
 }
 

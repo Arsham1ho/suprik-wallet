@@ -376,7 +376,7 @@ html, body {
   min-height: -webkit-fill-available;
   margin: 0;
   padding: 0;
-  background-color: #0f1729;
+  background-color: #000000;
 }
 
 /* iOS Safari specific fix for viewport height */
@@ -397,7 +397,7 @@ html, body {
   min-height: 100vh;
   min-height: 100dvh;
   min-height: -webkit-fill-available;
-  background-color: #0f1729;
+  background-color: #000000;
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -541,7 +541,7 @@ html, body {
   position: relative;
   overflow: hidden;
   overflow-y: auto;
-  background-color: #0f1729;
+  background-color: #000000;
 }
 
 /* iOS Safari specific fix */
@@ -589,7 +589,7 @@ html, body {
     min-height: 100vh;
     min-height: 100dvh;
     min-height: -webkit-fill-available;
-    background-color: #0f1729;
+    background-color: #000000;
   }
 
   /* Ensure content uses full width on mobile */
@@ -695,5 +695,43 @@ html, body {
   .wallet-container textarea {
     font-size: 16px; /* Prevents iOS zoom on focus */
     min-height: 48px;
+  }
+}
+
+/* ===========================================
+   PREVENT FRAMER-MOTION FLASH/BLINK ON LOAD
+   =========================================== */
+
+/* Prevent initial flash by making content visible immediately */
+.wallet-outer,
+.wallet-container {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* Remove initial animation delay that causes flash */
+[data-framer-component-type],
+[style*="opacity: 0"],
+[style*="opacity:0"] {
+  animation-delay: 0s !important;
+  transition-delay: 0s !important;
+}
+
+/* Ensure motion elements don't flash - make animations start faster */
+@media (prefers-reduced-motion: no-preference) {
+  .wallet-container [style*="opacity"] {
+    transition-duration: 0.15s !important;
+  }
+}
+
+/* For users who prefer reduced motion, disable animations entirely */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -14,23 +14,42 @@ interface SignUpOptionsProps {
 
 export function SignUpOptions({ onSelectRecoveryPhrase, onSelectEmail, onSelectGoogle, onSelectApple, onBack }: SignUpOptionsProps) {
   return (
-    <div 
-      className="min-h-screen text-white w-full overflow-y-auto relative"
+    <div
+      className="wallet-outer text-white relative select-none"
       style={{
-        background: `url(${backgroundImage}) center/cover no-repeat`,
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100%',
+        height: '100%',
+        overflowX: 'hidden',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
         backgroundColor: '#050510',
       }}
     >
-      {/* Dark overlay for text readability */}
-      <div className="absolute inset-0 bg-black/30" />
-      
-      <div className="px-6 py-6 w-full pb-20 relative z-10">
-        {/* Header */}
-        <motion.div 
-          className="flex items-center mb-8"
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
+      {/* Mobile Container */}
+      <div
+        className="wallet-container w-full md:max-w-[430px] flex flex-col relative mx-auto"
+        style={{
+          minHeight: '100%',
+          backgroundImage: `url(${backgroundImage})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        }}
+      >
+        {/* Dark overlay for text readability */}
+        <div className="absolute inset-0 bg-black/30" />
+
+        <div
+          className="px-6 py-6 w-full relative z-10 flex-1"
+          style={{ paddingBottom: 'max(120px, calc(env(safe-area-inset-bottom) + 100px))' }}
         >
+        {/* Header */}
+        <div className="flex items-center mb-8">
           <Button
             variant="ghost"
             size="icon"
@@ -39,13 +58,9 @@ export function SignUpOptions({ onSelectRecoveryPhrase, onSelectEmail, onSelectG
           >
             <ArrowLeft className="w-5 h-5" />
           </Button>
-        </motion.div>
+        </div>
 
-        <motion.div 
-          className="space-y-8"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
+        <div className="space-y-8">
           {/* Title */}
           <div className="space-y-3">
             <h1 className="text-3xl font-bold">Create New Wallet</h1>
@@ -88,12 +103,7 @@ export function SignUpOptions({ onSelectRecoveryPhrase, onSelectEmail, onSelectG
             </motion.button>
 
             {/* Email & Password Section */}
-            <motion.div
-              className="w-full"
-              whileHover={{ scale: 1.01 }}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
+            <div className="w-full">
               <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-all relative overflow-hidden backdrop-blur-sm">
                 {/* Coming Soon Banner */}
                 <div className="absolute top-4 right-4 z-10">
@@ -147,7 +157,7 @@ export function SignUpOptions({ onSelectRecoveryPhrase, onSelectEmail, onSelectG
                   </motion.div>
                 </div>
               </div>
-            </motion.div>
+            </div>
           </div>
 
           {/* Info Box */}
@@ -156,7 +166,8 @@ export function SignUpOptions({ onSelectRecoveryPhrase, onSelectEmail, onSelectG
               <span className="text-blue-400 font-semibold">💡 Tip:</span> When you sign up with Google or Apple, we automatically create a recovery phrase for you. You can view and save it later in Settings.
             </p>
           </div>
-        </motion.div>
+        </div>
+        </div>
       </div>
     </div>
   );

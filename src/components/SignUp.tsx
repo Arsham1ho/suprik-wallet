@@ -104,13 +104,32 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white w-full">
-      <div className="px-6 pt-2 pb-6 w-full">
+    <div
+      className="wallet-outer text-white relative"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100%',
+        height: '100%',
+        overflowX: 'hidden',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        backgroundColor: '#000000',
+      }}
+    >
+      <div
+        className="wallet-container w-full md:max-w-[430px] mx-auto px-6 pt-2"
+        style={{ paddingBottom: 'max(120px, calc(env(safe-area-inset-bottom) + 100px))' }}
+      >
         {/* Header */}
-        <motion.div 
+        <motion.div
           className="flex items-center mb-4"
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
+          initial={{ x: -20 }}
+          animate={{ x: 0 }}
+          transition={{ duration: 0.2 }}
         >
           <Button
             variant="ghost"
@@ -125,13 +144,13 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
         <AnimatePresence mode="wait">
           {/* Intro Step */}
           {step === 'intro' && (
-            <motion.div 
+            <motion.div
               key="intro"
               className="space-y-5"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
+              initial={{ y: 10 }}
+              animate={{ y: 0 }}
+              exit={{ y: -10 }}
+              transition={{ duration: 0.2 }}
             >
               <div className="space-y-2">
                 <h1 className="text-3xl font-bold">Secret Recovery Phrase</h1>
@@ -145,13 +164,10 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
                   { num: 1, title: 'Save in password manager', desc: 'Store your recovery phrase securely in a password manager' },
                   { num: 2, title: 'Write it down', desc: 'Store it in a safe place separate from your computer' },
                   { num: 3, title: 'Memorize it', desc: 'This is the most secure option if you can do it' }
-                ].map((item, idx) => (
-                  <motion.div
+                ].map((item) => (
+                  <div
                     key={item.num}
                     className="flex gap-3 p-4 bg-slate-950/50 backdrop-blur-sm border border-slate-800/50 rounded-xl hover:border-slate-700/50 transition-all duration-300"
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.1 }}
                   >
                     <div className="w-8 h-8 bg-gradient-to-br from-purple-600/20 to-blue-600/20 rounded-lg flex items-center justify-center shrink-0 mt-1">
                       <span className="text-purple-400 font-semibold">{item.num}</span>
@@ -160,20 +176,15 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
                       <h3 className="text-white mb-1 font-semibold">{item.title}</h3>
                       <p className="text-slate-400 text-sm leading-relaxed">{item.desc}</p>
                     </div>
-                  </motion.div>
+                  </div>
                 ))}
               </div>
 
-              <motion.div 
-                className="bg-amber-950/20 border border-amber-900/30 rounded-xl p-4 backdrop-blur-sm"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
-              >
+              <div className="bg-amber-950/20 border border-amber-900/30 rounded-xl p-4 backdrop-blur-sm">
                 <p className="text-amber-200/90 text-sm leading-relaxed">
                   <strong className="text-amber-400 font-semibold">Warning:</strong> Suprik cannot recover your wallet if you lose your secret recovery phrase.
                 </p>
-              </motion.div>
+              </div>
 
               <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                 <GradientButton
@@ -188,28 +199,24 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
 
           {/* Phrase Step */}
           {step === 'phrase' && (
-            <motion.div 
+            <motion.div
               key="phrase"
-              className="space-y-3"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
+              className="space-y-2"
+              initial={{ y: 10 }}
+              animate={{ y: 0 }}
+              exit={{ y: -10 }}
+              transition={{ duration: 0.2 }}
             >
-              <div className="space-y-2">
-                <h1 className="text-3xl font-bold">Write Down Your Secret Recovery Phrase</h1>
-                <p className="text-slate-400 leading-relaxed">
+              <div className="space-y-1">
+                <h1 className="text-2xl font-bold">Write Down Your Secret Recovery Phrase</h1>
+                <p className="text-slate-400 text-sm leading-relaxed">
                   Write down this 12-word phrase and save it in a safe place.
                 </p>
               </div>
 
-              <Card className="bg-slate-950/50 backdrop-blur-sm border-slate-800/50 p-5 relative overflow-hidden">
+              <Card className="bg-slate-950/50 backdrop-blur-sm border-slate-800/50 p-3 relative overflow-hidden">
                 {!revealed && (
-                  <motion.div 
-                    className="absolute inset-0 backdrop-blur-lg bg-slate-950/60 rounded-lg flex items-center justify-center z-10"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                  >
+                  <div className="absolute inset-0 backdrop-blur-lg bg-slate-950/60 rounded-lg flex items-center justify-center z-10">
                     <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                       <Button
                         onClick={() => setRevealed(true)}
@@ -220,92 +227,76 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
                         Reveal Secret Words
                       </Button>
                     </motion.div>
-                  </motion.div>
+                  </div>
                 )}
-                
-                <div className={`grid grid-cols-2 gap-3 ${!revealed ? 'blur-sm' : ''}`}>
+
+                <div className={`grid grid-cols-2 gap-2 ${!revealed ? 'blur-sm' : ''}`}>
                   {seedPhrase.split(' ').map((word, index) => (
-                    <motion.div 
+                    <div
                       key={index}
-                      className="bg-black/50 border border-slate-800/50 rounded-lg p-3 flex items-center gap-3 hover:border-slate-700/50 transition-all"
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: revealed ? index * 0.03 : 0 }}
+                      className="bg-black/50 border border-slate-800/50 rounded-lg px-2 py-2 flex items-center gap-2 hover:border-slate-700/50 transition-all"
                     >
-                      <span className="text-slate-600 text-sm w-5 font-semibold">{index + 1}</span>
-                      <span className="text-white font-medium">{word}</span>
-                    </motion.div>
+                      <span className="text-slate-600 text-xs w-4 font-semibold">{index + 1}</span>
+                      <span className="text-white text-sm font-medium">{word}</span>
+                    </div>
                   ))}
                 </div>
               </Card>
 
-              <AnimatePresence>
-                {revealed && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="space-y-2.5"
+              {revealed && (
+                <div className="space-y-2">
+                  <Button
+                    onClick={handleCopy}
+                    variant="outline"
+                    className="w-full h-10 border-slate-800 bg-slate-900/50 hover:bg-slate-800/50 text-white backdrop-blur-sm transition-all font-semibold text-sm"
                   >
-                    <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                      <Button
-                        onClick={handleCopy}
-                        variant="outline"
-                        className="w-full border-slate-800 bg-slate-900/50 hover:bg-slate-800/50 text-white backdrop-blur-sm transition-all font-semibold"
-                      >
-                        {copied ? (
-                          <>
-                            <Check className="w-4 h-4 mr-2" />
-                            Copied
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-4 h-4 mr-2" />
-                            Copy to Clipboard
-                          </>
-                        )}
-                      </Button>
-                    </motion.div>
+                    {copied ? (
+                      <>
+                        <Check className="w-4 h-4 mr-2" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 mr-2" />
+                        Copy to Clipboard
+                      </>
+                    )}
+                  </Button>
 
-                    <motion.div 
-                      className="flex items-start gap-3 p-4 rounded-xl hover:bg-slate-950/30 transition-all"
-                      whileHover={{ x: 2 }}
-                    >
-                      <input
-                        type="checkbox"
-                        id="saved"
-                        checked={saved}
-                        onChange={(e) => setSaved(e.target.checked)}
-                        className="mt-1 w-5 h-5 rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500 focus:ring-offset-0 cursor-pointer transition-all"
-                      />
-                      <label htmlFor="saved" className="text-slate-300 text-sm cursor-pointer leading-relaxed">
-                        I saved my secret recovery phrase
-                      </label>
-                    </motion.div>
+                  <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-950/30 transition-all">
+                    <input
+                      type="checkbox"
+                      id="saved"
+                      checked={saved}
+                      onChange={(e) => setSaved(e.target.checked)}
+                      className="w-5 h-5 rounded border-slate-700 bg-slate-900 text-purple-600 focus:ring-purple-500 focus:ring-offset-0 cursor-pointer transition-all"
+                    />
+                    <label htmlFor="saved" className="text-slate-300 text-sm cursor-pointer">
+                      I saved my secret recovery phrase
+                    </label>
+                  </div>
 
-                    <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                      <GradientButton
-                        onClick={handleContinue}
-                        disabled={!saved || loading}
-                        className="w-full h-12"
-                      >
-                        {loading ? 'Creating...' : 'Continue'}
-                      </GradientButton>
-                    </motion.div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  <GradientButton
+                    onClick={handleContinue}
+                    disabled={!saved || loading}
+                    className="w-full h-11"
+                  >
+                    {loading ? 'Creating...' : 'Continue'}
+                  </GradientButton>
+                </div>
+              )}
             </motion.div>
           )}
 
           {/* Password Step */}
           {step === 'password' && (
-            <motion.div 
+            <motion.div
               key="password"
               className="space-y-4"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
+              initial={{ y: 10 }}
+              animate={{ y: 0 }}
+              exit={{ y: -10 }}
+              transition={{ duration: 0.2 }}
             >
               <div className="space-y-2">
                 <h1 className="text-3xl font-bold">Create Password</h1>
@@ -326,7 +317,7 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
                     autoFocus
                   />
                 </div>
-                
+
                 <div>
                   <label className="text-sm text-slate-400 mb-2 block">Confirm Password</label>
                   <input
@@ -339,25 +330,19 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
                 </div>
               </div>
 
-              <motion.div 
-                className="bg-blue-950/20 border border-blue-900/30 rounded-xl p-4 backdrop-blur-sm"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-              >
+              <div className="bg-blue-950/20 border border-blue-900/30 rounded-xl p-4 backdrop-blur-sm">
                 <p className="text-blue-200/90 text-sm leading-relaxed">
                   <strong className="text-blue-400 font-semibold">Note:</strong> This password is stored locally and cannot be recovered. Make sure to remember it!
                 </p>
-              </motion.div>
+              </div>
 
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <GradientButton
-                  onClick={handleContinue}
-                  disabled={!password || !confirmPassword || loading}
-                  className="w-full h-12"
-                >
-                  {loading ? 'Creating...' : 'Create Wallet'}
-                </GradientButton>
-              </motion.div>
+              <GradientButton
+                onClick={handleContinue}
+                disabled={!password || !confirmPassword || loading}
+                className="w-full h-12"
+              >
+                {loading ? 'Creating...' : 'Create Wallet'}
+              </GradientButton>
             </motion.div>
           )}
         </AnimatePresence>

@@ -11,7 +11,7 @@ interface LandingProps {
 export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
   return (
     <div
-      className="wallet-outer text-white flex items-center justify-center overflow-hidden relative select-none"
+      className="wallet-outer text-white relative select-none"
       style={{
         position: 'fixed',
         top: 0,
@@ -20,20 +20,19 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
         bottom: 0,
         width: '100%',
         height: '100%',
-        touchAction: 'none',
+        overflowX: 'hidden',
+        overflowY: 'auto',
         WebkitUserSelect: 'none',
         userSelect: 'none',
-        overscrollBehavior: 'none',
+        WebkitOverflowScrolling: 'touch',
         backgroundColor: '#050510',
       }}
     >
       {/* Mobile Container */}
       <div
-        className="wallet-container w-full md:max-w-[430px] flex flex-col relative"
+        className="wallet-container w-full md:max-w-[430px] flex flex-col relative mx-auto"
         style={{
-          height: '100%',
-          touchAction: 'none',
-          overscrollBehavior: 'none',
+          minHeight: '100%',
           backgroundImage: `url(${backgroundImage})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
@@ -42,19 +41,11 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
       >
 
         {/* Content */}
-        <div className="flex-1 flex flex-col px-6 py-10 relative z-10">
+        <div className="flex-1 flex flex-col px-6 py-6 relative z-10">
           {/* Hero Section */}
-          <div className="flex-1 flex flex-col items-center justify-start pt-8 mt-[2cm]">
+          <div className="flex-1 flex flex-col items-center justify-start pt-4">
             {/* Logo Circle - Light purple with atom icon */}
-            <motion.div 
-              className="relative mb-6 select-none pointer-events-none"
-              initial={{ opacity: 0, scale: 0.8, y: -20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              transition={{ 
-                duration: 0.8,
-                ease: "easeOut"
-              }}
-            >
+            <div className="relative mb-6 select-none pointer-events-none">
               {/* Outer glow */}
               <motion.div 
                 className="absolute inset-0 -m-6 rounded-full"
@@ -87,15 +78,10 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
                   }}
                 />
               </div>
-            </motion.div>
+            </div>
 
             {/* Brand & Tagline */}
-            <motion.div 
-              className="text-center mb-8"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-            >
+            <div className="text-center mb-8">
               <h1 
                 className="text-6xl font-bold mb-3 select-none tracking-tight"
                 style={{
@@ -113,15 +99,10 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
               <p className="text-sm text-slate-400 select-none">
                 Buy, store, send and swap tokens
               </p>
-            </motion.div>
+            </div>
 
             {/* Feature Highlights - 2x2 Grid */}
-            <motion.div 
-              className="grid grid-cols-2 gap-3 w-full max-w-[380px] mb-10"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-            >
+            <div className="grid grid-cols-2 gap-3 w-full max-w-[380px] mb-10">
               {[
                 { icon: Shield, text: 'Secure' },
                 { icon: Zap, text: 'Fast' },
@@ -141,15 +122,13 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
                   <span className="text-slate-200">{feature.text}</span>
                 </div>
               ))}
-            </motion.div>
+            </div>
           </div>
 
           {/* CTA Section */}
-          <motion.div 
-            className="space-y-3 pb-6"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
+          <div
+            className="space-y-3 pb-8 mt-auto"
+            style={{ paddingBottom: 'max(32px, env(safe-area-inset-bottom))' }}
           >
             {/* Create Wallet - Primary CTA with gradient */}
             <button
@@ -201,7 +180,7 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
               By continuing, you agree to our{' '}
               <span className="text-slate-400 underline cursor-pointer">Terms of Service</span>
             </p>
-          </motion.div>
+          </div>
         </div>
       </div>
     </div>

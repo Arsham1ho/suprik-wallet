@@ -397,19 +397,21 @@ export async function deriveAddresses(
     const nacl = naclModule.default;
     const bs58Module = await import('bs58');
     const bs58 = bs58Module.default;
-    const sha3 = await import('@noble/hashes@1.3.3/sha3');
-    
+    const sha3 = await import('@noble/hashes/sha3');
+    const { HDKey } = await import('micro-ed25519-hdkey');
+
     // Convert mnemonic to seed
     const seed = bip39.mnemonicToSeedSync(mnemonic, '');
-    
-    // Derive Solana address (BIP44: m/44'/501'/accountIndex'/0')
+
+    // Derive Solana address using micro-ed25519-hdkey (SLIP-0010, same as Phantom)
+    // Path: m/44'/501'/accountIndex'/0'
     const solanaPath = `m/44'/501'/${accountIndex}'/0'`;
-    const solanaHdKey = bip32.HDKey.fromMasterSeed(seed);
-    const solanaAccount = solanaHdKey.derive(solanaPath);
-    if (!solanaAccount.privateKey) {
+    const solanaHdKey = HDKey.fromMasterSeed(seed);
+    const solanaDerived = solanaHdKey.derive(solanaPath);
+    if (!solanaDerived.privateKey) {
       throw new Error('Failed to derive Solana private key');
     }
-    const solanaKeypair = nacl.sign.keyPair.fromSeed(solanaAccount.privateKey.slice(0, 32));
+    const solanaKeypair = nacl.sign.keyPair.fromSeed(solanaDerived.privateKey);
     const solanaAddress = bs58.encode(solanaKeypair.publicKey);
     
     // Derive Ethereum address (BIP44: m/44'/60'/0'/0/accountIndex)
@@ -440,8 +442,8 @@ export async function deriveAddresses(
     let bitcoinAddress = '';
     if (btcAccount.publicKey) {
       try {
-        const { sha256 } = await import('@noble/hashes@1.3.3/sha256');
-        const { ripemd160 } = await import('@noble/hashes@1.3.3/ripemd160');
+        const { sha256 } = await import('@noble/hashes/sha256');
+        const { ripemd160 } = await import('@noble/hashes/ripemd160');
         
         // Compress the public key (33 bytes)
         const x = btcAccount.publicKey.slice(1, 33);
@@ -526,7 +528,7 @@ export async function deriveAddresses(
     
     if (suiAccount.privateKey) {
       try {
-        const { blake2b } = await import('@noble/hashes@1.3.3/blake2b');
+        const { blake2b } = await import('@noble/hashes/blake2b');
         const suiKeypair = nacl.sign.keyPair.fromSeed(suiAccount.privateKey.slice(0, 32));
         
         // Sui address = Blake2b hash of (0x00 || public key)

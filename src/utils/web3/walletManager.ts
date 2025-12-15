@@ -5,7 +5,7 @@
 
 import * as bip39 from "@scure/bip39";
 import { englishWordlist } from "../wordlist";
-import { HDKey } from "@scure/bip32";
+import { HDKey } from "micro-ed25519-hdkey";
 import {
   Keypair,
   PublicKey,
@@ -60,6 +60,7 @@ export function validateSeedPhrase(seedPhrase: string): boolean {
 
 /**
  * Derive a Solana keypair from seed phrase
+ * Uses micro-ed25519-hdkey (SLIP-0010) for derivation - same as Phantom wallet
  */
 export function deriveKeypairFromSeed(
   seedPhrase: string,
@@ -72,12 +73,17 @@ export function deriveKeypairFromSeed(
   // Convert seed phrase to seed
   const seed = bip39.mnemonicToSeedSync(seedPhrase, "");
 
-  // Derive path for Solana: m/44'/501'/0'/0'
-  const derivationPath = `m/44'/501'/${accountIndex}'/0'`;
-  const hdkey = HDKey.fromMasterSeed(seed).derive(derivationPath);
+  // Derive path for Solana using micro-ed25519-hdkey (SLIP-0010, same as Phantom)
+  // Path: m/44'/501'/accountIndex'/0'
+  const path = `m/44'/501'/${accountIndex}'/0'`;
+  const hdkey = HDKey.fromMasterSeed(seed);
+  const derived = hdkey.derive(path);
 
-  // Create keypair from derived seed
-  return Keypair.fromSeed(hdkey.privateKey!);
+  // Create keypair from derived private key (32 bytes)
+  if (!derived.privateKey) {
+    throw new Error("Failed to derive private key");
+  }
+  return Keypair.fromSeed(derived.privateKey);
 }
 
 /**

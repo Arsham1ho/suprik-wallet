@@ -1007,25 +1007,23 @@ app.post("/make-server-e5bc10d1/generate-addresses", async (c) => {
     // Import required crypto libraries
     const { mnemonicToSeedSync } = await import('npm:@scure/bip39@1.2.1');
     const { HDKey } = await import('npm:@scure/bip32@1.3.2');
+    const { derivePath } = await import('npm:ed25519-hd-key@1.3.0');
     const nacl = await import('npm:tweetnacl@1.0.3');
     const bs58 = await import('npm:bs58@5.0.0');
     const { keccak_256 } = await import('npm:@noble/hashes@1.3.2/sha3');
     const { ripemd160 } = await import('npm:@noble/hashes@1.3.2/ripemd160');
     const { sha256 } = await import('npm:@noble/hashes@1.3.2/sha256');
-    
+
     // Convert mnemonic to seed (BIP39)
     console.log('Converting mnemonic to seed...');
     const seed = mnemonicToSeedSync(seedPhrase);
-    
-    // Derive Solana address using account index (BIP44: m/44'/501'/[accountIndex]'/0')
+    const seedHex = Buffer.from(seed).toString('hex');
+
+    // Derive Solana address using ed25519-hd-key (SLIP-0010, same as Phantom)
     console.log(`Deriving Solana address with account index ${accountIndex}...`);
     const solanaPath = `m/44'/501'/${accountIndex}'/0'`;
-    const solanaHdKey = HDKey.fromMasterSeed(seed);
-    const solanaAccount = solanaHdKey.derive(solanaPath);
-    if (!solanaAccount.privateKey) {
-      throw new Error('Failed to derive Solana private key');
-    }
-    const solanaKeypair = nacl.default.sign.keyPair.fromSeed(solanaAccount.privateKey.slice(0, 32));
+    const { key: solanaKey } = derivePath(solanaPath, seedHex);
+    const solanaKeypair = nacl.default.sign.keyPair.fromSeed(solanaKey);
     const solanaAddress = bs58.default.encode(solanaKeypair.publicKey);
     
     // Derive Ethereum address using account index (BIP44: m/44'/60'/[accountIndex]'/0/0)
@@ -3723,21 +3721,17 @@ app.post("/make-server-e5bc10d1/send-token", async (c) => {
         // Import Solana libraries
         const { Connection, PublicKey, SystemProgram, Transaction, Keypair, sendAndConfirmTransaction } = await import('npm:@solana/web3.js@1.95.8');
         const { mnemonicToSeedSync } = await import('npm:@scure/bip39@1.2.1');
-        const { HDKey } = await import('npm:@scure/bip32@1.3.2');
+        const { derivePath } = await import('npm:ed25519-hd-key@1.3.0');
         const nacl = await import('npm:tweetnacl@1.0.3');
-        
-        // Derive Solana keypair from seed phrase using account index
+
+        // Derive Solana keypair using ed25519-hd-key (SLIP-0010, same as Phantom)
         const seed = mnemonicToSeedSync(wallet.seedPhrase);
+        const seedHex = Buffer.from(seed).toString('hex');
         const accountIndex = wallet.accountIndex || 0; // Default to 0 for legacy wallets
         const solanaPath = `m/44'/501'/${accountIndex}'/0'`;
-        const solanaHdKey = HDKey.fromMasterSeed(seed);
-        const solanaAccount = solanaHdKey.derive(solanaPath);
-        
-        if (!solanaAccount.privateKey) {
-          throw new Error('Failed to derive Solana private key');
-        }
-        
-        const solanaKeypair = nacl.default.sign.keyPair.fromSeed(solanaAccount.privateKey.slice(0, 32));
+        const { key: solanaKey } = derivePath(solanaPath, seedHex);
+
+        const solanaKeypair = nacl.default.sign.keyPair.fromSeed(solanaKey);
         const keypair = Keypair.fromSecretKey(solanaKeypair.secretKey);
         
         // Connect to Solana mainnet
@@ -4801,21 +4795,19 @@ app.post("/make-server-e5bc10d1/create-account", async (c) => {
     // Import dependencies for address derivation
     const { mnemonicToSeedSync } = await import('npm:bip39@3.1.0');
     const { HDKey } = await import('npm:@scure/bip32@1.5.0');
+    const { derivePath } = await import('npm:ed25519-hd-key@1.3.0');
     const nacl = await import('npm:tweetnacl@1.0.3');
     const bs58 = await import('npm:bs58@6.0.0');
     const { keccak_256 } = await import('npm:@noble/hashes@1.5.0/sha3');
-    
+
     // Derive addresses for this account index
     const seed = mnemonicToSeedSync(parentWallet.seedPhrase);
-    
-    // Solana address (m/44'/501'/[accountIndex]'/0')
+    const seedHex = Buffer.from(seed).toString('hex');
+
+    // Solana address using ed25519-hd-key (SLIP-0010, same as Phantom)
     const solanaPath = `m/44'/501'/${nextAccountIndex}'/0'`;
-    const solanaHdKey = HDKey.fromMasterSeed(seed);
-    const solanaAccount = solanaHdKey.derive(solanaPath);
-    if (!solanaAccount.privateKey) {
-      throw new Error('Failed to derive Solana private key');
-    }
-    const solanaKeypair = nacl.default.sign.keyPair.fromSeed(solanaAccount.privateKey.slice(0, 32));
+    const { key: solanaKey } = derivePath(solanaPath, seedHex);
+    const solanaKeypair = nacl.default.sign.keyPair.fromSeed(solanaKey);
     const solanaAddress = bs58.default.encode(solanaKeypair.publicKey);
     
     // Ethereum/EVM address (m/44'/60'/[accountIndex]'/0/0)
@@ -5635,17 +5627,19 @@ app.post("/make-server-e5bc10d1/jupiter-swap", async (c) => {
       return c.json({ error: 'Wallet not found or no seed phrase' }, 404);
     }
     
-    // Derive Solana keypair from seed phrase using account index
+    // Derive Solana keypair using ed25519-hd-key (SLIP-0010, same as Phantom)
     const { mnemonicToSeedSync } = await import('npm:bip39@3.1.0');
     const { derivePath } = await import('npm:ed25519-hd-key@1.3.0');
     const nacl = await import('npm:tweetnacl@1.0.3');
     const bs58 = await import('npm:bs58@6.0.0');
-    
+
     const seed = mnemonicToSeedSync(wallet.seedPhrase);
+    const seedHex = Buffer.from(seed).toString('hex');
     const accountIndex = wallet.accountIndex || 0; // Default to 0 for legacy wallets
+    // Path: m/44'/501'/accountIndex'/0'
     const path = `m/44'/501'/${accountIndex}'/0'`;
-    const derivedSeed = derivePath(path, seed.toString('hex')).key;
-    const keypair = nacl.default.sign.keyPair.fromSeed(derivedSeed);
+    const { key: solanaKey } = derivePath(path, seedHex);
+    const keypair = nacl.default.sign.keyPair.fromSeed(solanaKey);
     const userPublicKey = bs58.default.encode(keypair.publicKey);
     
     console.log('User public key:', userPublicKey);
