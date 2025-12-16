@@ -8,30 +8,17 @@ interface WelcomePageProps {
 export function WelcomePage({ onContinue }: WelcomePageProps) {
   return (
     <div
-      className="wallet-outer bg-black text-white flex items-center justify-center overflow-hidden relative select-none"
+      className="bg-black text-white flex flex-col overflow-hidden relative select-none"
       style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
         width: '100%',
         height: '100%',
+        minHeight: '100%',
         touchAction: 'none',
         WebkitUserSelect: 'none',
         userSelect: 'none',
         overscrollBehavior: 'none',
       }}
     >
-      {/* Mobile Container */}
-      <div
-        className="wallet-container w-full md:max-w-[430px] flex flex-col relative"
-        style={{
-          height: '100%',
-          touchAction: 'none',
-          overscrollBehavior: 'none'
-        }}
-      >
         {/* Background - Same as WelcomeAnimation */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           {/* Central purple glow */}
@@ -273,7 +260,6 @@ export function WelcomePage({ onContinue }: WelcomePageProps) {
             />
           </svg>
         </motion.div>
-      </div>
     </div>
   );
 }

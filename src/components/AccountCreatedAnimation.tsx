@@ -24,28 +24,18 @@ export function AccountCreatedAnimation({ onComplete }: AccountCreatedAnimationP
 
   return (
     <div
-      className="wallet-outer text-white relative"
+      className="text-white relative flex flex-col items-center justify-center px-6"
       style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
         width: '100%',
         height: '100%',
+        minHeight: '100%',
         overflowX: 'hidden',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
         backgroundColor: '#000000',
+        paddingBottom: 'max(32px, env(safe-area-inset-bottom))',
       }}
     >
-      <div
-        className="wallet-container w-full md:max-w-[430px] mx-auto flex flex-col items-center justify-center px-6"
-        style={{
-          minHeight: '100%',
-          paddingBottom: 'max(32px, env(safe-area-inset-bottom))',
-        }}
-      >
         {/* Simple background glow - CSS only, no motion */}
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] rounded-full pointer-events-none"
@@ -202,7 +192,6 @@ export function AccountCreatedAnimation({ onComplete }: AccountCreatedAnimationP
         {/* Corner decorations - simplified */}
         <div className="absolute top-10 left-6 w-16 h-16 border-t-2 border-l-2 border-purple-500/20 rounded-tl-2xl animate-fade-in" style={{ animationDelay: '0.6s' }} />
         <div className="absolute bottom-10 right-6 w-16 h-16 border-b-2 border-r-2 border-pink-500/20 rounded-br-2xl animate-fade-in" style={{ animationDelay: '0.6s' }} />
-      </div>
     </div>
   );
 }

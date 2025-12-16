@@ -15,32 +15,21 @@ interface SignUpOptionsProps {
 export function SignUpOptions({ onSelectRecoveryPhrase, onSelectEmail, onSelectGoogle, onSelectApple, onBack }: SignUpOptionsProps) {
   return (
     <div
-      className="wallet-outer text-white relative select-none"
+      className="text-white relative select-none flex flex-col"
       style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
         width: '100%',
         height: '100%',
+        minHeight: '100%',
         overflowX: 'hidden',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
+        backgroundImage: `url(${backgroundImage})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
         backgroundColor: '#050510',
       }}
     >
-      {/* Mobile Container */}
-      <div
-        className="wallet-container w-full md:max-w-[430px] flex flex-col relative mx-auto"
-        style={{
-          minHeight: '100%',
-          backgroundImage: `url(${backgroundImage})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
-        }}
-      >
         {/* Dark overlay for text readability */}
         <div className="absolute inset-0 bg-black/30" />
 
@@ -168,7 +157,6 @@ export function SignUpOptions({ onSelectRecoveryPhrase, onSelectEmail, onSelectG
           </div>
         </div>
         </div>
-      </div>
     </div>
   );
 }

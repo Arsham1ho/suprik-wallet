@@ -105,25 +105,18 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
 
   return (
     <div
-      className="wallet-outer text-white relative"
+      className="text-white relative px-6 pt-2"
       style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
         width: '100%',
         height: '100%',
+        minHeight: '100%',
         overflowX: 'hidden',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
         backgroundColor: '#000000',
+        paddingBottom: 'max(120px, calc(env(safe-area-inset-bottom) + 100px))',
       }}
     >
-      <div
-        className="wallet-container w-full md:max-w-[430px] mx-auto px-6 pt-2"
-        style={{ paddingBottom: 'max(120px, calc(env(safe-area-inset-bottom) + 100px))' }}
-      >
         {/* Header */}
         <motion.div
           className="flex items-center mb-4"
@@ -346,7 +339,6 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
     </div>
   );
 }

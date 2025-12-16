@@ -460,8 +460,8 @@ export default function App() {
       <WalletProvider walletId={walletId || undefined}>
         <LanguageProvider walletId={walletId}>
           <NetworkProvider>
-            <div className="wallet-outer h-full md:bg-gradient-to-br md:from-slate-950 md:via-slate-900 md:to-slate-950 md:flex md:items-center md:justify-center" style={{ height: '100%', minHeight: '100%' }}>
-              <div className="wallet-container w-full md:max-w-[430px] h-full md:shadow-2xl relative overflow-hidden overflow-y-auto" style={{ backgroundColor: '#0f1729', height: '100%' }}>
+            <div className="wallet-outer">
+              <div className="wallet-container">
                 {showWelcome ? (
                   <WelcomeAnimation onComplete={handleWelcomeComplete} />
                 ) : showWelcomePage ? (
