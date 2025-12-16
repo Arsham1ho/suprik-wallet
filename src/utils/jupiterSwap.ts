@@ -104,6 +104,8 @@ const TOKEN_MINTS: Record<string, string> = {
   'PARAI': 'HrkKngiUavecwte1ZMrdt4H5Qet3cecNUzMoEAgjTAX8',
   'PAI': 'HrkKngiUavecwte1ZMrdt4H5Qet3cecNUzMoEAgjTAX8',
   'SUP': 'SupreByajmUdeJGLzvUEUm8W4xv1gF8JBqwYnvG41Dp',
+  'KMNO': 'KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS',
+  'W': '85VBFQZC9TZkfaptBWjvUw7YbZjy52A6mjtPGjstQAmQ',
 };
 
 // CoinGecko ID to Solana Mint Address mapping
@@ -143,7 +145,9 @@ const COINGECKO_ID_TO_MINT: Record<string, string> = {
   'helium-mobile': 'mb1eu7TzEc71KxDpsmsKoucSSuuoGLv1drys1oP2jh6',
   'tensor': 'TNSRxcUxoT9xBG3de7PiJyTDYu7kskLqcpddxnEJAS6',
   'parcl': 'PARCLkmyDa7XApzn22E4Nm3FLZLWLWLWjYyXLcAoEMV',
-  'wormhole': 'WORM3pQRCmMRE8rXcSoQAo2mBXEjVc7EWrKaC6Qohyr',
+  'wormhole': '85VBFQZC9TZkfaptBWjvUw7YbZjy52A6mjtPGjstQAmQ',
+  'kamino-finance': 'KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS',
+  'kamino': 'KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS',
   'io-net': 'BZLbGTNCSFfoth2GYDtwr7e4imWzpR5jqcUuGEwr646K',
   // Additional meme coins - pump.fun and other popular tokens
   'pump': 'A8C3xuqscfmyLrte3VmTqrAq8kgMASius9AFNANwpump', // PUMP token
@@ -328,35 +332,36 @@ export async function fetchMintFromJupiter(symbol: string): Promise<string | nul
   try {
     console.log(`[Jupiter] Fetching mint for ${upperSymbol} from Jupiter API...`);
 
-    // Use Jupiter's strict token list API (v2)
-    // This returns all tradeable tokens on Jupiter
+    // Use Jupiter Token API V2 search endpoint
+    // This is the new endpoint (V1 deprecated August 2025)
     const response = await fetch(
-      `https://token.jup.ag/strict`,
+      `https://lite-api.jup.ag/tokens/v2/search?query=${encodeURIComponent(upperSymbol)}`,
       { signal: AbortSignal.timeout(10000) }
     );
 
     if (response.ok) {
-      const tokens = await response.json();
-      if (Array.isArray(tokens)) {
+      const data = await response.json();
+      // V2 returns tokens array with mint addresses
+      const tokens = data.tokens || data;
+      if (Array.isArray(tokens) && tokens.length > 0) {
         // Find exact symbol match (case-insensitive)
         const exactMatch = tokens.find(
           (t: any) => t.symbol?.toUpperCase() === upperSymbol
         );
-        if (exactMatch && exactMatch.address) {
-          console.log(`[Jupiter] Found mint for ${upperSymbol}:`, exactMatch.address);
-          dynamicMintCache[upperSymbol] = exactMatch.address;
-          return exactMatch.address;
+        if (exactMatch && (exactMatch.address || exactMatch.mint)) {
+          const mint = exactMatch.address || exactMatch.mint;
+          console.log(`[Jupiter] Found mint for ${upperSymbol}:`, mint);
+          dynamicMintCache[upperSymbol] = mint;
+          return mint;
         }
 
-        // Also try partial match if no exact match
-        const partialMatch = tokens.find(
-          (t: any) => t.symbol?.toUpperCase().includes(upperSymbol) ||
-                      upperSymbol.includes(t.symbol?.toUpperCase())
-        );
-        if (partialMatch && partialMatch.address) {
-          console.log(`[Jupiter] Found partial match for ${upperSymbol}:`, partialMatch.symbol, partialMatch.address);
-          dynamicMintCache[upperSymbol] = partialMatch.address;
-          return partialMatch.address;
+        // Use first result if no exact match
+        const firstResult = tokens[0];
+        if (firstResult && (firstResult.address || firstResult.mint)) {
+          const mint = firstResult.address || firstResult.mint;
+          console.log(`[Jupiter] Using first result for ${upperSymbol}:`, firstResult.symbol, mint);
+          dynamicMintCache[upperSymbol] = mint;
+          return mint;
         }
       }
     }

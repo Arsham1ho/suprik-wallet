@@ -104,16 +104,19 @@ export function Activity({ walletId }: ActivityProps) {
       console.log('[Activity] ✅ Loaded', transactions.length, 'transactions from blockchain');
 
       // Merge local swaps with blockchain transactions
-      // Avoid duplicates by checking signatures
-      const existingSignatures = new Set(transactions.map(tx => tx.signature).filter(Boolean));
-      const uniqueLocalSwaps = localSwaps.filter(swap => !existingSignatures.has(swap.signature));
+      // IMPORTANT: Local swaps should REPLACE blockchain transactions with same signature
+      // because local swap data has correct type='swap' and swap-specific fields
+      const localSwapSignatures = new Set(localSwaps.map(swap => swap.signature).filter(Boolean));
 
-      // Combine and sort by date (most recent first)
-      const allActivities = [...transactions, ...uniqueLocalSwaps].sort((a, b) => {
+      // Filter out blockchain transactions that are actually swaps (we have better data locally)
+      const filteredBlockchainTxs = transactions.filter(tx => !localSwapSignatures.has(tx.signature));
+
+      // Combine: local swaps (with full swap data) + blockchain txs (excluding duplicates)
+      const allActivities = [...localSwaps, ...filteredBlockchainTxs].sort((a, b) => {
         return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
       });
 
-      console.log('[Activity] 📊 Total activities:', allActivities.length, '(blockchain:', transactions.length, ', local swaps:', uniqueLocalSwaps.length, ')');
+      console.log('[Activity] 📊 Total activities:', allActivities.length, '(local swaps:', localSwaps.length, ', blockchain (non-swap):', filteredBlockchainTxs.length, ')');
       setActivities(allActivities);
     } catch (error: any) {
       console.error('[Activity] ❌ Error fetching activities:', error);
