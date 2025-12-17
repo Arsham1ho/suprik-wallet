@@ -22,6 +22,9 @@ interface TokenLogoProps {
   mint?: string; // SPL token mint address for Solana tokens
 }
 
+// Parabolic AI token symbols
+const PARABOLIC_TOKENS = ['PARAI', 'PAI', 'PARAB'];
+
 // Token logo mapping - Direct CDN URLs for major tokens
 const TOKEN_LOGO_MAP: Record<string, string> = {
   'SOL': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
@@ -35,6 +38,10 @@ const TOKEN_LOGO_MAP: Record<string, string> = {
   'JUP': 'https://static.jup.ag/jup/icon.png',
   'RAY': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R/logo.png',
   'MATIC': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/polygon/info/logo.png',
+  // Parabolic AI tokens
+  'PAI': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
+  'PARAB': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
+  'PARAI': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
 };
 
 // Fallback logo sources - Multiple CDNs for maximum coverage
@@ -76,8 +83,8 @@ export function TokenLogo({ logoUrl, logo, name, color, symbol, size = 'md', tok
   // Build fallback image chain with multiple CDNs
   const imageSources: string[] = [];
   
-  // SPECIAL CASE: PARAI token - Always use official logo first
-  if (actualSymbol?.toUpperCase() === 'PARAI' || actualSymbol?.toUpperCase() === 'PAI') {
+  // SPECIAL CASE: Parabolic AI tokens - Always use official logo first
+  if (actualSymbol && PARABOLIC_TOKENS.includes(actualSymbol.toUpperCase())) {
     imageSources.push('https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png');
   }
   
@@ -161,8 +168,8 @@ export function TokenLogo({ logoUrl, logo, name, color, symbol, size = 'md', tok
     );
   } else {
     // Fallback to gradient with letter
-    // Special styling for PARAI token
-    const isPARAI = actualSymbol?.toUpperCase() === 'PARAI' || actualSymbol?.toUpperCase() === 'PAI';
+    // Special styling for Parabolic AI tokens
+    const isPARAI = actualSymbol && PARABOLIC_TOKENS.includes(actualSymbol.toUpperCase());
     const fallbackColor = isPARAI ? 'from-cyan-400 via-blue-500 to-purple-600' : actualColor;
     
     logoContent = (

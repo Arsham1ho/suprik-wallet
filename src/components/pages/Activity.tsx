@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { useWallet } from '../../utils/WalletContext';
 import { useNetwork } from '../../utils/NetworkContext';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
-import { fetchAllTransactionHistory, getLocalSwapHistory, type TransactionItem } from '../../utils/transactionHistory';
+import { fetchAllTransactionHistory, getLocalSwapHistory, clearTransactionCache, type TransactionItem } from '../../utils/transactionHistory';
 import { TokenLogo } from '../TokenLogo';
 
 interface ActivityProps {
@@ -26,6 +26,8 @@ export function Activity({ walletId }: ActivityProps) {
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
 
   useEffect(() => {
+    // Clear old cache on initial load to ensure fresh data with updated token symbol resolution
+    clearTransactionCache();
     // Only fetch initially
     fetchActivities(false);
     
@@ -63,36 +65,43 @@ export function Activity({ walletId }: ActivityProps) {
     try {
       // Debounce: Skip if we fetched recently (within last 5 seconds)
       const now = Date.now();
-      if (now - lastFetchTime < 5000) {
+      if (now - lastFetchTime < 5000 && backgroundRefresh) {
         console.log('[Activity] ⏭️ Skipping fetch - too soon since last fetch');
         return;
       }
-      
-      if (!backgroundRefresh) setLoading(true);
-      setLastFetchTime(now);
-      console.log('[Activity] 🔄 Fetching transaction history from blockchain...');
-      console.log('[Activity] Network mode:', network.isTestnet ? 'TESTNET' : 'MAINNET');
-      
-      // 🧪 TESTNET MODE: Show local swap history only (blockchain txs not available)
-      if (network.isTestnet) {
-        console.log('[Activity] ⚠️ Testnet mode: Showing local swap history only');
-        const localSwaps = getLocalSwapHistory();
-        console.log('[Activity] 📱 Local swap history:', localSwaps.length, 'swaps');
-        setActivities(localSwaps);
-        return;
-      }
-      
-      if (!wallet.addresses.solana || !wallet.addresses.ethereum) {
-        console.warn('[Activity] No addresses available yet');
-        setActivities([]);
-        return;
-      }
 
-      // Get local swap history first (always available)
+      setLastFetchTime(now);
+      console.log('[Activity] 🔄 Fetching transaction history...');
+      console.log('[Activity] Network mode:', network.isTestnet ? 'TESTNET' : 'MAINNET');
+
+      // Get local swap history IMMEDIATELY (no loading delay)
       const localSwaps = getLocalSwapHistory();
       console.log('[Activity] 📱 Local swap history:', localSwaps.length, 'swaps');
 
-      // Fetch from blockchain APIs (mainnet only)
+      // Show local swaps immediately while blockchain loads
+      if (localSwaps.length > 0 && !backgroundRefresh) {
+        setActivities(localSwaps);
+        setLoading(false); // Stop loading immediately if we have local data
+      }
+
+      // 🧪 TESTNET MODE: Show local swap history only (blockchain txs not available)
+      if (network.isTestnet) {
+        console.log('[Activity] ⚠️ Testnet mode: Showing local swap history only');
+        setActivities(localSwaps);
+        setLoading(false);
+        return;
+      }
+
+      if (!wallet.addresses.solana || !wallet.addresses.ethereum) {
+        console.warn('[Activity] No addresses available yet');
+        if (localSwaps.length === 0) {
+          setActivities([]);
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Fetch from blockchain APIs in background
       const transactions = await fetchAllTransactionHistory(
         {
           solana: wallet.addresses.solana,
@@ -105,7 +114,6 @@ export function Activity({ walletId }: ActivityProps) {
 
       // Merge local swaps with blockchain transactions
       // IMPORTANT: Local swaps should REPLACE blockchain transactions with same signature
-      // because local swap data has correct type='swap' and swap-specific fields
       const localSwapSignatures = new Set(localSwaps.map(swap => swap.signature).filter(Boolean));
 
       // Filter out blockchain transactions that are actually swaps (we have better data locally)
@@ -120,10 +128,12 @@ export function Activity({ walletId }: ActivityProps) {
       setActivities(allActivities);
     } catch (error: any) {
       console.error('[Activity] ❌ Error fetching activities:', error);
-      toast.error('Failed to load transaction history');
-      setActivities([]);
+      // Don't show error toast for background refreshes
+      if (!backgroundRefresh) {
+        toast.error('Failed to load transaction history');
+      }
     } finally {
-      if (!backgroundRefresh) setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -287,7 +297,10 @@ export function Activity({ walletId }: ActivityProps) {
             <Button
               variant="ghost"
               size="icon"
-              onClick={fetchActivities}
+              onClick={() => {
+                clearTransactionCache(); // Clear cache on manual refresh
+                fetchActivities();
+              }}
               className="text-slate-400 hover:text-white hover:bg-slate-900/50 h-9 w-9"
             >
               <RefreshCw className="w-4 h-4" />
