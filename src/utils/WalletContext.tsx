@@ -46,24 +46,24 @@ export function WalletProvider({
     const handleAccountSwitch = async (event: CustomEvent) => {
       const { accountId } = event.detail;
       console.log('[WalletContext] 🔄 Account switch event received:', accountId);
-      
+
       // Re-derive addresses for the new account if wallet is unlocked
       if (mnemonic && isUnlocked) {
         try {
           // Get the account from AccountManager to get its index
           const { AccountManager } = await import('./accountManager');
           const account = AccountManager.getAccountById(accountId);
-          
+
           if (account) {
             const accountIndex = account.accountIndex;
             console.log('[WalletContext] 📍 Switching to account index:', accountIndex);
-            
+
             // Derive addresses for this account
             const derivedAddresses = await deriveAddresses(mnemonic, accountIndex);
             setAddresses(derivedAddresses);
             setCurrentAccount(accountIndex);
             WalletStorage.setCurrentAccount(accountIndex);
-            
+
             console.log('[WalletContext] ✅ Addresses updated for new account:', {
               solana: derivedAddresses.solana,
               ethereum: derivedAddresses.ethereum,
@@ -76,7 +76,7 @@ export function WalletProvider({
     };
 
     window.addEventListener('accountSwitched', handleAccountSwitch as EventListener);
-    
+
     return () => {
       window.removeEventListener('accountSwitched', handleAccountSwitch as EventListener);
     };

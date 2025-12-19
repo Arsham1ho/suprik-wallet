@@ -101,6 +101,11 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
       // Use public key as wallet ID for private key imports
       const walletId = publicKey.substring(0, 16);
 
+      // ⚡ CRITICAL: Clear any existing account data before importing wallet
+      // This prevents duplicate accounts from previous wallet sessions
+      localStorage.removeItem('saturn_accounts');
+      localStorage.removeItem('saturn_active_account_id');
+
       // Store the private key encrypted (we'll store it as a special format)
       // For private key imports, we store the base58 encoded secret key
       const privateKeyBase58 = bs58.encode(secretKey);
@@ -188,10 +193,15 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
     try {
       // Derive wallet ID from mnemonic
       const walletId = await deriveWalletId(mnemonic);
-      
+
+      // ⚡ CRITICAL: Clear any existing account data before importing wallet
+      // This prevents duplicate accounts from previous wallet sessions
+      localStorage.removeItem('saturn_accounts');
+      localStorage.removeItem('saturn_active_account_id');
+
       // Encrypt and store mnemonic in localStorage
       await SecureStorage.storeMnemonic(mnemonic, password);
-      
+
       // Store wallet ID
       WalletStorage.setWalletId(walletId);
       WalletStorage.setCurrentAccount(0);

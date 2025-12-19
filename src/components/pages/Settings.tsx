@@ -57,6 +57,8 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount }:
   const [devDialogOpen, setDevDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const [activeAccountAddress, setActiveAccountAddress] = useState<string | null>(null);
+  const [activeAccountEmoji, setActiveAccountEmoji] = useState<string | null>(null);
   const { isTestnet, toggleNetwork } = useNetwork();
 
   // Scroll to top when page changes
@@ -67,18 +69,38 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount }:
   useEffect(() => {
     loadDevMode();
     loadProfilePicture();
-    
+    loadActiveAccount();
+
     // Listen for profile picture updates
     const handleProfileUpdate = () => {
       loadProfilePicture();
     };
-    
+
+    // Listen for account switches
+    const handleAccountSwitch = () => {
+      loadActiveAccount();
+    };
+
     window.addEventListener('profilePictureUpdated', handleProfileUpdate);
-    
+    window.addEventListener('accountSwitched', handleAccountSwitch);
+
     return () => {
       window.removeEventListener('profilePictureUpdated', handleProfileUpdate);
+      window.removeEventListener('accountSwitched', handleAccountSwitch);
     };
   }, [walletId]);
+
+  const loadActiveAccount = () => {
+    try {
+      const activeAccount = AccountManager.getActiveAccount();
+      if (activeAccount) {
+        setActiveAccountAddress(activeAccount.addresses?.solana || null);
+        setActiveAccountEmoji(activeAccount.selectedEmoji || null);
+      }
+    } catch (error) {
+      console.error('[Settings] Error loading active account:', error);
+    }
+  };
 
   const loadDevMode = async () => {
     try {
@@ -315,10 +337,11 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount }:
             className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
           >
             <div className="flex items-center gap-3">
-              <AnimalAvatar 
-                size="sm" 
-                walletId={walletId}
+              <AnimalAvatar
+                size="sm"
+                walletId={activeAccountAddress || walletId}
                 profilePicture={profilePicture}
+                selectedEmoji={activeAccountEmoji}
               />
               <div className="text-left">
                 <p className="text-white font-medium">Account Settings</p>

@@ -65,10 +65,15 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
       try {
         // Derive wallet ID from mnemonic
         const walletId = await deriveWalletId(seedPhrase);
-        
+
+        // ⚡ CRITICAL: Clear any existing account data before creating new wallet
+        // This prevents duplicate accounts from previous wallet sessions
+        localStorage.removeItem('saturn_accounts');
+        localStorage.removeItem('saturn_active_account_id');
+
         // Encrypt and store mnemonic in localStorage
         await SecureStorage.storeMnemonic(seedPhrase, password);
-        
+
         // Store wallet ID (unencrypted, just for identification)
         WalletStorage.setWalletId(walletId);
         WalletStorage.setCurrentAccount(0);

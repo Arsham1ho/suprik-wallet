@@ -400,19 +400,30 @@ export async function deriveAddresses(
     const sha3 = await import('@noble/hashes/sha3');
     const { HDKey } = await import('micro-ed25519-hdkey');
 
-    // Convert mnemonic to seed
+    // Convert mnemonic to seed (64 bytes)
     const seed = bip39.mnemonicToSeedSync(mnemonic, '');
 
     // Derive Solana address using micro-ed25519-hdkey (SLIP-0010, same as Phantom)
     // Path: m/44'/501'/accountIndex'/0'
     const solanaPath = `m/44'/501'/${accountIndex}'/0'`;
+
+    console.log('[deriveAddresses] Deriving Solana with path:', solanaPath);
+    console.log('[deriveAddresses] Seed length:', seed.length);
+
     const solanaHdKey = HDKey.fromMasterSeed(seed);
     const solanaDerived = solanaHdKey.derive(solanaPath);
+
     if (!solanaDerived.privateKey) {
       throw new Error('Failed to derive Solana private key');
     }
+
+    console.log('[deriveAddresses] Derived private key length:', solanaDerived.privateKey.length);
+
+    // The derived private key is a 32-byte Ed25519 seed
     const solanaKeypair = nacl.sign.keyPair.fromSeed(solanaDerived.privateKey);
     const solanaAddress = bs58.encode(solanaKeypair.publicKey);
+
+    console.log('[deriveAddresses] Solana address:', solanaAddress);
     
     // Derive Ethereum address (BIP44: m/44'/60'/0'/0/accountIndex)
     const ethPath = `m/44'/60'/0'/0/${accountIndex}`;

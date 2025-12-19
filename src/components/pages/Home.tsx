@@ -18,6 +18,7 @@ import { TokenLogo } from '../TokenLogo';
 import { AnimalAvatar } from '../AnimalAvatar';
 import { BlockchainSetup } from '../BlockchainSetup';
 import { AccountSwitcher } from '../AccountSwitcher';
+import { ImportWalletDialog } from '../ImportWalletDialog';
 import { AccountManager } from '../../utils/accountManager';
 import { deriveAddresses } from '../../utils/wallet';
 // import { usePullToRefresh } from '../../utils/mobile/usePullToRefresh';
@@ -172,7 +173,10 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
   const [animatedBalance, setAnimatedBalance] = useState(0);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [accountSwitcherOpen, setAccountSwitcherOpen] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importMode, setImportMode] = useState<'seed-phrase' | 'private-key'>('seed-phrase');
   const [currentAccountId, setCurrentAccountId] = useState(walletId);
+  const [activeAccountAddress, setActiveAccountAddress] = useState<string | null>(null);
   const [receiveBtnTapped, setReceiveBtnTapped] = useState(false);
   const [sendBtnTapped, setSendBtnTapped] = useState(false);
   const [swapBtnTapped, setSwapBtnTapped] = useState(false);
@@ -202,7 +206,8 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
       setUsername(activeAccount.name);
       setProfilePicture(activeAccount.profilePicture || null);
       setSelectedEmoji(activeAccount.selectedEmoji || null);
-      
+      setActiveAccountAddress(activeAccount.addresses?.solana || null);
+
       // Switch to the active account in WalletContext
       if (wallet.isUnlocked && activeAccount.accountIndex !== wallet.currentAccount) {
         wallet.switchAccount(activeAccount.accountIndex);
@@ -285,11 +290,45 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
     };
   }, []);
 
+  // Cache key for storing balances per account
+  const getBalanceCacheKey = (address: string) => `suprik_balance_cache_${address}`;
+
+  // Save balances to cache
+  const cacheBalances = (address: string, tokensData: Token[]) => {
+    try {
+      const cacheData = {
+        tokens: tokensData,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem(getBalanceCacheKey(address), JSON.stringify(cacheData));
+    } catch (e) {
+      console.error('[Home] Error caching balances:', e);
+    }
+  };
+
+  // Load balances from cache
+  const loadCachedBalances = (address: string): Token[] | null => {
+    try {
+      const cached = localStorage.getItem(getBalanceCacheKey(address));
+      if (cached) {
+        const data = JSON.parse(cached);
+        // Cache valid for 5 minutes
+        if (Date.now() - data.timestamp < 5 * 60 * 1000) {
+          return data.tokens;
+        }
+      }
+      return null;
+    } catch (e) {
+      console.error('[Home] Error loading cached balances:', e);
+      return null;
+    }
+  };
+
   // Handle switch account
   const handleSwitchAccount = async (accountId: string) => {
     try {
       console.log('[Home] 🔄 Switching to account:', accountId);
-      
+
       const account = AccountManager.getAccountById(accountId);
       if (!account) {
         toast.error('Account not found');
@@ -302,7 +341,7 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
 
       // Switch account in WalletContext
       await wallet.switchAccount(account.accountIndex);
-      
+
       // Update active account in AccountManager
       AccountManager.setActiveAccount(accountId);
 
@@ -311,6 +350,7 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
       setUsername(account.name);
       setProfilePicture(account.profilePicture || null);
       setSelectedEmoji(account.selectedEmoji || null);
+      setActiveAccountAddress(account.addresses?.solana || null);
 
       console.log('[Home] ✅ State updated:', {
         accountId,
@@ -319,9 +359,22 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
         emoji: account.selectedEmoji
       });
 
-      // Refresh balances for new account
-      setLoading(true);
-      await loadBlockchainBalances();
+      // Try to load cached balances first for instant display
+      const cachedTokens = account.addresses?.solana
+        ? loadCachedBalances(account.addresses.solana)
+        : null;
+
+      if (cachedTokens && cachedTokens.length > 0) {
+        console.log('[Home] ⚡ Using cached balances for instant display');
+        setTokens(cachedTokens);
+        setLoading(false);
+        // Refresh in background
+        loadBlockchainBalances(true);
+      } else {
+        // No cache - show loading and fetch
+        setLoading(true);
+        await loadBlockchainBalances();
+      }
 
       toast.success(`Switched to ${account.name}`);
       console.log('[Home] ✅ Account switched successfully');
@@ -480,10 +533,27 @@ Check console for full details!
   useEffect(() => {
     // 🧹 Cleanup: Remove duplicate PARAI token (silent cleanup)
     removeDuplicateParabolic();
-    
+
     loadWalletInfo();
-    loadBlockchainBalances();
-    
+
+    // Try to load cached balances first for instant display
+    const activeAccount = AccountManager.getActiveAccount();
+    const address = activeAccount?.addresses?.solana || wallet.addresses?.solana;
+    if (address) {
+      const cachedTokens = loadCachedBalances(address);
+      if (cachedTokens && cachedTokens.length > 0) {
+        console.log('[Home] ⚡ Using cached balances on mount for instant display');
+        setTokens(cachedTokens);
+        setLoading(false);
+        // Refresh in background
+        loadBlockchainBalances(true);
+      } else {
+        loadBlockchainBalances();
+      }
+    } else {
+      loadBlockchainBalances();
+    }
+
     // 🧹 Cleanup duplicate tokens on mount (server-side)
     cleanupDuplicateTokens();
   }, [walletId]); // Only run on mount and when walletId changes
@@ -535,17 +605,59 @@ Check console for full details!
       console.log('[Home] Custom tokens changed, refreshing...');
       loadBlockchainBalances();
     };
-    
+
+    // Listen for wallet imported (new account added)
+    const handleWalletImported = () => {
+      console.log('[Home] 🔄 Wallet imported, refreshing accounts and balances...');
+      // Reload accounts list
+      const updatedAccounts = AccountManager.getAccounts();
+      setAccounts(updatedAccounts);
+      // Get the new active account
+      const activeAccount = AccountManager.getActiveAccount();
+      if (activeAccount) {
+        setCurrentAccountId(activeAccount.id);
+        setUsername(activeAccount.name);
+        setActiveAccountAddress(activeAccount.addresses?.solana || null);
+        // Load the emoji for the new account
+        const savedEmoji = localStorage.getItem(`saturn_avatar_emoji_${activeAccount.id}`);
+        setSelectedEmoji(savedEmoji);
+      }
+      // Refresh balances
+      loadBlockchainBalances();
+    };
+
+    // Listen for account switched
+    const handleAccountSwitched = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('[Home] 🔄 Account switched event received:', customEvent.detail?.accountId);
+      const activeAccount = AccountManager.getActiveAccount();
+      if (activeAccount) {
+        setCurrentAccountId(activeAccount.id);
+        setUsername(activeAccount.name);
+        setActiveAccountAddress(activeAccount.addresses?.solana || null);
+        const savedEmoji = localStorage.getItem(`saturn_avatar_emoji_${activeAccount.id}`);
+        setSelectedEmoji(savedEmoji);
+      }
+      // Refresh accounts list and balances
+      const updatedAccounts = AccountManager.getAccounts();
+      setAccounts(updatedAccounts);
+      loadBlockchainBalances();
+    };
+
     window.addEventListener('walletBalanceUpdated', handleBalanceUpdate);
     window.addEventListener('profilePictureUpdated', handleProfileUpdate);
     window.addEventListener('avatarUpdated', handleAvatarUpdate);
     window.addEventListener('customTokensChanged', handleCustomTokensChanged);
-    
+    window.addEventListener('walletImported', handleWalletImported);
+    window.addEventListener('accountSwitched', handleAccountSwitched);
+
     return () => {
       window.removeEventListener('walletBalanceUpdated', handleBalanceUpdate);
       window.removeEventListener('profilePictureUpdated', handleProfileUpdate);
       window.removeEventListener('avatarUpdated', handleAvatarUpdate);
       window.removeEventListener('customTokensChanged', handleCustomTokensChanged);
+      window.removeEventListener('walletImported', handleWalletImported);
+      window.removeEventListener('accountSwitched', handleAccountSwitched);
     };
   }, []); // Only run once on mount
   
@@ -674,36 +786,48 @@ Check console for full details!
   };
 
   const loadBlockchainBalances = async (isAutoRefresh: boolean = false) => {
+    // Get the active account's addresses - prioritize AccountManager over WalletContext
+    const activeAccount = AccountManager.getActiveAccount();
+    const addressesToUse = activeAccount?.addresses || wallet.addresses;
+
     // Debug: Check wallet state
     console.log('[Home] 🔍 Wallet state check:', {
-      hasAddresses: !!wallet.addresses,
+      hasAddresses: !!addressesToUse,
       isUnlocked: wallet.isUnlocked,
-      addresses: wallet.addresses,
+      activeAccountId: activeAccount?.id,
+      activeAccountName: activeAccount?.name,
+      addresses: addressesToUse,
       networkMode: network.networkMode,
       isTestnet: network.isTestnet,
       isAutoRefresh
     });
-    
+
     // If wallet is unlocked and we have addresses, fetch from blockchain
-    if (wallet.addresses && wallet.isUnlocked) {
+    if (addressesToUse && wallet.isUnlocked) {
       console.log('[Home] 🔗 Fetching balances from blockchain APIs in', network.isTestnet ? 'TESTNET' : 'MAINNET', 'mode');
-      
+      console.log('[Home] 📍 Using address:', addressesToUse.solana);
+
       // Don't show loading skeleton on auto-refresh
       if (!isAutoRefresh) {
         setLoading(true);
       }
-      
+
       try {
         // ========== USE NEW TOKEN LOADER - EXACTLY LIKE PHANTOM! ==========
         console.log('[Home] 🚀 Loading tokens using new Phantom-like auto-detection...');
-        
+
         const newTokens = await loadAllTokens(
-          wallet.addresses,
+          addressesToUse,
           network.networkMode,
           network.isTestnet
         );
-        
+
         console.log('[Home] ✅ Loaded', newTokens.length, 'tokens');
+
+        // Cache the balances for this account
+        if (addressesToUse.solana && newTokens.length > 0) {
+          cacheBalances(addressesToUse.solana, newTokens);
+        }
         
         // 🚀 CHECK FOR BALANCE CHANGES - emit event if balances changed
         if (isAutoRefresh && tokens.length > 0) {
@@ -1196,9 +1320,9 @@ Check console for full details!
               onClick={() => setAccountSwitcherOpen(true)}
               className="flex items-center gap-3 hover:bg-slate-900/30 rounded-xl p-2 -ml-2 transition-all group"
             >
-              <AnimalAvatar 
-                size="md" 
-                walletId={currentAccountId}
+              <AnimalAvatar
+                size="md"
+                walletId={activeAccountAddress || wallet.addresses?.solana || currentAccountId}
                 profilePicture={profilePicture}
                 selectedEmoji={selectedEmoji}
               />
@@ -1229,12 +1353,17 @@ Check console for full details!
                   })}
                 </span>
               </div>
-              <button 
+              <button
                 className="p-2 hover:bg-slate-900/50 rounded-lg transition-colors relative"
-                onClick={() => {
+                onClick={async () => {
                   setLastPriceUpdate(new Date());
-                  checkBlockchainTransactions();
-                  fetchWalletBalances();
+                  setCheckingBlockchain(true);
+                  try {
+                    // Use background refresh to avoid balance flickering
+                    await loadBlockchainBalances(true);
+                  } finally {
+                    setCheckingBlockchain(false);
+                  }
                 }}
                 title="Refresh prices & blockchain balance"
                 disabled={checkingBlockchain}
@@ -1727,7 +1856,7 @@ Check console for full details!
           id: currentAccountId,
           name: username,
           addresses: {
-            solana: wallet.addresses?.solana || '',
+            solana: activeAccountAddress || wallet.addresses?.solana || '',
             ethereum: wallet.addresses?.ethereum || '',
           },
           profilePicture: profilePicture || undefined,
@@ -1736,6 +1865,35 @@ Check console for full details!
         accounts={accounts}
         onSwitchAccount={handleSwitchAccount}
         onCreateAccount={handleCreateAccount}
+        onImportSeedPhrase={() => {
+          setImportMode('seed-phrase');
+          setShowImportDialog(true);
+        }}
+        onImportPrivateKey={() => {
+          setImportMode('private-key');
+          setShowImportDialog(true);
+        }}
+      />
+      <ImportWalletDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        mode={importMode}
+        isAddingAccount={true}
+        onSuccess={() => {
+          setShowImportDialog(false);
+          // Reload accounts after import
+          const updatedAccounts = AccountManager.getAccounts();
+          setAccounts(updatedAccounts);
+          // Update active account state
+          const activeAccount = AccountManager.getActiveAccount();
+          if (activeAccount) {
+            setCurrentAccountId(activeAccount.id);
+            setUsername(activeAccount.name);
+            setActiveAccountAddress(activeAccount.addresses?.solana || null);
+            setSelectedEmoji(activeAccount.selectedEmoji || null);
+          }
+          fetchWalletBalances();
+        }}
       />
     </div>
   );

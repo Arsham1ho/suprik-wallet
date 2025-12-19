@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
-import { Button } from './ui/button';
 import { motion, AnimatePresence } from 'motion/react';
-import { Check, Plus, ChevronRight, Copy, User } from 'lucide-react';
+import { Check, Plus, ChevronRight, Copy, Key, FileText, Sparkles } from 'lucide-react';
 import { AnimalAvatar } from './AnimalAvatar';
 import { toast } from 'sonner';
 import { copyToClipboard } from '../utils/clipboard';
@@ -25,6 +24,8 @@ interface AccountSwitcherProps {
   accounts: Account[];
   onSwitchAccount: (accountId: string) => void;
   onCreateAccount: () => void;
+  onImportSeedPhrase?: () => void;
+  onImportPrivateKey?: () => void;
 }
 
 export function AccountSwitcher({
@@ -34,8 +35,19 @@ export function AccountSwitcher({
   accounts,
   onSwitchAccount,
   onCreateAccount,
+  onImportSeedPhrase,
+  onImportPrivateKey,
 }: AccountSwitcherProps) {
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+  const [showAddOptions, setShowAddOptions] = useState(false);
+
+  // Reset showAddOptions when dialog closes
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      setShowAddOptions(false);
+    }
+    onOpenChange(newOpen);
+  };
 
   const handleCopyAddress = async (address: string) => {
     try {
@@ -54,7 +66,7 @@ export function AccountSwitcher({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="bg-slate-950/95 backdrop-blur-xl border-slate-800/50 text-white sm:max-w-md p-0">
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-800/30">
           <DialogTitle className="text-xl font-bold">Your Accounts</DialogTitle>
@@ -63,11 +75,16 @@ export function AccountSwitcher({
 
         <div className="px-3 py-3 max-h-[60vh] overflow-y-auto">
           <AnimatePresence mode="popLayout">
-            {accounts.map((account, idx) => {
+            {/* Deduplicate accounts by Solana address to prevent showing duplicates */}
+            {accounts
+              .filter((account, index, self) =>
+                index === self.findIndex(a => a.addresses.solana === account.addresses.solana)
+              )
+              .map((account, idx) => {
               const isActive = account.id === currentAccount.id;
               
               return (
-                <motion.button
+                <motion.div
                   key={account.id}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -79,20 +96,20 @@ export function AccountSwitcher({
                       onOpenChange(false);
                     }
                   }}
-                  className={`w-full p-4 rounded-xl mb-2 transition-all flex items-center justify-between group ${
-                    isActive 
-                      ? 'bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30' 
+                  className={`w-full p-4 rounded-xl mb-2 transition-all flex items-center justify-between group cursor-pointer ${
+                    isActive
+                      ? 'bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30'
                       : 'bg-slate-900/30 border border-slate-800/30 hover:bg-slate-800/50 hover:border-slate-700/50'
                   }`}
                 >
                   <div className="flex items-center gap-3">
                     <AnimalAvatar
                       size="sm"
-                      walletId={account.id}
+                      walletId={account.addresses.solana || account.id}
                       profilePicture={account.profilePicture}
                       selectedEmoji={account.selectedEmoji}
                     />
-                    
+
                     <div className="text-left">
                       <div className="flex items-center gap-2">
                         <h4 className="text-white font-semibold">{account.name}</h4>
@@ -123,24 +140,112 @@ export function AccountSwitcher({
                   {!isActive && (
                     <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-purple-400 transition-colors" />
                   )}
-                </motion.button>
+                </motion.div>
               );
             })}
           </AnimatePresence>
         </div>
 
-        {/* Create New Account Button */}
+        {/* Add Account Button / Options */}
         <div className="px-6 py-4 border-t border-slate-800/30">
-          <Button
-            onClick={() => {
-              onCreateAccount();
-              onOpenChange(false);
-            }}
-            className="w-full h-12 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white shadow-lg shadow-purple-500/25 transition-all"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Create New Account
-          </Button>
+          <AnimatePresence mode="wait">
+            {!showAddOptions ? (
+              <motion.button
+                key="add-button"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                onClick={() => setShowAddOptions(true)}
+                className="w-full p-4 rounded-xl bg-[#ad46ff] hover:bg-[#ad46ff]/90 text-white flex items-center justify-center gap-2 transition-all font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Another Account</span>
+              </motion.button>
+            ) : (
+              <motion.div
+                key="options"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-3"
+              >
+                <p className="text-sm text-slate-400 mb-3">Choose how to add an account:</p>
+
+                {/* Option 1: Create New Account */}
+                <button
+                  onClick={() => {
+                    onCreateAccount();
+                    setShowAddOptions(false);
+                    onOpenChange(false);
+                  }}
+                  className="w-full p-4 rounded-xl bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30 hover:border-purple-400/50 transition-all flex items-center gap-4 group"
+                >
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
+                    <Sparkles className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="text-left flex-1">
+                    <h4 className="text-white font-semibold">Create New Account</h4>
+                    <p className="text-slate-400 text-sm">Generate a new address from your wallet</p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-purple-400 transition-colors" />
+                </button>
+
+                {/* Option 2: Import Seed Phrase */}
+                <button
+                  onClick={() => {
+                    if (onImportSeedPhrase) {
+                      onImportSeedPhrase();
+                    } else {
+                      toast.info('Seed phrase import coming soon!');
+                    }
+                    setShowAddOptions(false);
+                    onOpenChange(false);
+                  }}
+                  className="w-full p-4 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-slate-700/50 hover:bg-slate-800/50 transition-all flex items-center gap-4 group"
+                >
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg">
+                    <FileText className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="text-left flex-1">
+                    <h4 className="text-white font-semibold">Import Seed Phrase</h4>
+                    <p className="text-slate-400 text-sm">Use a 12 or 24 word recovery phrase</p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-green-400 transition-colors" />
+                </button>
+
+                {/* Option 3: Import Private Key */}
+                <button
+                  onClick={() => {
+                    if (onImportPrivateKey) {
+                      onImportPrivateKey();
+                    } else {
+                      toast.info('Private key import coming soon!');
+                    }
+                    setShowAddOptions(false);
+                    onOpenChange(false);
+                  }}
+                  className="w-full p-4 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-slate-700/50 hover:bg-slate-800/50 transition-all flex items-center gap-4 group"
+                >
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center shadow-lg">
+                    <Key className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="text-left flex-1">
+                    <h4 className="text-white font-semibold">Import Private Key</h4>
+                    <p className="text-slate-400 text-sm">Import using a private key string</p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-orange-400 transition-colors" />
+                </button>
+
+                {/* Cancel button */}
+                <button
+                  onClick={() => setShowAddOptions(false)}
+                  className="w-full p-3 rounded-xl bg-slate-900/30 border border-slate-800/30 hover:bg-slate-800/50 text-slate-400 hover:text-white transition-all text-sm"
+                >
+                  Cancel
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </DialogContent>
     </Dialog>

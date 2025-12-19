@@ -8,6 +8,7 @@ import { copyToClipboard } from '../../utils/clipboard';
 import { useWallet } from '../../utils/WalletContext';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
+import { AccountManager } from '../../utils/accountManager';
 import QRCode from 'qrcode';
 import solanaLogo from 'figma:asset/90ed735d0a0f9f74ac0addf113dfa3eeef5dd7de.png';
 import ethereumLogo from 'figma:asset/6f2fffd9058ccc93fdd4666eb5a5425382f8a89d.png';
@@ -44,6 +45,37 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [activeAccountAddress, setActiveAccountAddress] = useState<string>('');
+
+  // Get the active account's Solana address from AccountManager
+  useEffect(() => {
+    const loadActiveAccountAddress = () => {
+      const activeAccount = AccountManager.getActiveAccount();
+      if (activeAccount?.addresses?.solana) {
+        setActiveAccountAddress(activeAccount.addresses.solana);
+        setLoading(false);
+      } else if (wallet.addresses?.solana) {
+        // Fallback to WalletContext if no active account
+        setActiveAccountAddress(wallet.addresses.solana);
+        setLoading(false);
+      }
+    };
+
+    loadActiveAccountAddress();
+
+    // Listen for account switches and wallet imports
+    const handleAccountChange = () => {
+      loadActiveAccountAddress();
+    };
+
+    window.addEventListener('accountSwitched', handleAccountChange);
+    window.addEventListener('walletImported', handleAccountChange);
+
+    return () => {
+      window.removeEventListener('accountSwitched', handleAccountChange);
+      window.removeEventListener('walletImported', handleAccountChange);
+    };
+  }, [wallet.addresses?.solana]);
 
   const networks: NetworkOption[] = [
     {
@@ -55,7 +87,7 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
       logo: '◎',
       logoUrl: solanaLogo,
       comingSoon: false,
-      address: wallet.addresses?.solana || '',
+      address: activeAccountAddress,
     },
     {
       id: 'ethereum',
@@ -128,12 +160,6 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
       comingSoon: true,
     },
   ];
-
-  useEffect(() => {
-    if (wallet.addresses?.solana) {
-      setLoading(false);
-    }
-  }, [wallet.addresses]);
 
   const generateQRCode = async (address: string): Promise<string> => {
     try {

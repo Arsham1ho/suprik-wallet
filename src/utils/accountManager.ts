@@ -18,12 +18,31 @@ const ACCOUNTS_KEY = 'saturn_accounts';
 const ACTIVE_ACCOUNT_KEY = 'saturn_active_account_id';
 
 export class AccountManager {
-  // Get all accounts
+  // Get all accounts (with automatic deduplication)
   static getAccounts(): Account[] {
     try {
       const stored = localStorage.getItem(ACCOUNTS_KEY);
       if (!stored) return [];
-      return JSON.parse(stored);
+      const accounts: Account[] = JSON.parse(stored);
+
+      // Deduplicate accounts by Solana address (keep the first occurrence)
+      const seen = new Set<string>();
+      const deduplicated = accounts.filter(account => {
+        const solanaAddress = account.addresses?.solana;
+        if (!solanaAddress || seen.has(solanaAddress)) {
+          return false;
+        }
+        seen.add(solanaAddress);
+        return true;
+      });
+
+      // If duplicates were found, save the cleaned list
+      if (deduplicated.length !== accounts.length) {
+        console.log('[AccountManager] 🧹 Removed', accounts.length - deduplicated.length, 'duplicate accounts');
+        localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(deduplicated));
+      }
+
+      return deduplicated;
     } catch (error) {
       console.error('[AccountManager] Error loading accounts:', error);
       return [];

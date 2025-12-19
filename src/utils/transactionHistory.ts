@@ -10,7 +10,7 @@ import { getHeliusApiKey, getAlchemyApiKey } from './env';
 const SWAP_HISTORY_KEY = 'suprik_swap_history';
 
 // Cache for transaction history to avoid repeated API calls
-const TX_CACHE_KEY = 'suprik_tx_cache_v5'; // v5: added correct PAI/PARAB mint addresses
+const TX_CACHE_KEY = 'suprik_tx_cache_v9'; // v9: case-insensitive address matching + better logging
 const TX_CACHE_TTL = 60 * 1000; // 1 minute cache TTL
 
 interface TxCache {
@@ -106,6 +106,14 @@ export function clearTransactionCache(): void {
     localStorage.removeItem('suprik_tx_cache_v3_solana-devnet');
     localStorage.removeItem('suprik_tx_cache_v4_solana-mainnet');
     localStorage.removeItem('suprik_tx_cache_v4_solana-devnet');
+    localStorage.removeItem('suprik_tx_cache_v5_solana-mainnet');
+    localStorage.removeItem('suprik_tx_cache_v5_solana-devnet');
+    localStorage.removeItem('suprik_tx_cache_v6_solana-mainnet');
+    localStorage.removeItem('suprik_tx_cache_v6_solana-devnet');
+    localStorage.removeItem('suprik_tx_cache_v7_solana-mainnet');
+    localStorage.removeItem('suprik_tx_cache_v7_solana-devnet');
+    localStorage.removeItem('suprik_tx_cache_v8_solana-mainnet');
+    localStorage.removeItem('suprik_tx_cache_v8_solana-devnet');
     // Also clear local swap history that may have incorrect token symbols
     localStorage.removeItem(SWAP_HISTORY_KEY);
     console.log('[TxHistory] ✅ All cache AND local swap history cleared');
@@ -207,12 +215,8 @@ function getTokenSymbol(transfer: any): string {
     loggedUnknownMints.add(mintAddress);
   }
 
-  // Return first 4 chars of mint as fallback
-  if (mintAddress) {
-    return mintAddress.slice(0, 4) + '...';
-  }
-
-  return 'Token';
+  // Return "TOKEN" for unknown tokens instead of truncated mint (cleaner display)
+  return 'TOKEN';
 }
 
 // Track logged unknown mints to avoid console spam
@@ -264,6 +268,10 @@ export async function fetchSolanaTransactionHistory(
     const processedSignatures = new Set<string>(); // Avoid duplicates
 
     console.log('[TxHistory] Raw API response:', data.length, 'transactions');
+    console.log('[TxHistory] Looking for address:', address);
+
+    // Lowercase address for case-insensitive comparison
+    const addressLower = address.toLowerCase();
 
     if (Array.isArray(data)) {
       for (const tx of data) {
@@ -282,13 +290,29 @@ export async function fetchSolanaTransactionHistory(
           const tokenTransfers = tx.tokenTransfers || [];
           const nativeTransfers = tx.nativeTransfers || [];
 
-          // Find all tokens sent and received by user
-          const sentTokens = tokenTransfers.filter((t: any) => t.fromUserAccount === address && (t.tokenAmount || 0) > 0);
-          const receivedTokens = tokenTransfers.filter((t: any) => t.toUserAccount === address && (t.tokenAmount || 0) > 0);
+          // Find all tokens sent and received by user (case-insensitive address comparison)
+          const sentTokens = tokenTransfers.filter((t: any) =>
+            t.fromUserAccount?.toLowerCase() === addressLower && (t.tokenAmount || 0) > 0
+          );
+          const receivedTokens = tokenTransfers.filter((t: any) =>
+            t.toUserAccount?.toLowerCase() === addressLower && (t.tokenAmount || 0) > 0
+          );
 
-          // Check native SOL transfers too
-          const sentSOL = nativeTransfers.find((t: any) => t.fromUserAccount === address && t.amount > 10000); // > 0.00001 SOL
-          const receivedSOL = nativeTransfers.find((t: any) => t.toUserAccount === address && t.amount > 10000);
+          // Check native SOL transfers too (case-insensitive)
+          const sentSOL = nativeTransfers.find((t: any) =>
+            t.fromUserAccount?.toLowerCase() === addressLower && t.amount > 10000
+          ); // > 0.00001 SOL
+          const receivedSOL = nativeTransfers.find((t: any) =>
+            t.toUserAccount?.toLowerCase() === addressLower && t.amount > 10000
+          );
+
+          // Debug: Log what we found for this transaction
+          if (receivedTokens.length > 0 || receivedSOL) {
+            console.log('[TxHistory] 🔍 Found RECEIVES in tx:', signature.slice(0, 8), {
+              tokenReceives: receivedTokens.length,
+              solReceive: receivedSOL ? (receivedSOL.amount / 1e9).toFixed(6) + ' SOL' : null
+            });
+          }
 
           // Determine if this is a swap:
           // 1. Helius marks it as SWAP, OR
@@ -344,8 +368,8 @@ export async function fetchSolanaTransactionHistory(
           // Only process if this wasn't already handled as a swap
           if (tokenTransfers.length > 0 && !processedSignatures.has(signature)) {
             for (const transfer of tokenTransfers) {
-              const isReceive = transfer.toUserAccount === address;
-              const isSend = transfer.fromUserAccount === address;
+              const isReceive = transfer.toUserAccount?.toLowerCase() === addressLower;
+              const isSend = transfer.fromUserAccount?.toLowerCase() === addressLower;
               const amount = transfer.tokenAmount || 0;
 
               // Skip zero-amount transfers
@@ -353,9 +377,10 @@ export async function fetchSolanaTransactionHistory(
 
               if (isReceive || isSend) {
                 const tokenSymbol = getTokenSymbol(transfer);
-                const txId = `${signature}_${transfer.mint || 'token'}`;
+                const txId = `${signature}_${transfer.mint || 'token'}_${isReceive ? 'receive' : 'send'}`;
 
                 if (!processedSignatures.has(txId)) {
+                  console.log(`[TxHistory] ${isReceive ? '📥 TOKEN RECEIVE' : '📤 TOKEN SEND'}:`, amount, tokenSymbol);
                   transactions.push({
                     id: txId,
                     type: isReceive ? 'receive' : 'send',
@@ -375,36 +400,73 @@ export async function fetchSolanaTransactionHistory(
             }
           }
 
-          // Handle native SOL transfers (only if no token transfers were processed)
-          if (tx.nativeTransfers && tx.nativeTransfers.length > 0 && !processedSignatures.has(signature)) {
-            // Find the main transfer (largest amount, involving user)
-            const userTransfers = tx.nativeTransfers.filter((t: any) =>
-              (t.toUserAccount === address || t.fromUserAccount === address) && t.amount > 0
+          // Handle native SOL transfers
+          // Process even if token transfers exist (user might have received SOL + tokens in same tx)
+          if (tx.nativeTransfers && tx.nativeTransfers.length > 0) {
+            // Find ALL transfers involving the user (not just the largest) - case-insensitive
+            const userReceives = tx.nativeTransfers.filter((t: any) =>
+              t.toUserAccount?.toLowerCase() === addressLower && t.amount > 0
+            );
+            const userSends = tx.nativeTransfers.filter((t: any) =>
+              t.fromUserAccount?.toLowerCase() === addressLower && t.amount > 0
             );
 
-            if (userTransfers.length > 0) {
-              // Get the largest transfer
-              const mainTransfer = userTransfers.reduce((max: any, t: any) =>
+            // Process receives
+            if (userReceives.length > 0) {
+              // Get the largest receive
+              const mainReceive = userReceives.reduce((max: any, t: any) =>
                 t.amount > (max?.amount || 0) ? t : max, null);
 
-              if (mainTransfer && mainTransfer.amount > 5000) { // Skip tiny amounts (< 0.000005 SOL, likely fees)
-                const isReceive = mainTransfer.toUserAccount === address;
-                const amount = mainTransfer.amount / 1e9;
+              if (mainReceive && mainReceive.amount > 10000) { // > 0.00001 SOL
+                const amount = mainReceive.amount / 1e9;
+                const solTxId = `${signature}_sol_receive`;
 
-                transactions.push({
-                  id: `${signature}_sol`,
-                  type: isReceive ? 'receive' : 'send',
-                  token: 'SOL',
-                  amount,
-                  date: timestamp,
-                  timestamp,
-                  status: tx.transactionError ? 'failed' : 'confirmed',
-                  from: mainTransfer.fromUserAccount || 'Unknown',
-                  to: mainTransfer.toUserAccount || 'Unknown',
-                  signature,
-                  network: isTestnet ? 'devnet' : 'solana',
-                });
-                processedSignatures.add(signature);
+                if (!processedSignatures.has(solTxId)) {
+                  console.log('[TxHistory] 📥 Found SOL RECEIVE:', amount, 'SOL from', mainReceive.fromUserAccount?.slice(0, 8));
+                  transactions.push({
+                    id: solTxId,
+                    type: 'receive',
+                    token: 'SOL',
+                    amount,
+                    date: timestamp,
+                    timestamp,
+                    status: tx.transactionError ? 'failed' : 'confirmed',
+                    from: mainReceive.fromUserAccount || 'Unknown',
+                    to: mainReceive.toUserAccount || address,
+                    signature,
+                    network: isTestnet ? 'devnet' : 'solana',
+                  });
+                  processedSignatures.add(solTxId);
+                }
+              }
+            }
+
+            // Process sends (only if not already processed as swap)
+            if (userSends.length > 0 && !processedSignatures.has(signature)) {
+              // Get the largest send
+              const mainSend = userSends.reduce((max: any, t: any) =>
+                t.amount > (max?.amount || 0) ? t : max, null);
+
+              if (mainSend && mainSend.amount > 100000) { // > 0.0001 SOL
+                const amount = mainSend.amount / 1e9;
+                const solTxId = `${signature}_sol_send`;
+
+                if (!processedSignatures.has(solTxId)) {
+                  transactions.push({
+                    id: solTxId,
+                    type: 'send',
+                    token: 'SOL',
+                    amount,
+                    date: timestamp,
+                    timestamp,
+                    status: tx.transactionError ? 'failed' : 'confirmed',
+                    from: mainSend.fromUserAccount || address,
+                    to: mainSend.toUserAccount || 'Unknown',
+                    signature,
+                    network: isTestnet ? 'devnet' : 'solana',
+                  });
+                  processedSignatures.add(solTxId);
+                }
               }
             }
           }
@@ -414,17 +476,31 @@ export async function fetchSolanaTransactionHistory(
       }
     }
 
-    // Filter out very small amounts that are just fees
+    // Filter out very small amounts that are just fees/dust
     const filteredTransactions = transactions.filter(tx => {
       if (tx.type === 'swap') return true; // Keep all swaps
-      if (tx.token === 'SOL' && tx.amount < 0.00001) return false; // Filter tiny SOL
-      return tx.amount > 0; // Keep all non-zero amounts
+      if (tx.type === 'receive') {
+        // Be more lenient with receives - only filter very tiny amounts
+        if (tx.token === 'SOL' && tx.amount < 0.00001) return false; // Less than 0.00001 SOL
+        return tx.amount > 0;
+      }
+      // For sends, filter more aggressively (dust, fees, spam)
+      if (tx.token === 'SOL' && tx.amount < 0.0001) return false; // Less than 0.0001 SOL (~$0.02)
+      // Filter zero amounts
+      if (tx.amount <= 0) return false;
+      return true;
     });
 
     // Cache the results
     cacheTransactions(address, network, filteredTransactions);
 
-    console.log('[TxHistory] ✅ Fetched', filteredTransactions.length, 'Solana transactions (including tokens)');
+    // Log breakdown of transaction types
+    const receives = filteredTransactions.filter(tx => tx.type === 'receive');
+    const sends = filteredTransactions.filter(tx => tx.type === 'send');
+    const swaps = filteredTransactions.filter(tx => tx.type === 'swap');
+    console.log('[TxHistory] ✅ Fetched', filteredTransactions.length, 'Solana transactions');
+    console.log('[TxHistory]    📥 Receives:', receives.length, '📤 Sends:', sends.length, '🔄 Swaps:', swaps.length);
+
     return filteredTransactions;
 
   } catch (error) {

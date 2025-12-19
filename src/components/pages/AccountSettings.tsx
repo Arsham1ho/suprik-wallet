@@ -5,14 +5,13 @@ import { Label } from '../ui/label';
 import { Separator } from '../ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../ui/alert-dialog';
-import { ArrowLeft, Plus, Trash2, User, Check, Wallet, X, Loader2, Smile, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, User, Check, Wallet, X, Loader2, Smile, Key, FileText, Sparkles, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { toast } from 'sonner';
-import { PlanetAvatar } from '../PlanetAvatar';
 import { AnimalAvatar } from '../AnimalAvatar';
 import { EmojiSelector } from '../EmojiSelector';
-import { AccountSwitcher } from '../AccountSwitcher';
+import { ImportWalletDialog } from '../ImportWalletDialog';
 import { AccountManager } from '../../utils/accountManager';
 import { useWallet } from '../../utils/WalletContext';
 import { deriveAddresses } from '../../utils/wallet';
@@ -56,6 +55,9 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [showEmojiSelector, setShowEmojiSelector] = useState(false);
   const [selectedEmoji, setSelectedEmoji] = useState<string | null>(null);
+  const [showAddAccountOptions, setShowAddAccountOptions] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importMode, setImportMode] = useState<'seed-phrase' | 'private-key'>('seed-phrase');
   
   // Username validation states
   const [checkingUsername, setCheckingUsername] = useState(false);
@@ -228,14 +230,37 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
   const loadAccounts = async () => {
     try {
       console.log('[AccountSettings] 📂 Loading accounts from AccountManager...');
-      
+
       // Load accounts from AccountManager (localStorage)
-      const allAccounts = AccountManager.getAccounts();
+      let allAccounts = AccountManager.getAccounts();
       const activeAccountId = AccountManager.getActiveAccountId();
-      
+
       console.log('[AccountSettings] ✅ Loaded accounts:', allAccounts);
       console.log('[AccountSettings] 🔵 Active account ID:', activeAccountId);
-      
+
+      // Fix accounts that don't have addresses by deriving them
+      let needsUpdate = false;
+      if (wallet.mnemonic && wallet.isUnlocked) {
+        for (let i = 0; i < allAccounts.length; i++) {
+          const acc = allAccounts[i];
+          if (!acc.addresses?.solana) {
+            console.log('[AccountSettings] 🔧 Fixing missing address for:', acc.name);
+            const accountIndex = acc.accountIndex ?? i;
+            const addresses = await deriveAddresses(wallet.mnemonic, accountIndex);
+            acc.addresses = {
+              solana: addresses.solana,
+              ethereum: addresses.ethereum,
+            };
+            needsUpdate = true;
+          }
+        }
+
+        if (needsUpdate) {
+          localStorage.setItem('saturn_accounts', JSON.stringify(allAccounts));
+          console.log('[AccountSettings] ✅ Fixed and saved account addresses');
+        }
+      }
+
       // Transform AccountManager accounts to match the Account interface
       const transformedAccounts = allAccounts.map((acc, index) => ({
         id: acc.id,
@@ -244,10 +269,10 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
         createdAt: new Date(acc.createdAt).toISOString(),
         isPrimary: index === 0, // First account is primary
         accountIndex: acc.accountIndex,
-        solanaAddress: acc.addresses.solana,
+        solanaAddress: acc.addresses?.solana || '',
         selectedEmoji: acc.selectedEmoji,
       }));
-      
+
       setAccounts(transformedAccounts);
       setActiveAccountId(activeAccountId);
     } catch (error) {
@@ -506,24 +531,74 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
 
   const deleteAccount = async () => {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/delete-wallet`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ walletId }),
-        }
-      );
+      const allAccounts = AccountManager.getAccounts();
+      const currentActiveId = AccountManager.getActiveAccountId();
 
-      if (!response.ok) throw new Error('Failed to delete account');
-      
+      console.log('[AccountSettings] 🗑️ Deleting account:', currentActiveId);
+      console.log('[AccountSettings] 📊 Total accounts:', allAccounts.length);
+
+      // If this is the last account, delete everything and sign out
+      if (allAccounts.length <= 1) {
+        console.log('[AccountSettings] ⚠️ This is the last account - full wallet deletion');
+
+        // Delete from backend
+        try {
+          await fetch(
+            `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/delete-wallet`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${publicAnonKey}`,
+              },
+              body: JSON.stringify({ walletId }),
+            }
+          );
+        } catch (backendError) {
+          console.warn('[AccountSettings] Backend deletion failed (continuing with local):', backendError);
+        }
+
+        // Clear all local storage
+        localStorage.removeItem('saturn_accounts');
+        localStorage.removeItem('saturn_active_account_id');
+        localStorage.removeItem('saturn_encrypted_mnemonic');
+        localStorage.removeItem('saturn_wallet_id');
+        localStorage.removeItem('saturn_username');
+
+        toast.success('Wallet deleted successfully');
+        setTimeout(() => onSignOut(), 1500);
+        return;
+      }
+
+      // Delete only the current account
+      const deleted = AccountManager.deleteAccount(currentActiveId!);
+
+      if (!deleted) {
+        toast.error('Failed to delete account');
+        return;
+      }
+
+      // Get the new active account after deletion
+      const newActiveAccount = AccountManager.getActiveAccount();
+
+      if (newActiveAccount && onSwitchAccount) {
+        // Notify the app to switch to the new account
+        onSwitchAccount(newActiveAccount.id);
+
+        // Dispatch event for other components
+        window.dispatchEvent(new CustomEvent('accountSwitched', {
+          detail: { accountId: newActiveAccount.id }
+        }));
+      }
+
+      // Reload accounts list
+      loadAccounts();
+
       toast.success('Account deleted successfully');
-      setTimeout(() => onSignOut(), 1500);
+      console.log('[AccountSettings] ✅ Account deleted, switched to:', newActiveAccount?.name);
+
     } catch (error) {
-      console.error('Error deleting account:', error);
+      console.error('[AccountSettings] Error deleting account:', error);
       toast.error('Failed to delete account');
     }
   };
@@ -548,6 +623,12 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
   // Get account index for current wallet
   const currentAccountIndex = accounts.findIndex(acc => acc.walletId === walletId);
 
+  // Get the active account for avatar display (fallback to first account if not found)
+  const activeAccount = accounts.find(acc => acc.id === activeAccountId) || accounts[0];
+
+  // Use effective active account ID for comparison
+  const effectiveActiveAccountId = activeAccountId || accounts[0]?.id;
+
   return (
     <div className="min-h-screen bg-black text-white pb-20">
       {/* Header */}
@@ -571,11 +652,11 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
           className="flex flex-col items-center gap-4 py-6"
         >
           <div className="relative">
-            <AnimalAvatar 
-              size="lg" 
-              walletId={walletId}
+            <AnimalAvatar
+              size="lg"
+              walletId={activeAccount?.solanaAddress || walletId}
               profilePicture={walletInfo?.profilePicture}
-              selectedEmoji={selectedEmoji}
+              selectedEmoji={activeAccount?.selectedEmoji || selectedEmoji}
             />
             
             <button 
@@ -752,7 +833,7 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
           
           <div className="space-y-2">
             {accounts.map((account, index) => {
-              const isActive = account.id === activeAccountId;
+              const isActive = account.id === effectiveActiveAccountId;
               
               return (
                 <motion.button
@@ -769,17 +850,19 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <AnimalAvatar 
-                        size="sm" 
-                        walletId={account.id}
+                      <AnimalAvatar
+                        size="sm"
+                        walletId={account.solanaAddress || account.id}
                         selectedEmoji={account.selectedEmoji}
                       />
                       <div className="text-left">
                         <p className={`font-medium ${isActive ? 'text-white' : 'text-slate-300'}`}>
                           {account.username}
                         </p>
-                        <p className="text-slate-400 text-xs">
-                          {account.isPrimary ? 'Primary Account' : `Account ${index + 1}`}
+                        <p className="text-slate-400 text-xs font-mono">
+                          {account.solanaAddress
+                            ? `${account.solanaAddress.slice(0, 4)}...${account.solanaAddress.slice(-4)}`
+                            : (account.isPrimary ? 'Primary Account' : 'Additional Account')}
                         </p>
                       </div>
                     </div>
@@ -796,13 +879,95 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
             })}
           </div>
 
-          <button
-            onClick={handleCreateAccount}
-            className="w-full p-4 rounded-xl bg-[#ad46ff] hover:bg-[#ad46ff]/90 text-white flex items-center justify-center gap-2 transition-all font-medium"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Another Account</span>
-          </button>
+          <AnimatePresence mode="wait">
+            {!showAddAccountOptions ? (
+              <motion.button
+                key="add-button"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                onClick={() => setShowAddAccountOptions(true)}
+                className="w-full p-4 rounded-xl bg-[#ad46ff] hover:bg-[#ad46ff]/90 text-white flex items-center justify-center gap-2 transition-all font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Another Account</span>
+              </motion.button>
+            ) : (
+              <motion.div
+                key="options"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-3"
+              >
+                <p className="text-sm text-slate-400 mb-3">Choose how to add an account:</p>
+
+                {/* Option 1: Create New Account */}
+                <button
+                  onClick={() => {
+                    handleCreateAccount();
+                    setShowAddAccountOptions(false);
+                  }}
+                  className="w-full p-4 rounded-xl bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30 hover:border-purple-400/50 transition-all flex items-center gap-4 group"
+                >
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
+                    <Sparkles className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="text-left flex-1">
+                    <h4 className="text-white font-semibold">Create New Account</h4>
+                    <p className="text-slate-400 text-sm">Generate a new address from your wallet</p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-purple-400 transition-colors" />
+                </button>
+
+                {/* Option 2: Import Seed Phrase */}
+                <button
+                  onClick={() => {
+                    setImportMode('seed-phrase');
+                    setShowImportDialog(true);
+                    setShowAddAccountOptions(false);
+                  }}
+                  className="w-full p-4 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-slate-700/50 hover:bg-slate-800/50 transition-all flex items-center gap-4 group"
+                >
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg">
+                    <FileText className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="text-left flex-1">
+                    <h4 className="text-white font-semibold">Import Seed Phrase</h4>
+                    <p className="text-slate-400 text-sm">Use a 12 or 24 word recovery phrase</p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-green-400 transition-colors" />
+                </button>
+
+                {/* Option 3: Import Private Key */}
+                <button
+                  onClick={() => {
+                    setImportMode('private-key');
+                    setShowImportDialog(true);
+                    setShowAddAccountOptions(false);
+                  }}
+                  className="w-full p-4 rounded-xl bg-slate-900/50 border border-slate-800/50 hover:border-slate-700/50 hover:bg-slate-800/50 transition-all flex items-center gap-4 group"
+                >
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center shadow-lg">
+                    <Key className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="text-left flex-1">
+                    <h4 className="text-white font-semibold">Import Private Key</h4>
+                    <p className="text-slate-400 text-sm">Import using a private key string</p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-orange-400 transition-colors" />
+                </button>
+
+                {/* Cancel button */}
+                <button
+                  onClick={() => setShowAddAccountOptions(false)}
+                  className="w-full p-3 rounded-xl bg-slate-900/30 border border-slate-800/30 hover:bg-slate-800/50 text-slate-400 hover:text-white transition-all text-sm"
+                >
+                  Cancel
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         <Separator className="bg-slate-800" />
@@ -1008,20 +1173,26 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent className="bg-slate-950 border-slate-800 text-white">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-base sm:text-lg">Delete Account?</AlertDialogTitle>
+            <AlertDialogTitle className="text-base sm:text-lg">
+              {accounts.length <= 1 ? 'Delete Entire Wallet?' : 'Delete This Account?'}
+            </AlertDialogTitle>
             <AlertDialogDescription className="text-slate-400 text-sm">
-              This action cannot be undone. Make sure you have backed up your recovery phrase before deleting your account. All your data will be permanently deleted.
+              {accounts.length <= 1 ? (
+                'This is your only account. Deleting it will remove your entire wallet and sign you out. Make sure you have backed up your recovery phrase. This action cannot be undone.'
+              ) : (
+                'This will delete the currently active account. Your other accounts will remain intact. You can recreate this account later using the same recovery phrase.'
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="bg-slate-800 border-slate-700 hover:bg-slate-700">
               Cancel
             </AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={deleteAccount}
               className="bg-red-600 hover:bg-red-700"
             >
-              Yes, Delete My Account
+              {accounts.length <= 1 ? 'Yes, Delete Wallet' : 'Yes, Delete Account'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1033,6 +1204,18 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
         onOpenChange={setShowEmojiSelector}
         onSelect={handleEmojiSelect}
         currentEmoji={selectedEmoji || undefined}
+      />
+
+      {/* Import Wallet Dialog */}
+      <ImportWalletDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        mode={importMode}
+        isAddingAccount={true}
+        onSuccess={() => {
+          loadAccounts();
+          toast.success('Wallet imported successfully!');
+        }}
       />
     </div>
   );
