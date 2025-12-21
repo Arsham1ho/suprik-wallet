@@ -102,16 +102,22 @@ export function ThemeProvider({ children, walletId }: { children: ReactNode; wal
 
   const loadTheme = async () => {
     if (!walletId) return;
-    
+
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet/${walletId}/theme`,
         {
           headers: {
             'Authorization': `Bearer ${publicAnonKey}`,
           },
+          signal: controller.signal,
         }
       );
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
@@ -119,8 +125,14 @@ export function ThemeProvider({ children, walletId }: { children: ReactNode; wal
         setThemeState(savedTheme);
         applyThemeToDocument(savedTheme);
       }
-    } catch (error) {
-      console.error('Error loading theme:', error);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.warn('[Theme] ⚠️ Theme request timeout, using default');
+      } else {
+        console.warn('[Theme] ⚠️ Error loading theme:', error.message);
+      }
+      // Continue with default 'classic' theme
+      applyThemeToDocument('classic');
     }
   };
 

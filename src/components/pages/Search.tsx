@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowLeft, Search as SearchIcon, X, TrendingUp, TrendingDown, Plus, Minus, Loader2 } from 'lucide-react';
 import { Input } from '../ui/input';
@@ -10,11 +10,27 @@ import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { addCustomToken, removeCustomToken, isTokenAdded, getCustomTokens } from '../../utils/customTokens';
 import cosmicBg from 'figma:asset/d1566f8943179b67e87faa45cecace8e6cc289ed.png';
 
+// Wallet token interface for tokens with balance
+export interface WalletToken {
+  id: string;
+  symbol: string;
+  name: string;
+  logo?: string;
+  logoUrl?: string;
+  price: number;
+  balance: number;
+  hasBalance: boolean;
+  mint?: string;
+  network?: string;
+}
+
 interface SearchProps {
   onBack: () => void;
   walletId: string;
   onSelectToken?: (token: CoinGeckoToken) => void;
   onViewCoinDetail?: (coin: CoinGeckoToken) => void;
+  walletTokens?: WalletToken[]; // Tokens user holds - shown first
+  showOnlyWalletTokens?: boolean; // If true, only show wallet tokens (for "pay" selector)
 }
 
 export interface CoinGeckoToken {
@@ -89,22 +105,38 @@ const CoinItem = memo(({
           </div>
         </div>
 
-        {/* Price & Change */}
+        {/* Balance (if user holds this token) or Price & Change */}
         <div className="text-right mr-1 flex-shrink-0">
-          <div className="text-white text-xs">
-            ${coin.current_price >= 0.01 
-              ? coin.current_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-              : coin.current_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
-            }
-          </div>
-          <div className={`text-xs flex items-center gap-0.5 justify-end ${priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {priceChange >= 0 ? (
-              <TrendingUp className="w-2.5 h-2.5" />
-            ) : (
-              <TrendingDown className="w-2.5 h-2.5" />
-            )}
-            {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(1)}%
-          </div>
+          {coin.amount && coin.amount > 0 ? (
+            <>
+              <div className="text-white text-xs font-medium">
+                {coin.amount >= 0.0001
+                  ? coin.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+                  : coin.amount.toExponential(2)
+                } {coin.symbol.toUpperCase()}
+              </div>
+              <div className="text-slate-400 text-xs">
+                ${((coin.value || coin.amount * coin.current_price) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-white text-xs">
+                ${coin.current_price >= 0.01
+                  ? coin.current_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                  : coin.current_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
+                }
+              </div>
+              <div className={`text-xs flex items-center gap-0.5 justify-end ${priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {priceChange >= 0 ? (
+                  <TrendingUp className="w-2.5 h-2.5" />
+                ) : (
+                  <TrendingDown className="w-2.5 h-2.5" />
+                )}
+                {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(1)}%
+              </div>
+            </>
+          )}
         </div>
 
         {/* Add Button - Only show if not in selection mode */}
@@ -232,7 +264,7 @@ const detectBlockchain = (coin: CoinGeckoToken): string[] => {
   return blockchains;
 };
 
-export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: SearchProps) {
+export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, walletTokens, showOnlyWalletTokens }: SearchProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [coins, setCoins] = useState<CoinGeckoToken[]>([]);
   const [loading, setLoading] = useState(true);
@@ -402,7 +434,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
       console.log(`Fetching coins page ${pageNum}...`);
       
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=${pageNum}&per_page=250`,
+        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=${pageNum}&per_page=500`,
         {
           headers: {
             'Authorization': `Bearer ${publicAnonKey}`
@@ -477,9 +509,9 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
         });
       }
 
-      // Stop loading more if we got less than 250 coins (last page)
-      if (data.length < 250) {
-        console.log(`⚠️ Received ${data.length} coins (less than 250) - this is the last page`);
+      // Stop loading more if we got less than 500 coins (last page)
+      if (data.length < 500) {
+        console.log(`⚠️ Received ${data.length} coins (less than 500) - this is the last page`);
         setHasMore(false);
         toast.success('All available tokens loaded!');
       } else {
@@ -525,7 +557,51 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
     }
   }, [loadingMore, hasMore, page]);
 
+  // Auto-load remaining pages after initial load (no "Load More" button needed)
+  useEffect(() => {
+    if (!loading && hasMore && !loadingMore && coins.length > 0 && !showOnlyWalletTokens) {
+      // Small delay to avoid rate limiting
+      const timer = setTimeout(() => {
+        loadMore();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, hasMore, loadingMore, coins.length, showOnlyWalletTokens, loadMore]);
+
   const filteredCoins = useMemo(() => {
+    // If showOnlyWalletTokens is true and we have wallet tokens, only show those
+    if (showOnlyWalletTokens && walletTokens && walletTokens.length > 0) {
+      // Convert wallet tokens to CoinGeckoToken format
+      let walletCoinsFormatted: CoinGeckoToken[] = walletTokens
+        .filter(t => t.hasBalance)
+        .map(t => ({
+          id: t.id,
+          symbol: t.symbol,
+          name: t.name,
+          image: t.logoUrl || '',
+          current_price: t.price,
+          market_cap: 0,
+          market_cap_rank: 0,
+          price_change_percentage_24h: 0,
+          total_volume: 0,
+          amount: t.balance,
+          value: t.balance * t.price,
+          mint: t.mint,
+        }));
+
+      // Apply search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        walletCoinsFormatted = walletCoinsFormatted.filter(coin =>
+          coin.name.toLowerCase().includes(query) ||
+          coin.symbol.toLowerCase().includes(query)
+        );
+      }
+
+      console.log(`[Search] Wallet tokens only mode: ${walletCoinsFormatted.length} tokens`);
+      return walletCoinsFormatted;
+    }
+
     // Combine featured tokens with regular coins
     let allCoins = [...featuredTokensData, ...coins];
 
@@ -547,6 +623,43 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
       });
     }
 
+    // If we have wallet tokens, prioritize them at the top
+    if (walletTokens && walletTokens.length > 0) {
+      const walletSymbols = new Set(walletTokens.filter(t => t.hasBalance).map(t => t.symbol.toUpperCase()));
+      const walletIds = new Set(walletTokens.filter(t => t.hasBalance).map(t => t.id));
+
+      // Split into wallet tokens and other tokens
+      const inWallet: CoinGeckoToken[] = [];
+      const notInWallet: CoinGeckoToken[] = [];
+
+      allCoins.forEach(coin => {
+        const coinSymbolUpper = coin.symbol.toUpperCase();
+        if (walletSymbols.has(coinSymbolUpper) || walletIds.has(coin.id)) {
+          // Find matching wallet token to get balance info
+          const walletToken = walletTokens.find(
+            t => t.symbol.toUpperCase() === coinSymbolUpper || t.id === coin.id
+          );
+          if (walletToken && walletToken.hasBalance) {
+            inWallet.push({
+              ...coin,
+              amount: walletToken.balance,
+              value: walletToken.balance * (coin.current_price || walletToken.price),
+            });
+          } else {
+            notInWallet.push(coin);
+          }
+        } else {
+          notInWallet.push(coin);
+        }
+      });
+
+      // Sort wallet tokens by value (highest first)
+      inWallet.sort((a, b) => (b.value || 0) - (a.value || 0));
+
+      // Combine: wallet tokens first, then other tokens
+      allCoins = [...inWallet, ...notInWallet];
+    }
+
     // Apply search filter
     if (!searchQuery) return allCoins;
     const query = searchQuery.toLowerCase();
@@ -557,7 +670,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
 
     console.log(`[Search] Query: "${searchQuery}", Filtered: ${filtered.length} results`);
     return filtered;
-  }, [coins, searchQuery, featuredTokensData, blockchainFilter]);
+  }, [coins, searchQuery, featuredTokensData, blockchainFilter, walletTokens, showOnlyWalletTokens]);
 
   // Mark coins that are already in wallet
   useEffect(() => {
@@ -684,7 +797,10 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
           <div className="flex-1">
             <h1 className="text-white font-semibold">{onSelectToken ? 'Select Token' : 'Search Tokens'}</h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              {coins.length.toLocaleString()} available
+              {showOnlyWalletTokens
+                ? `${walletTokens?.filter(t => t.hasBalance).length || 0} tokens in wallet`
+                : `${coins.length.toLocaleString()} available`
+              }
             </p>
           </div>
         </div>
@@ -722,78 +838,80 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
           </div>
         </motion.div>
 
-        {/* Blockchain Filter Chips */}
-        <motion.div
-          className="mt-3 flex gap-2 overflow-x-auto pb-2 scrollbar-hide"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <motion.button
-            onClick={() => setBlockchainFilter('all')}
-            className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
-              blockchainFilter === 'all'
-                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/25'
-                : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 border border-slate-700/50'
-            }`}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+        {/* Blockchain Filter Chips - Only show when NOT in wallet-only mode */}
+        {!showOnlyWalletTokens && (
+          <motion.div
+            className="mt-3 flex gap-2 overflow-x-auto pb-2 scrollbar-hide"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
           >
-            All Chains
-          </motion.button>
-          
-          <motion.button
-            onClick={() => setBlockchainFilter('solana')}
-            className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
-              blockchainFilter === 'solana'
-                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/25'
-                : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 border border-slate-700/50'
-            }`}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            🟣 Solana
-          </motion.button>
-          
-          <motion.button
-            onClick={() => setBlockchainFilter('ethereum')}
-            className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
-              blockchainFilter === 'ethereum'
-                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25'
-                : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 border border-slate-700/50'
-            }`}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            ⚪ Ethereum
-          </motion.button>
-          
-          <motion.button
-            onClick={() => setBlockchainFilter('polygon')}
-            className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
-              blockchainFilter === 'polygon'
-                ? 'bg-gradient-to-r from-purple-600 to-violet-600 text-white shadow-lg shadow-purple-500/25'
-                : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 border border-slate-700/50'
-            }`}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            🟣 Polygon
-          </motion.button>
-          
-          <motion.button
-            onClick={() => setBlockchainFilter('bsc')}
-            className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
-              blockchainFilter === 'bsc'
-                ? 'bg-gradient-to-r from-yellow-600 to-orange-600 text-white shadow-lg shadow-yellow-500/25'
-                : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 border border-slate-700/50'
-            }`}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            🟡 BSC
-          </motion.button>
-        </motion.div>
+            <motion.button
+              onClick={() => setBlockchainFilter('all')}
+              className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
+                blockchainFilter === 'all'
+                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/25'
+                  : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 border border-slate-700/50'
+              }`}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              All Chains
+            </motion.button>
+
+            <motion.button
+              onClick={() => setBlockchainFilter('solana')}
+              className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
+                blockchainFilter === 'solana'
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-500/25'
+                  : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 border border-slate-700/50'
+              }`}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              🟣 Solana
+            </motion.button>
+
+            <motion.button
+              onClick={() => setBlockchainFilter('ethereum')}
+              className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
+                blockchainFilter === 'ethereum'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25'
+                  : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 border border-slate-700/50'
+              }`}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              ⚪ Ethereum
+            </motion.button>
+
+            <motion.button
+              onClick={() => setBlockchainFilter('polygon')}
+              className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
+                blockchainFilter === 'polygon'
+                  ? 'bg-gradient-to-r from-purple-600 to-violet-600 text-white shadow-lg shadow-purple-500/25'
+                  : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 border border-slate-700/50'
+              }`}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              🟣 Polygon
+            </motion.button>
+
+            <motion.button
+              onClick={() => setBlockchainFilter('bsc')}
+              className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
+                blockchainFilter === 'bsc'
+                  ? 'bg-gradient-to-r from-yellow-600 to-orange-600 text-white shadow-lg shadow-yellow-500/25'
+                  : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 border border-slate-700/50'
+              }`}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              🟡 BSC
+            </motion.button>
+          </motion.div>
+        )}
 
         {/* Quick stats */}
         {searchQuery && filteredCoins.length > 0 && (
@@ -882,57 +1000,106 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail }: Se
           </motion.div>
         ) : (
           <>
-            <motion.div 
+            <motion.div
               className="space-y-2"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
             >
               <AnimatePresence initial={false}>
-                {filteredCoins.map((coin) => (
-                  <CoinItem
-                    key={coin.id}
-                    coin={coin}
-                    onSelectToken={onSelectToken}
-                    isAdded={addedCoins.has(coin.id)}
-                    isAdding={addingCoin === coin.id}
-                    onAdd={handleAddCoin}
-                    onRemove={handleRemoveCoin}
-                    onClick={handleTokenClick}
-                  />
-                ))}
+                {(() => {
+                  // Split tokens into those with balance and without
+                  const tokensWithBalance = filteredCoins.filter((c: CoinGeckoToken) => c.amount && c.amount > 0);
+                  const tokensWithoutBalance = filteredCoins.filter((c: CoinGeckoToken) => !c.amount || c.amount <= 0);
+
+                  // If showOnlyWalletTokens, we only have wallet tokens
+                  if (showOnlyWalletTokens) {
+                    return filteredCoins.map((coin: CoinGeckoToken) => (
+                      <CoinItem
+                        key={coin.id}
+                        coin={coin}
+                        onSelectToken={onSelectToken}
+                        isAdded={addedCoins.has(coin.id)}
+                        isAdding={addingCoin === coin.id}
+                        onAdd={handleAddCoin}
+                        onRemove={handleRemoveCoin}
+                        onClick={handleTokenClick}
+                      />
+                    ));
+                  }
+
+                  // If we have tokens with balance, show them in a separate section
+                  if (tokensWithBalance.length > 0 && !searchQuery) {
+                    return (
+                      <>
+                        {/* Your Tokens Section */}
+                        <div className="mb-2">
+                          <div className="text-xs text-purple-400 font-semibold uppercase tracking-wide mb-2 px-1">
+                            Your Tokens ({tokensWithBalance.length})
+                          </div>
+                          {tokensWithBalance.map((coin: CoinGeckoToken) => (
+                            <CoinItem
+                              key={coin.id}
+                              coin={coin}
+                              onSelectToken={onSelectToken}
+                              isAdded={addedCoins.has(coin.id)}
+                              isAdding={addingCoin === coin.id}
+                              onAdd={handleAddCoin}
+                              onRemove={handleRemoveCoin}
+                              onClick={handleTokenClick}
+                            />
+                          ))}
+                        </div>
+
+                        {/* All Tokens Section */}
+                        {tokensWithoutBalance.length > 0 && (
+                          <div className="mt-4">
+                            <div className="text-xs text-slate-500 font-semibold uppercase tracking-wide mb-2 px-1">
+                              All Tokens
+                            </div>
+                            {tokensWithoutBalance.map((coin: CoinGeckoToken) => (
+                              <CoinItem
+                                key={coin.id}
+                                coin={coin}
+                                onSelectToken={onSelectToken}
+                                isAdded={addedCoins.has(coin.id)}
+                                isAdding={addingCoin === coin.id}
+                                onAdd={handleAddCoin}
+                                onRemove={handleRemoveCoin}
+                                onClick={handleTokenClick}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  }
+
+                  // Default: show all tokens without sections
+                  return filteredCoins.map((coin: CoinGeckoToken) => (
+                    <CoinItem
+                      key={coin.id}
+                      coin={coin}
+                      onSelectToken={onSelectToken}
+                      isAdded={addedCoins.has(coin.id)}
+                      isAdding={addingCoin === coin.id}
+                      onAdd={handleAddCoin}
+                      onRemove={handleRemoveCoin}
+                      onClick={handleTokenClick}
+                    />
+                  ));
+                })()}
               </AnimatePresence>
             </motion.div>
 
-            {/* Load More Button */}
-            {!searchQuery && hasMore && (
-              <motion.div 
-                className="mt-6 flex justify-center"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+            {/* Loading indicator when auto-loading more tokens */}
+            {!searchQuery && hasMore && !showOnlyWalletTokens && loadingMore && (
+              <motion.div
+                className="mt-6 flex justify-center items-center gap-2 text-slate-400"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
               >
-                <Button
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white px-8 h-12 rounded-full shadow-lg shadow-purple-500/25 transition-all disabled:opacity-50"
-                >
-                  {loadingMore ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Loading more...
-                    </>
-                  ) : (
-                    <>
-                      Load More Coins
-                      <motion.span
-                        className="ml-2"
-                        animate={{ y: [0, 3, 0] }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
-                      >
-                        ↓
-                      </motion.span>
-                    </>
-                  )}
-                </Button>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Loading more tokens...</span>
               </motion.div>
             )}
           </>

@@ -43,22 +43,33 @@ export function LanguageProvider({
 
     const loadSettings = async () => {
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
         const response = await fetch(
           `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/user-settings/${walletId}`,
           {
             headers: {
               'Authorization': `Bearer ${publicAnonKey}`,
             },
+            signal: controller.signal,
           }
         );
-        
+
+        clearTimeout(timeoutId);
+
         if (response.ok) {
           const data = await response.json();
           setLanguageState(data.language || 'en');
           setCurrencyState(data.currency || 'USD');
         }
-      } catch (error) {
-        console.error('Error loading language settings:', error);
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          console.warn('[Language] ⚠️ Settings request timeout, using defaults');
+        } else {
+          console.warn('[Language] ⚠️ Error loading settings:', error.message);
+        }
+        // Continue with default settings (English, USD)
       } finally {
         setLoading(false);
       }

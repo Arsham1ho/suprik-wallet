@@ -6,7 +6,7 @@ import { Label } from './ui/label';
 import { motion, AnimatePresence } from 'motion/react';
 import { Eye, EyeOff, Loader2, AlertTriangle, Check, FileText, Key, ArrowLeft, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { validateMnemonic, deriveAddresses, SecureStorage, deriveWalletId, WalletStorage } from '../utils/wallet';
+import { validateMnemonic, deriveAddresses, SecureStorage, deriveWalletId, WalletStorage, encryptWithPassword } from '../utils/wallet';
 import { AccountManager } from '../utils/accountManager';
 import { useWallet } from '../utils/WalletContext';
 import { fetchSolanaBalance } from '../utils/blockchain';
@@ -263,11 +263,15 @@ export function ImportWalletDialog({
   };
 
   const handleConfirmAccounts = async () => {
-    if (isAddingAccount) {
-      await handleImportMultipleAccounts();
-    } else if (existingPassword) {
+    if (existingPassword) {
+      // Password was provided (e.g., OAuth flow)
       await handleImportMultipleAccountsWithPassword(existingPassword);
+    } else if (isAddingAccount) {
+      // When adding an account to existing wallet, we need the password to encrypt the mnemonic
+      // The password is needed to decrypt transactions later
+      setStep('password');
     } else {
+      // New wallet import - always requires password
       setStep('password');
     }
   };
@@ -307,6 +311,8 @@ export function ImportWalletDialog({
             ethereum: account.ethereumAddress,
           },
           createdAt: Date.now(),
+          // CRITICAL: Mark as imported so WalletContext doesn't override addresses
+          isImportedSeedPhrase: true,
         };
 
         accounts.push(newAccount);
@@ -321,9 +327,10 @@ export function ImportWalletDialog({
 
       localStorage.setItem('saturn_accounts', JSON.stringify(accounts));
 
-      console.log(`[ImportWallet] Added ${addedCount} accounts`);
+      console.log(`[ImportWallet] Added ${addedCount} accounts (marked as imported)`);
 
-      window.dispatchEvent(new Event('walletImported'));
+      // Dispatch event with detail to indicate imported accounts
+      window.dispatchEvent(new CustomEvent('walletImported', { detail: { isImportedSeedPhrase: true } }));
 
       toast.success(`${addedCount} account${addedCount > 1 ? 's' : ''} added successfully!`);
       onSuccess?.();
@@ -336,7 +343,7 @@ export function ImportWalletDialog({
     }
   };
 
-  // Import multiple accounts with password (new wallet)
+  // Import multiple accounts with password (new wallet or adding to existing)
   const handleImportMultipleAccountsWithPassword = async (pwd: string) => {
     setLoading(true);
     setError('');
@@ -345,16 +352,36 @@ export function ImportWalletDialog({
       const mnemonic = seedPhrase.trim().toLowerCase().replace(/\s+/g, ' ');
       const walletId = await deriveWalletId(mnemonic);
 
-      // Store encrypted mnemonic
-      await SecureStorage.storeMnemonic(mnemonic, pwd);
-      WalletStorage.setWalletId(walletId);
-      WalletStorage.setCurrentAccount(0);
+      // Encrypt the imported mnemonic for each account
+      // This allows transactions to work for accounts from different seed phrases
+      const encryptedMnemonic = await encryptWithPassword(mnemonic, pwd);
+      console.log('[ImportWallet] 🔐 Encrypted mnemonic for imported accounts');
 
-      const accounts: any[] = [];
+      // Check if this is adding to an existing wallet or creating new
+      const existingAccounts = AccountManager.getAccounts();
+      const isAddingToExisting = existingAccounts.length > 0;
+
+      if (!isAddingToExisting) {
+        // New wallet: Store encrypted mnemonic as main wallet
+        await SecureStorage.storeMnemonic(mnemonic, pwd);
+        WalletStorage.setWalletId(walletId);
+        WalletStorage.setCurrentAccount(0);
+      }
+
+      const accounts: any[] = isAddingToExisting ? [...existingAccounts] : [];
 
       for (const selectedIndex of selectedAccounts.sort((a, b) => a - b)) {
         const account = discoveredAccounts.find(a => a.index === selectedIndex);
         if (!account) continue;
+
+        // Check if account with same Solana address already exists
+        const existingAccount = accounts.find(
+          (acc: any) => acc.addresses?.solana === account.address
+        );
+        if (existingAccount) {
+          console.log(`[ImportWallet] Skipping duplicate account: ${account.address.slice(0, 8)}...`);
+          continue;
+        }
 
         const uniqueAccountId = `${walletId}_imported_${account.index}_${Date.now()}`;
 
@@ -367,15 +394,19 @@ export function ImportWalletDialog({
             ethereum: account.ethereumAddress,
           },
           createdAt: Date.now(),
+          // CRITICAL: Mark as imported and store encrypted mnemonic
+          isImportedSeedPhrase: isAddingToExisting, // Only mark as imported if adding to existing wallet
+          encryptedMnemonic: isAddingToExisting ? encryptedMnemonic : undefined, // Store encrypted mnemonic for transactions
         });
       }
 
       localStorage.setItem('saturn_accounts', JSON.stringify(accounts));
 
-      // Set first account as active
-      if (accounts.length > 0) {
-        AccountManager.setActiveAccount(accounts[0].id);
-        localStorage.setItem('saturn_imported_pubkey', accounts[0].addresses.solana);
+      // Set first new account as active (or first account if new wallet)
+      const newAccountIndex = isAddingToExisting ? existingAccounts.length : 0;
+      if (accounts.length > newAccountIndex) {
+        AccountManager.setActiveAccount(accounts[newAccountIndex].id);
+        localStorage.setItem('saturn_imported_pubkey', accounts[newAccountIndex].addresses.solana);
       }
 
       // Unlock wallet
@@ -384,9 +415,10 @@ export function ImportWalletDialog({
         throw new Error('Failed to unlock wallet after import');
       }
 
-      window.dispatchEvent(new Event('walletImported'));
+      window.dispatchEvent(new CustomEvent('walletImported', { detail: { isImportedSeedPhrase: isAddingToExisting } }));
 
-      toast.success(`${accounts.length} account${accounts.length > 1 ? 's' : ''} imported successfully!`);
+      const addedCount = accounts.length - (isAddingToExisting ? existingAccounts.length : 0);
+      toast.success(`${addedCount} account${addedCount > 1 ? 's' : ''} imported successfully!`);
       onSuccess?.();
       handleOpenChange(false);
     } catch (err: any) {

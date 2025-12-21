@@ -10,7 +10,7 @@ import { getHeliusApiKey, getAlchemyApiKey } from './env';
 const SWAP_HISTORY_KEY = 'suprik_swap_history';
 
 // Cache for transaction history to avoid repeated API calls
-const TX_CACHE_KEY = 'suprik_tx_cache_v9'; // v9: case-insensitive address matching + better logging
+const TX_CACHE_KEY = 'suprik_tx_cache_v10'; // v10: fixed TOKEN symbol resolution with mint addresses
 const TX_CACHE_TTL = 60 * 1000; // 1 minute cache TTL
 
 interface TxCache {
@@ -100,20 +100,10 @@ export function clearTransactionCache(): void {
     // Clear old cache versions too
     localStorage.removeItem('suprik_tx_cache_solana-mainnet');
     localStorage.removeItem('suprik_tx_cache_solana-devnet');
-    localStorage.removeItem('suprik_tx_cache_v2_solana-mainnet');
-    localStorage.removeItem('suprik_tx_cache_v2_solana-devnet');
-    localStorage.removeItem('suprik_tx_cache_v3_solana-mainnet');
-    localStorage.removeItem('suprik_tx_cache_v3_solana-devnet');
-    localStorage.removeItem('suprik_tx_cache_v4_solana-mainnet');
-    localStorage.removeItem('suprik_tx_cache_v4_solana-devnet');
-    localStorage.removeItem('suprik_tx_cache_v5_solana-mainnet');
-    localStorage.removeItem('suprik_tx_cache_v5_solana-devnet');
-    localStorage.removeItem('suprik_tx_cache_v6_solana-mainnet');
-    localStorage.removeItem('suprik_tx_cache_v6_solana-devnet');
-    localStorage.removeItem('suprik_tx_cache_v7_solana-mainnet');
-    localStorage.removeItem('suprik_tx_cache_v7_solana-devnet');
-    localStorage.removeItem('suprik_tx_cache_v8_solana-mainnet');
-    localStorage.removeItem('suprik_tx_cache_v8_solana-devnet');
+    for (let v = 2; v <= 10; v++) {
+      localStorage.removeItem(`suprik_tx_cache_v${v}_solana-mainnet`);
+      localStorage.removeItem(`suprik_tx_cache_v${v}_solana-devnet`);
+    }
     // Also clear local swap history that may have incorrect token symbols
     localStorage.removeItem(SWAP_HISTORY_KEY);
     console.log('[TxHistory] ✅ All cache AND local swap history cleared');
@@ -181,6 +171,14 @@ const KNOWN_TOKEN_MINTS: Record<string, string> = {
   'A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM': 'USDCet',
   '7i5KKsX2weiTkry7jA4ZwSuXGhs5eJBEjY8vVxR4pfRx': 'GMT',
   'HxhWkVpk5NS4Ltg5nij2G671CKXFRKPK8vy271Fjy6Fs': 'GARI',
+  // Pump.fun tokens
+  'A8C3xuqscfmyLrte3VmTqrAq8kgMASius9AFNANwpump': 'PUMP',
+  '2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump': 'PNUT',
+  '9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump': 'FARTCOIN',
+  'CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump': 'GOAT',
+  'GJAFwWjJ3vnTsrQVabjBVK2TYB1YtRCQXRDfDgUnpump': 'ACT',
+  'Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump': 'CHILLGUY',
+  'BAGE9SrkSGQMsCxvYWg7gxHbFy9HGKqX4nSguLMAppump': 'ZEREBRO',
 };
 
 /**
@@ -207,6 +205,18 @@ function getTokenSymbol(transfer: any): string {
   const symbolFromAPI = transfer.symbol || transfer.tokenSymbol || transfer.name;
   if (symbolFromAPI && symbolFromAPI !== '' && symbolFromAPI !== 'Unknown' && symbolFromAPI !== 'unknown') {
     return symbolFromAPI;
+  }
+
+  // Check if it's a pump.fun token (mint ends with 'pump')
+  // Most pump.fun tokens have recognizable mints but unknown symbols
+  if (mintAddress && mintAddress.toLowerCase().endsWith('pump')) {
+    // Try to get the name from the API response as fallback
+    const nameFromAPI = transfer.name || transfer.tokenName;
+    if (nameFromAPI && nameFromAPI.length <= 20) {
+      return nameFromAPI.toUpperCase();
+    }
+    // Return a shortened mint as last resort for pump.fun tokens
+    return mintAddress.slice(0, 4).toUpperCase();
   }
 
   // Log unknown mints for debugging (only once per mint)
@@ -609,6 +619,29 @@ export async function fetchAllTransactionHistory(
 }
 
 /**
+ * Resolve token symbol from mint address
+ * Used to fix "TOKEN" symbols in swap history
+ */
+function resolveSymbolFromMint(mint: string | undefined, fallbackSymbol: string): string {
+  // If no mint, return fallback
+  if (!mint) return fallbackSymbol;
+
+  // Check our known mints database
+  if (KNOWN_TOKEN_MINTS[mint]) {
+    return KNOWN_TOKEN_MINTS[mint];
+  }
+
+  // Pump.fun tokens end with 'pump' - try to extract a better name
+  if (mint.toLowerCase().endsWith('pump')) {
+    // Return a shortened version of the mint as the symbol (first 4 chars uppercase)
+    // This is better than "TOKEN"
+    return mint.slice(0, 4).toUpperCase();
+  }
+
+  return fallbackSymbol;
+}
+
+/**
  * Save a swap transaction to local storage
  */
 export function saveSwapToHistory(swap: {
@@ -621,29 +654,50 @@ export function saveSwapToHistory(swap: {
   fee?: number;
   feeAmount?: number;
   walletAddress: string;
+  fromMint?: string; // Mint address for from token (for symbol resolution)
+  toMint?: string;   // Mint address for to token (for symbol resolution)
 }): void {
   try {
     const history = getLocalSwapHistory();
 
+    // Resolve symbols from mint addresses if the symbol is "TOKEN" or empty
+    let fromTokenSymbol = swap.fromToken;
+    let toTokenSymbol = swap.toToken;
+
+    // If fromToken is "TOKEN" or empty, try to resolve from mint
+    if (!fromTokenSymbol || fromTokenSymbol === 'TOKEN' || fromTokenSymbol === '') {
+      fromTokenSymbol = resolveSymbolFromMint(swap.fromMint, 'TOKEN');
+      console.log('[TxHistory] Resolved fromToken from mint:', swap.fromMint, '→', fromTokenSymbol);
+    }
+
+    // If toToken is "TOKEN" or empty, try to resolve from mint
+    if (!toTokenSymbol || toTokenSymbol === 'TOKEN' || toTokenSymbol === '') {
+      toTokenSymbol = resolveSymbolFromMint(swap.toMint, 'TOKEN');
+      console.log('[TxHistory] Resolved toToken from mint:', swap.toMint, '→', toTokenSymbol);
+    }
+
     const newSwap: TransactionItem = {
       id: swap.signature,
       type: 'swap',
-      token: swap.fromToken,
+      token: fromTokenSymbol,
       amount: swap.fromAmount,
       date: new Date().toISOString(),
       timestamp: new Date().toISOString(),
       status: 'confirmed',
       signature: swap.signature,
       network: 'solana',
-      fromToken: swap.fromToken,
-      toToken: swap.toToken,
+      fromToken: fromTokenSymbol,
+      toToken: toTokenSymbol,
       fromAmount: swap.fromAmount,
       toAmount: swap.toAmount,
       rate: swap.rate,
       fee: swap.fee,
       feeAmount: swap.feeAmount,
       from: swap.walletAddress,
-    };
+      // Store mint addresses for future reference/debugging
+      fromMint: swap.fromMint,
+      toMint: swap.toMint,
+    } as TransactionItem & { fromMint?: string; toMint?: string };
 
     // Add to beginning of array (most recent first)
     history.unshift(newSwap);
@@ -652,7 +706,7 @@ export function saveSwapToHistory(swap: {
     const trimmed = history.slice(0, 100);
 
     localStorage.setItem(SWAP_HISTORY_KEY, JSON.stringify(trimmed));
-    console.log('[TxHistory] ✅ Saved swap to history:', swap.fromToken, '→', swap.toToken);
+    console.log('[TxHistory] ✅ Saved swap to history:', fromTokenSymbol, '→', toTokenSymbol);
 
     // Dispatch event to notify Activity page
     window.dispatchEvent(new CustomEvent('swapHistoryUpdated'));
@@ -663,12 +717,86 @@ export function saveSwapToHistory(swap: {
 
 /**
  * Get local swap history from storage
+ * Also fixes any entries that have "TOKEN" as symbol (from before fix)
+ * Removes entries that can't be fixed (old entries without mint addresses)
  */
 export function getLocalSwapHistory(): TransactionItem[] {
   try {
     const stored = localStorage.getItem(SWAP_HISTORY_KEY);
     if (stored) {
-      return JSON.parse(stored);
+      let history = JSON.parse(stored);
+
+      // Fix any entries with "TOKEN" or empty symbols
+      let needsSave = false;
+      const entriesToRemove: string[] = [];
+
+      for (const entry of history) {
+        if (entry.type === 'swap') {
+          // Fix fromToken if it's "TOKEN" or empty
+          if (!entry.fromToken || entry.fromToken === 'TOKEN' || entry.fromToken === '') {
+            // First try to resolve from stored mint address
+            if (entry.fromMint) {
+              const resolved = resolveSymbolFromMint(entry.fromMint, 'TOKEN');
+              if (resolved !== 'TOKEN') {
+                entry.fromToken = resolved;
+                entry.token = resolved;
+                needsSave = true;
+                console.log('[TxHistory] Fixed fromToken from mint:', entry.fromMint, '→', resolved);
+              }
+            }
+            // Fallback: try to identify from token field
+            else if (entry.token && entry.token !== 'TOKEN' && entry.token !== '') {
+              entry.fromToken = entry.token;
+              needsSave = true;
+            }
+          }
+          // Fix toToken if it's "TOKEN" or empty
+          if (!entry.toToken || entry.toToken === 'TOKEN' || entry.toToken === '') {
+            // First try to resolve from stored mint address
+            if (entry.toMint) {
+              const resolved = resolveSymbolFromMint(entry.toMint, 'TOKEN');
+              if (resolved !== 'TOKEN') {
+                entry.toToken = resolved;
+                needsSave = true;
+                console.log('[TxHistory] Fixed toToken from mint:', entry.toMint, '→', resolved);
+              }
+            }
+            // Fallback: For swaps to SOL, we can identify by amount patterns
+            else if (entry.toAmount && entry.toAmount < 1 && entry.fromAmount > 10) {
+              // Likely swapping meme coin to SOL
+              entry.toToken = 'SOL';
+              needsSave = true;
+            }
+          }
+          // Also fix the token field
+          if (entry.token === 'TOKEN' && entry.fromToken && entry.fromToken !== 'TOKEN') {
+            entry.token = entry.fromToken;
+            needsSave = true;
+          }
+
+          // If still showing "TOKEN" after all fixes, mark for removal
+          // These are old entries without mint addresses that can't be fixed
+          if (entry.fromToken === 'TOKEN' || entry.toToken === 'TOKEN') {
+            console.log('[TxHistory] Removing unfixable swap entry with TOKEN:', entry.id);
+            entriesToRemove.push(entry.id);
+            needsSave = true;
+          }
+        }
+      }
+
+      // Remove unfixable entries
+      if (entriesToRemove.length > 0) {
+        history = history.filter((e: any) => !entriesToRemove.includes(e.id));
+        console.log('[TxHistory] Removed', entriesToRemove.length, 'unfixable TOKEN entries');
+      }
+
+      // Save fixed history back
+      if (needsSave) {
+        localStorage.setItem(SWAP_HISTORY_KEY, JSON.stringify(history));
+        console.log('[TxHistory] Fixed/cleaned swap history');
+      }
+
+      return history;
     }
   } catch (error) {
     console.error('[TxHistory] Error reading swap history:', error);

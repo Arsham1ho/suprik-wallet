@@ -1227,17 +1227,33 @@ Check console for full details!
   });
 
   // Animate balance changes smoothly
+  // Use a ref to track the current animated value to avoid stale closure issues
+  const animatedBalanceRef = useRef(animatedBalance);
+
   useEffect(() => {
-    if (animatedBalance === 0 && totalBalance > 0) {
-      // Initial load - set immediately without animation
+    animatedBalanceRef.current = animatedBalance;
+  }, [animatedBalance]);
+
+  useEffect(() => {
+    // Skip animation if total balance is 0 or NaN
+    if (!totalBalance || isNaN(totalBalance) || totalBalance <= 0) {
+      setAnimatedBalance(0);
+      return;
+    }
+
+    // Initial load or significant change - set immediately without animation
+    const currentAnimated = animatedBalanceRef.current;
+    if (currentAnimated === 0 || Math.abs(totalBalance - currentAnimated) > totalBalance * 0.5) {
+      // Set immediately for initial load or large changes (>50% difference)
       setAnimatedBalance(totalBalance);
       return;
     }
 
-    const startValue = animatedBalance;
+    const startValue = currentAnimated;
     const endValue = totalBalance;
     const duration = 1500; // 1.5 seconds for smoother animation
     const startTime = Date.now();
+    let animationFrame: number;
 
     // Easing function for smooth deceleration (ease-out cubic)
     const easeOutCubic = (t: number): number => {
@@ -1256,13 +1272,20 @@ Check console for full details!
       setAnimatedBalance(currentValue);
 
       if (progress < 1) {
-        requestAnimationFrame(animate);
+        animationFrame = requestAnimationFrame(animate);
       } else {
         setAnimatedBalance(endValue);
       }
     };
 
-    requestAnimationFrame(animate);
+    animationFrame = requestAnimationFrame(animate);
+
+    // Cleanup animation on unmount or when totalBalance changes
+    return () => {
+      if (animationFrame) {
+        cancelAnimationFrame(animationFrame);
+      }
+    };
   }, [totalBalance]);
 
   const filteredTokens = tokens

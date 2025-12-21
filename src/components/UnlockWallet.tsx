@@ -1,11 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { motion } from "motion/react";
 import { Lock, Eye, EyeOff, AlertCircle, Fingerprint } from "lucide-react";
 import { GradientButton } from "./GradientButton";
-import { Button } from "./ui/button";
-import { SecureStorage, WalletStorage } from "../utils/wallet";
+import { WalletStorage } from "../utils/wallet";
 import { useWallet } from "../utils/WalletContext";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import {
   authenticateBiometric,
   getBiometricTypeName,
@@ -34,22 +33,24 @@ export function UnlockWallet({
     useState<BiometricSettings | null>(null);
   const [useFingerprintAuth, setUseFingerprintAuth] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricReady, setBiometricReady] = useState(false); // Track if biometric check is done
   const [authenticatingBiometric, setAuthenticatingBiometric] = useState(false);
   const biometricType = getBiometricTypeName();
 
-  // Check biometric availability and settings on mount
+  // Check biometric availability and settings on mount - run in parallel, don't block UI
   useEffect(() => {
     const checkBiometricSetup = async () => {
-      // Check if device supports biometric
+      // Check if device supports biometric (this is fast, local check)
       const available = await isBiometricAvailable();
       setBiometricAvailable(available);
+      setBiometricReady(true); // Mark biometric check as done
 
       if (!available) {
         console.log("[UnlockWallet] Biometric not available on this device");
         return;
       }
 
-      // Fetch user's biometric settings from server
+      // Fetch user's biometric settings from server (don't block on this)
       try {
         const { projectId, publicAnonKey } = await import(
           "../utils/supabase/info"
@@ -68,7 +69,8 @@ export function UnlockWallet({
           const biometric = settings.biometric as BiometricSettings | undefined;
           setBiometricSettings(biometric || null);
 
-          // If user has enabled fingerprint auth, use it by default
+          // If user has enabled fingerprint auth, switch to fingerprint mode
+          // But only if we're not already showing password form (user might have started typing)
           if (biometric?.enabled) {
             console.log(
               "[UnlockWallet] Fingerprint authentication enabled by user"
@@ -84,10 +86,11 @@ export function UnlockWallet({
       }
     };
 
+    // Run biometric check immediately (don't wait for auto-unlock)
     checkBiometricSetup();
   }, [walletId]);
 
-  // Try to auto-unlock with OAuth password or fingerprint on mount
+  // Try to auto-unlock with OAuth password on mount (runs in background, doesn't block UI)
   useEffect(() => {
     const tryAutoUnlock = async () => {
       try {
@@ -105,10 +108,6 @@ export function UnlockWallet({
             console.log(
               "[UnlockWallet] 🔑 OAuth password retrieved successfully"
             );
-            console.log(
-              "[UnlockWallet] 🔑 Password length:",
-              oauthPassword.length
-            );
             const success = await wallet.unlock(oauthPassword);
 
             if (success) {
@@ -119,14 +118,6 @@ export function UnlockWallet({
             } else {
               console.warn(
                 "[UnlockWallet] ⚠️ Auto-unlock failed - password decryption failed"
-              );
-              toast.error(
-                "Auto-unlock failed. Please enter your password manually.",
-                {
-                  description:
-                    "Wallet data may have been encrypted with a different password",
-                  duration: 5000,
-                }
               );
             }
           } else {
@@ -141,15 +132,20 @@ export function UnlockWallet({
         }
       } catch (error) {
         console.error("[UnlockWallet] ❌ Auto-unlock error:", error);
-        toast.error("Auto-unlock failed", {
-          description: "Please enter your password manually",
-        });
       } finally {
+        // Always show the unlock UI after auto-unlock attempt
         setAutoUnlocking(false);
       }
     };
 
+    // Quick timeout to show UI faster - don't block for too long
+    const timeout = setTimeout(() => {
+      setAutoUnlocking(false);
+    }, 1500); // Max 1.5 seconds wait
+
     tryAutoUnlock();
+
+    return () => clearTimeout(timeout);
   }, [walletId]);
 
   const handleFingerprintAuth = async () => {
@@ -238,7 +234,7 @@ export function UnlockWallet({
     }
   };
 
-  const handleUnlock = async (e: React.FormEvent) => {
+  const handleUnlock = async (e: FormEvent) => {
     e.preventDefault();
 
     if (!password) {
@@ -286,7 +282,7 @@ export function UnlockWallet({
     }
   };
 
-  // Show loading state while auto-unlocking
+  // Show loading state while auto-unlocking - but allow user to skip
   if (autoUnlocking) {
     return (
       <div className="min-h-screen bg-black text-white w-full flex items-center justify-center px-6">
@@ -303,6 +299,15 @@ export function UnlockWallet({
           </div>
           <p className="text-white font-medium">Unlocking your wallet...</p>
           <p className="text-slate-400 text-sm">Please wait</p>
+
+          {/* Allow user to skip auto-unlock and use password */}
+          <button
+            type="button"
+            onClick={() => setAutoUnlocking(false)}
+            className="text-sm text-slate-400 hover:text-purple-400 transition-colors mt-4"
+          >
+            Use password instead
+          </button>
         </motion.div>
       </div>
     );

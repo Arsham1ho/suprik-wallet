@@ -206,6 +206,14 @@ const TOKEN_DECIMALS: Record<string, number> = {
   'GST': 9,
   'PARAI': 9,
   'PAI': 9,
+  // Pump.fun tokens (most have 6 decimals)
+  'PUMP': 6,
+  'PNUT': 6,
+  'FARTCOIN': 6,
+  'GOAT': 6,
+  'ACT': 6,
+  'CHILLGUY': 6,
+  'ZEREBRO': 6,
 };
 
 // Reverse mapping: Mint address to decimals (for dynamic lookup)
@@ -224,14 +232,35 @@ const MINT_TO_DECIMALS: Record<string, number> = {
   'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So': 9, // MSOL
   'J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn': 9, // JITOSOL
   'bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1': 9, // BSOL
+  // Pump.fun tokens (most have 6 decimals)
+  'A8C3xuqscfmyLrte3VmTqrAq8kgMASius9AFNANwpump': 6, // PUMP
+  '2qEHjDLDLbuBgRYvsxhc5D6uDWAivNFZGan56P1tpump': 6, // PNUT
+  '9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump': 6, // FARTCOIN
+  'CzLSujWBLFsSjncfkh59rUFqvafWcY5tzedWJSuypump': 6, // GOAT
+  'GJAFwWjJ3vnTsrQVabjBVK2TYB1YtRCQXRDfDgUnpump': 6, // ACT
+  'Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump': 6, // CHILLGUY
+  'BAGE9SrkSGQMsCxvYWg7gxHbFy9HGKqX4nSguLMAppump': 6, // ZEREBRO
 };
 
 /**
  * Get token decimals by mint address
  * Falls back to 9 (standard Solana SPL token decimals) if not found
+ * Special handling for pump.fun tokens (mint ends with 'pump') - they use 6 decimals
  */
 export function getDecimalsForMint(mint: string): number {
-  return MINT_TO_DECIMALS[mint] || 9;
+  // Check static mapping first
+  if (MINT_TO_DECIMALS[mint]) {
+    return MINT_TO_DECIMALS[mint];
+  }
+
+  // Pump.fun tokens end with 'pump' and use 6 decimals
+  if (mint.toLowerCase().endsWith('pump')) {
+    console.log('[Jupiter] Detected pump.fun token, using 6 decimals:', mint);
+    return 6;
+  }
+
+  // Default to 9 for standard SPL tokens
+  return 9;
 }
 
 // ===========================
@@ -753,6 +782,37 @@ export async function executeJupiterSwap(params: {
 
     console.log('[Jupiter] Wallet:', keypair.publicKey.toBase58());
 
+    // Check SOL balance before swap with retry (RPC can sometimes return stale data)
+    let solBalance = 0;
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        solBalance = await connection.getBalance(keypair.publicKey, 'confirmed');
+        console.log('[Jupiter] Balance check attempt', 4 - retries, ':', solBalance / 1e9, 'SOL');
+        // If we got a non-zero balance, we're good
+        if (solBalance > 0) break;
+        // If balance is 0, retry once more to confirm it's not a stale read
+        if (retries > 1) {
+          await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
+        }
+      } catch (e) {
+        console.warn('[Jupiter] Balance check error, retrying...', e);
+      }
+      retries--;
+    }
+    console.log('[Jupiter] Final SOL balance:', solBalance / 1e9, 'SOL');
+
+    if (solBalance === 0) {
+      throw new Error('Unable to verify SOL balance (RPC returned 0). Please try again. If you have SOL, the network may be slow.');
+    }
+
+    // Minimum SOL needed for transaction fee + potential token account creation (~0.005 SOL)
+    const MIN_SOL_FOR_SWAP = 0.005 * 1e9; // 0.005 SOL in lamports
+    if (solBalance < MIN_SOL_FOR_SWAP) {
+      const currentSOL = (solBalance / 1e9).toFixed(4);
+      throw new Error(`Low SOL balance (${currentSOL} SOL). You need at least 0.005 SOL to cover transaction fees and token account creation.`);
+    }
+
     // Check for real quote response
     if (!quoteResponse.quoteResponse) {
       throw new Error('No valid Jupiter quote available. Please try again.');
@@ -775,12 +835,20 @@ export async function executeJupiterSwap(params: {
     }
 
     // Build swap request body
+    // Use dynamicSlippage to handle volatile tokens like meme coins
+    // This lets Jupiter automatically adjust slippage at execution time
     const swapRequestBody: any = {
       quoteResponse: quoteResponse.quoteResponse,
       userPublicKey: keypair.publicKey.toBase58(),
       wrapAndUnwrapSol: true,
       dynamicComputeUnitLimit: true,
       prioritizationFeeLamports: 'auto',
+      // Enable dynamic slippage for volatile tokens
+      // minBps: minimum slippage (100 = 1%), maxBps: maximum slippage (1500 = 15%)
+      dynamicSlippage: {
+        minBps: 100,  // 1% minimum
+        maxBps: 1500, // 15% maximum - good for meme coins
+      },
     };
 
     // Add fee account if we have one configured for the output token
@@ -794,6 +862,7 @@ export async function executeJupiterSwap(params: {
     }
 
     console.log('[Jupiter] Requesting swap transaction...');
+    console.log('[Jupiter] Dynamic slippage enabled: 1% - 15%');
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
@@ -891,7 +960,19 @@ export async function executeJupiterSwap(params: {
       } else if (finalStatus?.value?.err) {
         throw new Error(`Transaction failed: ${JSON.stringify(finalStatus.value.err)}`);
       } else {
-        throw new Error('Transaction confirmation timeout. Check your wallet for status.');
+        // Transaction was sent but not confirmed in time
+        // Return success with the signature - user can check on Solscan
+        console.log('[Jupiter] Transaction sent but confirmation timed out. Signature:', signature);
+        console.log('[Jupiter] Transaction may still succeed - check: https://solscan.io/tx/' + signature);
+
+        // Return as success with signature - the transaction is on-chain
+        return {
+          success: true,
+          signature,
+          inputAmount: quoteResponse.inputAmount,
+          outputAmount: quoteResponse.outputAmount,
+          platformFee: quoteResponse.platformFee,
+        };
       }
     }
 
@@ -916,8 +997,16 @@ export async function executeJupiterSwap(params: {
     const logsStr = error.logs ? JSON.stringify(error.logs) : errorStr;
     const fullErrorStr = errorStr + ' ' + logsStr;
 
+    // Check for Jupiter slippage error (0x1788 = 6024 = SlippageToleranceExceeded)
+    if (fullErrorStr.includes('0x1788') || fullErrorStr.includes('6024')) {
+      userMessage = 'Price moved too much during swap. This token is very volatile - please try again immediately (prices change fast).';
+    }
+    // Check for empty wallet (no prior credit - wallet has never received SOL)
+    else if (fullErrorStr.includes('no record of a prior credit') || fullErrorStr.includes('AccountNotFound')) {
+      userMessage = 'Your wallet has no SOL balance. Please deposit SOL first to pay for transaction fees.';
+    }
     // Check for block height exceeded (transaction expired)
-    if (fullErrorStr.includes('block height exceeded') || fullErrorStr.includes('expired') || error.name === 'TransactionExpiredBlockheightExceededError') {
+    else if (fullErrorStr.includes('block height exceeded') || fullErrorStr.includes('expired') || error.name === 'TransactionExpiredBlockheightExceededError') {
       userMessage = 'Transaction expired. The network is busy - please try again.';
     }
     // Check for insufficient lamports for rent (creating new token account)

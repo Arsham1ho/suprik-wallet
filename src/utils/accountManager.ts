@@ -12,6 +12,16 @@ export interface Account {
   profilePicture?: string;
   selectedEmoji?: string;
   createdAt: number;
+  // If true, this account was imported from a different seed phrase
+  // and its addresses should NOT be overwritten by WalletContext derivation
+  isImportedSeedPhrase?: boolean;
+  // If true, this account was imported via private key (not seed phrase)
+  isPrivateKeyImport?: boolean;
+  // Encrypted mnemonic for imported accounts (encrypted with wallet password)
+  // This allows transactions to work for accounts from different seed phrases
+  encryptedMnemonic?: string;
+  // Encrypted private key for private key imports
+  encryptedPrivateKey?: string;
 }
 
 const ACCOUNTS_KEY = 'saturn_accounts';

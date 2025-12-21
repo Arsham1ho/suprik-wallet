@@ -1,7 +1,6 @@
-import { Button } from '../ui/button';
-import { ArrowLeft, Search, LayoutGrid, QrCode, DollarSign, Share2, MoreHorizontal, ExternalLink, Send } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, LayoutGrid, QrCode, DollarSign, Share2, MoreHorizontal, ExternalLink, Send } from 'lucide-react';
+import { motion } from 'motion/react';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { TokenLogo } from '../TokenLogo';
@@ -754,15 +753,44 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
             </button>
           )}
           
-          <button 
-            onClick={() => setShowReceiveDialog(true)}
-            className="flex flex-col items-center gap-2 p-4 rounded-xl bg-slate-950/50 hover:bg-slate-900/50 transition-colors border-b-2 border-purple-500"
-          >
-            <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center">
-              <QrCode className="w-5 h-5 text-purple-400" />
-            </div>
-            <span className="text-xs font-semibold">Receive</span>
-          </button>
+          {/* Receive Button - Only enabled for Solana tokens */}
+          {(() => {
+            // Check if this is a Solana token (not BTC, ETH, or other non-Solana tokens)
+            const isSolanaToken = !['BTC', 'ETH', 'MATIC', 'AVAX', 'BNB'].includes(token.symbol.toUpperCase()) &&
+                                  !token.mint?.startsWith('0x') &&
+                                  token.symbol.toUpperCase() !== 'BITCOIN' &&
+                                  token.symbol.toUpperCase() !== 'ETHEREUM';
+
+            if (isSolanaToken) {
+              return (
+                <button
+                  onClick={() => setShowReceiveDialog(true)}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl bg-slate-950/50 hover:bg-slate-900/50 transition-colors border-b-2 border-purple-500"
+                >
+                  <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center">
+                    <QrCode className="w-5 h-5 text-purple-400" />
+                  </div>
+                  <span className="text-xs font-semibold">Receive</span>
+                </button>
+              );
+            } else {
+              return (
+                <button
+                  disabled
+                  className="relative flex flex-col items-center gap-2 p-4 rounded-xl bg-slate-950/30 cursor-not-allowed opacity-60 transition-all"
+                >
+                  {/* Coming Soon Badge */}
+                  <div className="absolute -top-1 -right-1 bg-gradient-to-r from-purple-500 to-blue-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow-lg">
+                    Coming Soon
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-slate-900/50 flex items-center justify-center">
+                    <QrCode className="w-5 h-5 text-slate-500" />
+                  </div>
+                  <span className="text-xs font-semibold text-slate-500">Receive</span>
+                </button>
+              );
+            }
+          })()}
           
           <button 
             disabled

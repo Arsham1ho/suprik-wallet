@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Users, Copy, Share2, Mail, MessageCircle, Check, QrCode } from 'lucide-react';
+import { ArrowLeft, Copy, Share2, Mail, MessageCircle, Check, QrCode } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -11,22 +11,24 @@ interface InviteFriendsProps {
   walletId: string;
 }
 
-export function InviteFriends({ onBack, walletId }: InviteFriendsProps) {
-  const [copied, setCopied] = useState(false);
-  const inviteLink = `https://saturn-wallet.app/invite/${walletId.slice(0, 8)}`;
-  const inviteCode = walletId.slice(0, 8).toUpperCase();
-  
+export function InviteFriends({ onBack }: InviteFriendsProps) {
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedMessage, setCopiedMessage] = useState(false);
+  const inviteLink = 'https://www.suprik.com';
+
   const inviteMessage = `Join me on Suprik Wallet! 🪐
 
-The best crypto wallet for managing your digital assets across multiple blockchains.`;
+The best crypto wallet for managing your digital assets across multiple blockchains.
 
-  const copyToClipboard = async (text: string) => {
+Download now: ${inviteLink}`;
+
+  const copyMessage = async () => {
     try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      toast.success('Copied to clipboard');
-    } catch (error) {
+      await navigator.clipboard.writeText(inviteMessage);
+      setCopiedMessage(true);
+      setTimeout(() => setCopiedMessage(false), 2000);
+      toast.success('Message copied!');
+    } catch {
       toast.error('Failed to copy');
     }
   };
@@ -37,14 +39,15 @@ The best crypto wallet for managing your digital assets across multiple blockcha
         await navigator.share({
           title: 'Join Suprik Wallet',
           text: inviteMessage,
+          url: inviteLink,
         });
       } catch (error) {
         if ((error as Error).name !== 'AbortError') {
-          copyToClipboard(inviteMessage);
+          copyMessage();
         }
       }
     } else {
-      copyToClipboard(inviteMessage);
+      copyMessage();
     }
   };
 
@@ -74,12 +77,12 @@ The best crypto wallet for managing your digital assets across multiple blockcha
         </div>
       </div>
 
-      <div className="px-4 py-6 max-w-2xl mx-auto space-y-6">
+      <div className="px-4 py-6 max-w-2xl mx-auto space-y-6 pb-32">
         {/* Hero Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center py-8"
+          className="text-center py-6"
         >
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
@@ -97,54 +100,15 @@ The best crypto wallet for managing your digital assets across multiple blockcha
           </p>
         </motion.div>
 
-        {/* Invite Code Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-xl p-6"
-        >
-          <div className="flex items-center gap-2 mb-4">
-            <Users className="w-5 h-5 text-purple-400" />
-            <h3 className="text-white font-medium">Your Invite Code</h3>
-          </div>
-          
-          <div className="bg-black/40 rounded-lg p-4 mb-4">
-            <div className="text-center">
-              <p className="text-slate-400 text-sm mb-2">Invite Code</p>
-              <p className="text-3xl font-bold text-purple-400 tracking-wider font-mono">
-                {inviteCode}
-              </p>
-            </div>
-          </div>
-
-          <Button
-            onClick={() => copyToClipboard(inviteCode)}
-            className="w-full bg-purple-600 hover:bg-purple-700"
-          >
-            {copied ? (
-              <>
-                <Check className="w-4 h-4 mr-2" />
-                Copied!
-              </>
-            ) : (
-              <>
-                <Copy className="w-4 h-4 mr-2" />
-                Copy Code
-              </>
-            )}
-          </Button>
-        </motion.div>
-
         {/* Invite Link */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.1 }}
           className="space-y-3"
         >
           <h3 className="text-slate-400 text-sm px-2">Invite Link</h3>
-          
+
           <div className="bg-slate-900/50 border border-slate-800/30 rounded-xl p-4">
             <div className="flex gap-2 mb-3">
               <Input
@@ -153,14 +117,19 @@ The best crypto wallet for managing your digital assets across multiple blockcha
                 className="bg-slate-900 border-slate-700 text-white font-mono text-sm"
               />
               <Button
-                onClick={() => copyToClipboard(inviteLink)}
+                onClick={() => {
+                  navigator.clipboard.writeText(inviteLink);
+                  setCopiedLink(true);
+                  setTimeout(() => setCopiedLink(false), 2000);
+                  toast.success('Link copied!');
+                }}
                 variant="outline"
                 className="border-slate-700 flex-shrink-0"
               >
-                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copiedLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               </Button>
             </div>
-            
+
             <p className="text-slate-400 text-xs">
               Share this link with your friends to invite them to Suprik
             </p>
@@ -173,7 +142,7 @@ The best crypto wallet for managing your digital assets across multiple blockcha
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
+          transition={{ delay: 0.2 }}
           className="space-y-3"
         >
           <h3 className="text-slate-400 text-sm px-2">Share Via</h3>
@@ -229,7 +198,7 @@ The best crypto wallet for managing your digital assets across multiple blockcha
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
+          transition={{ delay: 0.3 }}
           className="space-y-3"
         >
           <h3 className="text-slate-400 text-sm px-2">Message Preview</h3>
@@ -239,12 +208,21 @@ The best crypto wallet for managing your digital assets across multiple blockcha
               {inviteMessage}
             </pre>
             <Button
-              onClick={() => copyToClipboard(inviteMessage)}
+              onClick={copyMessage}
               variant="outline"
               className="w-full mt-4 border-slate-700"
             >
-              <Copy className="w-4 h-4 mr-2" />
-              Copy Message
+              {copiedMessage ? (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copy Message
+                </>
+              )}
             </Button>
           </div>
         </motion.div>
@@ -253,7 +231,7 @@ The best crypto wallet for managing your digital assets across multiple blockcha
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+          transition={{ delay: 0.4 }}
           className="bg-blue-950/20 border border-blue-900/30 rounded-xl p-4"
         >
           <h4 className="text-blue-300 font-medium mb-3 flex items-center gap-2">
@@ -280,7 +258,7 @@ The best crypto wallet for managing your digital assets across multiple blockcha
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
+          transition={{ delay: 0.5 }}
           className="grid grid-cols-3 gap-3"
         >
           <div className="bg-slate-900/50 border border-slate-800/30 rounded-xl p-4 text-center">

@@ -4,16 +4,20 @@
  * Supports Solana and Ethereum networks with TESTNET mode
  */
 
-import { mnemonicToSeed } from '@scure/bip39';
+import * as bip39 from '@scure/bip39';
 import { HDKey } from 'micro-ed25519-hdkey';
 
 /**
  * Derive Solana keypair from mnemonic (CLIENT-SIDE)
  * Uses micro-ed25519-hdkey (SLIP-0010) for derivation - same as Phantom wallet
+ *
+ * IMPORTANT: This MUST use the exact same derivation as wallet.ts deriveAddresses()
+ * to ensure the address shown in Receive page matches the address used for transactions.
  */
 export async function deriveSolanaKeypair(mnemonic: string, accountIndex: number = 0) {
-  // Convert mnemonic to seed
-  const seed = await mnemonicToSeed(mnemonic);
+  // Convert mnemonic to seed - use mnemonicToSeedSync with empty passphrase
+  // This MUST match wallet.ts line 404: bip39.mnemonicToSeedSync(mnemonic, '')
+  const seed = bip39.mnemonicToSeedSync(mnemonic, '');
 
   // Derive Solana path using micro-ed25519-hdkey (SLIP-0010, same as Phantom)
   // Path: m/44'/501'/accountIndex'/0'
@@ -30,6 +34,9 @@ export async function deriveSolanaKeypair(mnemonic: string, accountIndex: number
 
   // Create keypair from derived private key (32 bytes)
   const keypair = Keypair.fromSeed(derived.privateKey);
+
+  // Log the derived address for debugging
+  console.log('[deriveSolanaKeypair] Derived address:', keypair.publicKey.toBase58());
 
   return keypair;
 }
@@ -61,48 +68,64 @@ export async function deriveEthereumPrivateKey(mnemonic: string, accountIndex: n
 
 /**
  * Get Solana connection
+ * Uses Helius RPC if API key is available, otherwise falls back to public RPC
  */
 export async function getSolanaConnection(isTestnet: boolean = false) {
   const { Connection } = await import('@solana/web3.js');
-  
+
   // Get Helius API key from environment
   const { getHeliusApiKey } = await import('./env');
   const HELIUS_API_KEY = getHeliusApiKey();
-  
-  if (!HELIUS_API_KEY) {
-    console.error('[Transactions] ❌ HELIUS_API_KEY not found in environment variables');
-    throw new Error('HELIUS_API_KEY is required. Please add it to your environment variables.');
+
+  let endpoint: string;
+
+  if (HELIUS_API_KEY) {
+    // Use Helius RPC (faster, more reliable, higher rate limits)
+    endpoint = isTestnet
+      ? `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`
+      : `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+    console.log('[Transactions] 🔗 Connecting to Solana via Helius:', isTestnet ? 'DEVNET' : 'MAINNET');
+  } else {
+    // Fallback to public RPC (rate limited but works)
+    endpoint = isTestnet
+      ? 'https://api.devnet.solana.com'
+      : 'https://api.mainnet-beta.solana.com';
+    console.warn('[Transactions] ⚠️ No Helius API key found, using public RPC (rate limited)');
+    console.log('[Transactions] 💡 Tip: Add VITE_HELIUS_API_KEY to .env.local for better performance');
+    console.log('[Transactions] 🔗 Connecting to Solana via public RPC:', isTestnet ? 'DEVNET' : 'MAINNET');
   }
-  
-  const endpoint = isTestnet
-    ? `https://devnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`
-    : `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
-  
-  console.log('[Transactions] 🔗 Connecting to Solana:', isTestnet ? 'DEVNET' : 'MAINNET');
-  
+
   return new Connection(endpoint, 'confirmed');
 }
 
 /**
  * Get Ethereum provider
+ * Uses Alchemy RPC if API key is available, otherwise falls back to public RPC
  */
 export async function getEthereumProvider(isTestnet: boolean = false) {
   const { ethers } = await import('ethers');
-  
+
   // Get Alchemy API key from environment
   const { getAlchemyApiKey } = await import('./env');
   const ALCHEMY_API_KEY = getAlchemyApiKey();
-  
-  if (!ALCHEMY_API_KEY) {
-    console.error('[Transactions] ❌ ALCHEMY_API_KEY not found in environment variables');
-    throw new Error('ALCHEMY_API_KEY is required. Please add it to your environment variables.');
-  }
-  
+
+  let endpoint: string;
   const network = isTestnet ? 'sepolia' : 'mainnet';
-  const endpoint = `https://eth-${network}.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
-  
-  console.log('[Transactions] 🔗 Connecting to Ethereum:', network.toUpperCase());
-  
+
+  if (ALCHEMY_API_KEY) {
+    // Use Alchemy RPC (faster, more reliable)
+    endpoint = `https://eth-${network}.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
+    console.log('[Transactions] 🔗 Connecting to Ethereum via Alchemy:', network.toUpperCase());
+  } else {
+    // Fallback to public RPC (rate limited but works)
+    endpoint = isTestnet
+      ? 'https://rpc.sepolia.org'
+      : 'https://cloudflare-eth.com';
+    console.warn('[Transactions] ⚠️ No Alchemy API key found, using public RPC (rate limited)');
+    console.log('[Transactions] 💡 Tip: Add VITE_ALCHEMY_API_KEY to .env.local for better performance');
+    console.log('[Transactions] 🔗 Connecting to Ethereum via public RPC:', network.toUpperCase());
+  }
+
   return new ethers.JsonRpcProvider(endpoint);
 }
 
@@ -196,11 +219,28 @@ export async function sendSolanaTransaction(params: {
     
     // Connect to Solana (with correct network based on isTestnet flag)
     const connection = await getSolanaConnection(isTestnet);
-    
-    // Check balance
-    const balance = await connection.getBalance(fromPubkey);
+
+    // Check balance with retry (RPC can sometimes return stale data)
+    let balance = 0;
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        balance = await connection.getBalance(fromPubkey, 'confirmed');
+        console.log('[Transactions] Balance check attempt', 4 - retries, ':', balance / LAMPORTS_PER_SOL, 'SOL');
+        // If we got a non-zero balance, we're good
+        if (balance > 0) break;
+        // If balance is 0, retry once more to confirm it's not a stale read
+        if (retries > 1) {
+          await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
+        }
+      } catch (e) {
+        console.warn('[Transactions] Balance check error, retrying...', e);
+      }
+      retries--;
+    }
+
     const lamports = amount * LAMPORTS_PER_SOL;
-    
+
     console.log('[Transactions] Current balance:', balance / LAMPORTS_PER_SOL, 'SOL');
     console.log('[Transactions] Sending:', lamports / LAMPORTS_PER_SOL, 'SOL');
     
@@ -231,6 +271,16 @@ export async function sendSolanaTransaction(params: {
     if (balance < totalRequired) {
       const shortfall = (totalRequired - balance) / LAMPORTS_PER_SOL;
       console.error('[Transactions] Insufficient balance. Short by:', shortfall, 'SOL');
+
+      // If balance is 0, it might be an RPC issue - provide a helpful message
+      if (balance === 0) {
+        return {
+          success: false,
+          signature: '',
+          error: `Unable to verify balance (RPC returned 0). Your actual balance may differ. Please try again or check your wallet on Solscan.`
+        };
+      }
+
       return {
         success: false,
         signature: '',
@@ -415,9 +465,8 @@ export async function sendSPLTokenTransaction(params: {
     }
     
     // MAINNET MODE: Real blockchain transaction
-    const { 
-      Connection, 
-      Transaction, 
+    const {
+      Transaction,
       PublicKey,
       LAMPORTS_PER_SOL
     } = await import('@solana/web3.js');
@@ -434,11 +483,13 @@ export async function sendSPLTokenTransaction(params: {
     // Derive keypair
     const keypair = await deriveSolanaKeypair(mnemonic, accountIndex);
     const fromPubkey = keypair.publicKey;
-    
-    console.log('[Transactions] From:', fromPubkey.toBase58());
-    
-    // Connect to Solana
-    const connection = await getSolanaConnection();
+    const walletAddress = fromPubkey.toBase58();
+
+    console.log('[Transactions] From wallet:', walletAddress);
+    console.log('[Transactions] ℹ️ Verify this address matches your wallet on Solscan.io');
+
+    // Connect to Solana (mainnet - SPL tokens only work on mainnet)
+    const connection = await getSolanaConnection(false);
     
     // Get token accounts
     const mintPubkey = new PublicKey(tokenMint);
@@ -478,15 +529,13 @@ export async function sendSPLTokenTransaction(params: {
     
     // Check SOL balance if we need to create token account
     if (needsTokenAccount) {
-      const { getMinimumBalanceForRentExemption } = await import('@solana/spl-token');
-      
       const solBalance = await connection.getBalance(fromPubkey);
-      
+
       // Get actual account size needed for this specific token
       // For Token-2022, the account might need more space for extensions
       // We'll use a very conservative estimate to ensure transaction succeeds
       let accountSize = 165; // Default token account size
-      
+
       // Check if this is Token-2022
       const mintAccountInfo = await connection.getAccountInfo(mintPubkey);
       if (mintAccountInfo && mintAccountInfo.owner.equals(TOKEN_2022_PROGRAM_ID)) {
@@ -498,9 +547,10 @@ export async function sendSPLTokenTransaction(params: {
       } else {
         console.log('[Transactions] Standard SPL Token detected, using 165 bytes');
       }
-      
+
       // Get actual rent-exempt balance required for token account
-      const rentExemptBalance = await getMinimumBalanceForRentExemption(accountSize, connection);
+      // Use connection.getMinimumBalanceForRentExemption (Solana web3.js method)
+      const rentExemptBalance = await connection.getMinimumBalanceForRentExemption(accountSize);
       
       // Add buffer for transaction fees
       const feeBuffer = 10000; // 0.00001 SOL
@@ -539,7 +589,26 @@ export async function sendSPLTokenTransaction(params: {
     console.log('[Transactions] From token account:', fromTokenAccount.toBase58());
     console.log('[Transactions] To token account:', toTokenAccount.toBase58());
     console.log('[Transactions] Transfer amount:', transferAmount.toString());
-    
+
+    // Check if source token account exists and has balance
+    const fromTokenAccountInfo = await connection.getAccountInfo(fromTokenAccount);
+    if (!fromTokenAccountInfo) {
+      console.error('[Transactions] ❌ Source token account does not exist!');
+      console.error('[Transactions] Wallet address:', walletAddress);
+      console.error('[Transactions] This usually means:');
+      console.error('[Transactions] 1. You have never received this token on MAINNET');
+      console.error('[Transactions] 2. OR your tokens are on DEVNET (testnet)');
+      console.error('[Transactions] 3. Check your wallet at: https://solscan.io/account/' + walletAddress);
+      throw new Error(`No tokens found. Your wallet (${walletAddress.slice(0, 8)}...) has no ${tokenMint.slice(0, 8)}... tokens on mainnet. Check Solscan to verify.`);
+    }
+
+    // Verify SOL balance for transaction fees
+    const solBalance = await connection.getBalance(fromPubkey);
+    console.log('[Transactions] SOL balance for fees:', solBalance / LAMPORTS_PER_SOL, 'SOL');
+    if (solBalance === 0) {
+      throw new Error('No SOL balance for transaction fees. Please deposit SOL first.');
+    }
+
     // Create transaction
     const transaction = new Transaction();
     

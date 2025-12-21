@@ -37,7 +37,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import { TokenLogo } from "../TokenLogo";
 import { projectId, publicAnonKey } from "../../utils/supabase/info";
-import { Search, type CoinGeckoToken } from "./Search";
+import { Search, type CoinGeckoToken, type WalletToken } from "./Search";
 import type { Token } from "./Home";
 import { BiometricConfirmDialog } from "../BiometricConfirmDialog";
 import { SwapSuccessDialog } from "../SwapSuccessDialog";
@@ -46,6 +46,8 @@ import { SwapModeIndicator } from "../SwapModeIndicator";
 import type { BiometricSettings } from "../../utils/biometric";
 import { useWallet } from "../../utils/WalletContext";
 import { useNetwork } from "../../utils/NetworkContext";
+import { AccountManager } from "../../utils/accountManager";
+import { decryptWithPassword } from "../../utils/wallet";
 import {
   getJupiterSwapQuote,
   executeJupiterSwap,
@@ -111,7 +113,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
   const [toToken, setToToken] = useState("");
   const [fromAmount, setFromAmount] = useState("");
   const [toAmount, setToAmount] = useState("");
-  const [slippage, setSlippage] = useState("0.5");
+  const [slippage, setSlippage] = useState("1");
   const [slippageMode, setSlippageMode] = useState<"auto" | "custom">("auto");
   const [priorityFee, setPriorityFee] = useState<"auto" | "custom">("auto");
   const [priorityFeeValue, setPriorityFeeValue] = useState("0.00001");
@@ -212,7 +214,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         console.log("Fetching coins for swap...");
 
         const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=1&per_page=100`,
+          `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=1&per_page=500`,
           {
             headers: {
               Authorization: `Bearer ${publicAnonKey}`,
@@ -239,32 +241,76 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           throw new Error((coinGeckoData as any).error);
         }
 
-        // Merge CoinGecko data with wallet tokens (use ref to avoid dependency)
+        // STEP 1: Start with ALL wallet tokens that have balance
+        // This ensures we never lose a token with balance
+        const walletTokensWithBalance = tokensRef.current.filter(t => t.amount > 0);
+        console.log('[Swap] Wallet tokens with balance:', walletTokensWithBalance.map(t => ({
+          symbol: t.symbol,
+          name: t.name,
+          mint: t.mint?.substring(0, 8) + '...',
+          amount: t.amount
+        })));
+
+        // STEP 2: Create a map of wallet tokens by mint address for fast lookup
+        const walletTokensByMint = new Map<string, typeof walletTokensWithBalance[0]>();
+        const walletTokensBySymbol = new Map<string, typeof walletTokensWithBalance[0]>();
+        const walletTokensByName = new Map<string, typeof walletTokensWithBalance[0]>();
+
+        walletTokensWithBalance.forEach(t => {
+          if (t.mint && t.mint.length > 20) { // Valid Solana mint address
+            walletTokensByMint.set(t.mint, t);
+          }
+          // Only add to symbol map if it looks like a real symbol (not a mint address)
+          if (t.symbol && t.symbol.length < 20 && !t.symbol.includes('...')) {
+            walletTokensBySymbol.set(t.symbol.toUpperCase(), t);
+          }
+          // Also map by name for better matching
+          if (t.name) {
+            walletTokensByName.set(t.name.toLowerCase(), t);
+          }
+        });
+
+        // STEP 3: Merge CoinGecko data with wallet tokens
         const mergedCoins: SwapToken[] = coinGeckoData.map((coin) => {
-          // Find matching token in wallet (check symbol, aliases, and name)
           const coinSymbolUpper = coin.symbol.toUpperCase();
           const symbolAliases = SYMBOL_ALIASES[coinSymbolUpper] || [];
 
-          const walletToken = tokensRef.current.find(
-            (t) => {
-              const walletSymbolUpper = t.symbol.toUpperCase();
-              return (
-                walletSymbolUpper === coinSymbolUpper ||
-                symbolAliases.includes(walletSymbolUpper) ||
-                t.name.toLowerCase() === coin.name.toLowerCase()
-              );
-            }
-          );
+          // Try to find matching wallet token by multiple methods:
+          // 1. First try symbol match (fastest)
+          let walletToken = walletTokensBySymbol.get(coinSymbolUpper);
 
-          // ALWAYS try to resolve mint address using multiple sources:
-          // 1. Wallet token's mint (if valid Solana address)
-          // 2. CoinGecko ID mapping
-          // 3. Symbol mapping
+          // 2. Try symbol aliases
+          if (!walletToken) {
+            for (const alias of symbolAliases) {
+              walletToken = walletTokensBySymbol.get(alias);
+              if (walletToken) break;
+            }
+          }
+
+          // 3. Try name match (case-insensitive) - this is important for tokens like "Book of Meme"
+          if (!walletToken) {
+            walletToken = walletTokensByName.get(coin.name.toLowerCase());
+          }
+
+          // 4. Try partial name match for tokens like "Jupiter" matching "Jupiter Exchange"
+          if (!walletToken) {
+            walletToken = walletTokensWithBalance.find(
+              t => t.name.toLowerCase().includes(coin.name.toLowerCase()) ||
+                   coin.name.toLowerCase().includes(t.name.toLowerCase())
+            );
+          }
+
+          // Resolve mint address
           const resolvedMint = resolveMintAddress(
             walletToken?.mint,
-            coin.id, // CoinGecko ID like "usd-coin", "solana", etc.
+            coin.id,
             coin.symbol.toUpperCase()
           );
+
+          // If we found a matching wallet token, log it
+          if (walletToken && walletToken.amount > 0) {
+            console.log('[Swap] Matched CoinGecko', coin.symbol, 'to wallet token:', walletToken.symbol, walletToken.name);
+          }
 
           return {
             id: coin.id,
@@ -275,55 +321,69 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             price: coin.current_price,
             balance: walletToken?.amount || 0,
             hasBalance: walletToken ? walletToken.amount > 0 : false,
-            mint: resolvedMint || walletToken?.mint, // Use resolved mint, fallback to wallet's
-            network: walletToken?.network || 'solana', // Default to Solana for Jupiter
+            mint: resolvedMint || walletToken?.mint,
+            network: walletToken?.network || 'solana',
           };
         });
 
-        // Add wallet tokens that are not in CoinGecko list (use ref to avoid dependency)
-        tokensRef.current.forEach((walletToken) => {
-          const walletSymbolUpper = walletToken.symbol.toUpperCase();
-          const walletAliases = SYMBOL_ALIASES[walletSymbolUpper] || [];
+        // Track which wallet tokens were already matched
+        const matchedWalletMints = new Set<string>();
+        mergedCoins.forEach(c => {
+          if (c.hasBalance && c.mint) {
+            matchedWalletMints.add(c.mint);
+          }
+        });
 
-          const alreadyExists = mergedCoins.find(
-            (c) => {
-              const coinSymbolUpper = c.symbol.toUpperCase();
-              return (
-                coinSymbolUpper === walletSymbolUpper ||
-                walletAliases.includes(coinSymbolUpper) ||
-                c.name.toLowerCase() === walletToken.name.toLowerCase()
-              );
-            }
-          );
+        // STEP 4: Add ALL wallet tokens with balance that weren't matched to CoinGecko
+        // This is the critical fix - we iterate through ALL wallet tokens with balance
+        console.log('[Swap] Checking for unmatched wallet tokens...');
 
-          if (!alreadyExists && walletToken.amount > 0) {
+        walletTokensWithBalance.forEach((walletToken) => {
+          // Check if this wallet token was already matched by mint address
+          const alreadyMatched = walletToken.mint && matchedWalletMints.has(walletToken.mint);
+
+          if (!alreadyMatched) {
             console.log(
-              "Adding wallet token not in CoinGecko list:",
-              walletToken.symbol
+              "[Swap] Adding unmatched wallet token:",
+              walletToken.symbol,
+              walletToken.name,
+              walletToken.mint?.substring(0, 8) + '...'
             );
 
-            // Try to resolve mint address for this wallet token too
             const resolvedMint = resolveMintAddress(
               walletToken.mint,
-              undefined, // No CoinGecko ID for wallet-only tokens
+              undefined,
               walletToken.symbol.toUpperCase()
             );
 
+            // Use proper symbol - if wallet symbol looks like a mint address, try to get a better one
+            let displaySymbol = walletToken.symbol.toUpperCase();
+            if (displaySymbol.length > 10) {
+              // Symbol looks like a mint address, use first 4-6 chars or name
+              displaySymbol = walletToken.name?.toUpperCase().substring(0, 6) || displaySymbol.substring(0, 4);
+            }
+
             mergedCoins.push({
               id: walletToken.mint || walletToken.symbol.toLowerCase(),
-              symbol: walletToken.symbol.toUpperCase(),
-              name: walletToken.name,
-              logo:
-                walletToken.logo || walletToken.symbol.charAt(0).toUpperCase(),
-              logoUrl: "",
+              symbol: displaySymbol,
+              name: walletToken.name || 'Unknown Token',
+              logo: walletToken.logo || displaySymbol.charAt(0).toUpperCase(),
+              logoUrl: walletToken.logoUrl || "",
               price: walletToken.price || 0,
               balance: walletToken.amount,
-              hasBalance: walletToken.amount > 0,
+              hasBalance: true, // We know it has balance - it's from walletTokensWithBalance
               mint: resolvedMint || walletToken.mint,
               network: walletToken.network || 'solana',
             });
+
+            if (walletToken.mint) matchedWalletMints.add(walletToken.mint);
           }
         });
+
+        // Log tokens with balance for debugging
+        const tokensWithBalance = mergedCoins.filter(t => t.hasBalance);
+        console.log('[Swap] Final tokens with balance:', tokensWithBalance.length,
+          tokensWithBalance.map(t => ({ symbol: t.symbol, name: t.name })));
 
         // Sort: tokens with balance first, then by price
         mergedCoins.sort((a, b) => {
@@ -431,11 +491,18 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           "🔄 [Swap] Network mode:",
           network.isTestnet ? "TESTNET" : "MAINNET"
         );
+
+        // Calculate effective slippage:
+        // - Auto mode: Use 3% default (good for most tokens including meme coins)
+        // - Custom mode: Use the user's selected value
+        const effectiveSlippage = slippageMode === "auto" ? 3 : parseFloat(slippage);
+        console.log("🔄 [Swap] Slippage mode:", slippageMode, "Effective slippage:", effectiveSlippage + "%");
+
         const quote = await getJupiterSwapQuote({
           inputMint,
           outputMint,
           amount: amountNum,
-          slippage: parseFloat(slippage),
+          slippage: effectiveSlippage,
           isTestnet: network.isTestnet, // Use network context
           inputDecimals,
           outputDecimals,
@@ -647,20 +714,30 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
   );
 
   // Re-fetch quote when toToken changes and there's an amount
+  // We need to depend on toTokenData to ensure we have the updated token info
   useEffect(() => {
     if (toToken && fromAmount && parseFloat(fromAmount) > 0 && fromTokenData && toTokenData) {
-      console.log("[Swap] toToken changed, re-fetching quote for:", fromTokenData.symbol, "→", toTokenData.symbol);
-      handleFromAmountChange(fromAmount);
+      console.log("[Swap] toToken/toTokenData changed, re-fetching quote for:", fromTokenData.symbol, "→", toTokenData.symbol);
+      // Use setTimeout to ensure state has settled after token selection
+      const timer = setTimeout(() => {
+        handleFromAmountChange(fromAmount);
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [toToken]); // Only trigger on toToken change
+  }, [toToken, toTokenData?.id, toTokenData?.mint]); // Trigger on toToken change AND when toTokenData updates
 
   // Re-fetch quote when fromToken changes and there's an amount
+  // We need to depend on fromTokenData to ensure we have the updated token info
   useEffect(() => {
     if (fromToken && fromAmount && parseFloat(fromAmount) > 0 && fromTokenData && toTokenData) {
-      console.log("[Swap] fromToken changed, re-fetching quote for:", fromTokenData.symbol, "→", toTokenData.symbol);
-      handleFromAmountChange(fromAmount);
+      console.log("[Swap] fromToken/fromTokenData changed, re-fetching quote for:", fromTokenData.symbol, "→", toTokenData.symbol);
+      // Use setTimeout to ensure state has settled after token selection
+      const timer = setTimeout(() => {
+        handleFromAmountChange(fromAmount);
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [fromToken]); // Only trigger on fromToken change
+  }, [fromToken, fromTokenData?.id, fromTokenData?.mint]); // Trigger on fromToken change AND when fromTokenData updates
 
   // Quick swap function for popular pairs
   const quickSwap = useCallback(
@@ -725,7 +802,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           const resolvedMint = token.mint || resolveMintAddress(undefined, token.id, token.symbol);
           if (resolvedMint && !matchedToken.mint) {
             console.log("[Swap] Updating allCoins with resolved mint:", resolvedMint);
-            setAllCoins(prev => prev.map(t =>
+            setAllCoins((prev: SwapToken[]) => prev.map((t: SwapToken) =>
               t.id === matchedToken.id
                 ? { ...t, mint: resolvedMint }
                 : t
@@ -734,6 +811,11 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
 
           setFromToken(matchedToken.id);
           setShowFromTokenSearch(false);
+
+          // Clear old quote data - the useEffect will refetch
+          setJupiterQuote(null);
+          setPriceImpact(null);
+          setRoute(null);
 
           // Haptic feedback
           if ("vibrate" in navigator) {
@@ -796,13 +878,15 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             ));
           }
 
+          // Set the token ID first, then clear quote data
+          // This order is important for React's batched updates
           setToToken(matchedToken.id);
 
-          // CRITICAL: Clear old quote when destination token changes
+          // Clear old quote data - the useEffect will refetch
           setJupiterQuote(null);
-          setToAmount("");
           setPriceImpact(null);
           setRoute(null);
+          // Don't clear toAmount here - let the quote fetch update it
 
           // Haptic feedback
           if ("vibrate" in navigator) {
@@ -823,14 +907,23 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             mint: resolvedMint || undefined,
             network: 'solana', // Assume Solana for now since Jupiter only supports Solana
           };
-          setAllCoins(prev => [...prev, newToken]);
-          setToToken(token.id);
 
-          // CRITICAL: Clear old quote when destination token changes
+          // IMPORTANT: Use functional update to add token and set selection atomically
+          // Set token ID first so it's available when allCoins updates
+          setToToken(token.id);
+          setAllCoins((prev: SwapToken[]) => {
+            // Check if already added (avoid duplicates)
+            if (prev.some((t: SwapToken) => t.id === token.id)) {
+              return prev;
+            }
+            return [...prev, newToken];
+          });
+
+          // Clear old quote data - the useEffect will refetch
           setJupiterQuote(null);
-          setToAmount("");
           setPriceImpact(null);
           setRoute(null);
+          // Don't clear toAmount here - let the quote fetch update it
 
           // Haptic feedback
           if ("vibrate" in navigator) {
@@ -932,6 +1025,36 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     [fromAmount, fromTokenData, toTokenData]
   );
 
+  // Check SOL balance for transaction fees - memoized
+  // Minimum SOL needed: ~0.005 SOL for fees + potential token account creation
+  const MIN_SOL_FOR_SWAP = 0.005;
+  const solTokenData = useMemo(
+    () => allCoins.find((t) => t.symbol.toUpperCase() === 'SOL' && t.hasBalance),
+    [allCoins]
+  );
+  const solBalance = useMemo(
+    () => solTokenData?.balance || 0,
+    [solTokenData]
+  );
+  const hasEnoughSolForFees = useMemo(
+    () => solBalance >= MIN_SOL_FOR_SWAP,
+    [solBalance]
+  );
+  const isSwappingSol = useMemo(
+    () => fromTokenData?.symbol.toUpperCase() === 'SOL',
+    [fromTokenData]
+  );
+  // If swapping SOL, check if remaining balance after swap covers fees
+  const solBalanceAfterSwap = useMemo(() => {
+    if (!isSwappingSol || !fromAmount) return solBalance;
+    const swapAmount = parseFloat(fromAmount) + feeInFromToken;
+    return Math.max(0, solBalance - swapAmount);
+  }, [isSwappingSol, fromAmount, solBalance, feeInFromToken]);
+  const willHaveEnoughSolAfterSwap = useMemo(
+    () => isSwappingSol ? solBalanceAfterSwap >= MIN_SOL_FOR_SWAP : hasEnoughSolForFees,
+    [isSwappingSol, solBalanceAfterSwap, hasEnoughSolForFees]
+  );
+
   const showPriceImpactWarning = useMemo(
     () =>
       priceImpact
@@ -971,8 +1094,10 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         errorMessage = "Please unlock your wallet first.";
       } else if (error.message?.includes("quote")) {
         errorMessage = "Quote expired. Please try again.";
+      } else if (error.message?.includes("confirmation timeout")) {
+        errorMessage = "Transaction was sent but confirmation is slow. Check Activity tab or Solscan for status.";
       } else if (error.message?.includes("timeout")) {
-        errorMessage = "Transaction timed out. Please try again.";
+        errorMessage = "Request timed out. Please try again.";
       } else if (
         error.message?.includes("network") ||
         error.message?.includes("connection")
@@ -998,16 +1123,49 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           throw new Error("Wallet is locked. Please unlock first.");
         }
 
+        // Check if active account is an imported account with its own mnemonic
+        const activeAccount = AccountManager.getActiveAccount();
+        let mnemonicToUse = wallet.mnemonic;
+
+        if (activeAccount?.isImportedSeedPhrase) {
+          // Check if this imported account has an encrypted mnemonic stored
+          if (activeAccount?.encryptedMnemonic) {
+            console.log("[Swap] 🔐 Active account is imported, decrypting its mnemonic...");
+
+            if (!wallet.password) {
+              throw new Error("Wallet password not available. Please unlock the wallet again.");
+            }
+
+            const decryptedMnemonic = await decryptWithPassword(activeAccount.encryptedMnemonic, wallet.password);
+            if (!decryptedMnemonic) {
+              throw new Error("Failed to decrypt imported account mnemonic. Please delete and re-import this account.");
+            }
+
+            mnemonicToUse = decryptedMnemonic;
+            console.log("[Swap] ✅ Successfully decrypted imported account mnemonic");
+          } else {
+            // This is an old imported account without encrypted mnemonic
+            // User needs to re-import it with the new system
+            console.error("[Swap] ❌ Imported account missing encrypted mnemonic - needs re-import");
+            throw new Error("This imported account needs to be re-imported. Please delete it and import again using Settings > Add Account.");
+          }
+        }
+
         // PRE-CHECK: Only check if user has the destination token already
         // If they already have the token, no rent is needed
         const hasDestToken = tokens.some(t =>
-          t.symbol?.toUpperCase() === toTokenData?.symbol?.toUpperCase() && t.balance > 0
+          t.symbol?.toUpperCase() === toTokenData?.symbol?.toUpperCase() && t.amount > 0
         );
+
+        // Get the account index for derivation
+        const accountIndexToUse = activeAccount?.accountIndex ?? 0;
 
         // Log for debugging
         const solToken = tokens.find(t => t.symbol === 'SOL');
-        const solBalance = solToken?.balance || 0;
+        const solBalance = solToken?.amount || 0;
         console.log("🔄 [Swap] SOL balance:", solBalance, "| Has dest token:", hasDestToken);
+        console.log("🔄 [Swap] Using imported mnemonic:", activeAccount?.isImportedSeedPhrase ? "Yes" : "No");
+        console.log("🔄 [Swap] Account index:", accountIndexToUse);
 
         console.log("🔄 [Swap] CLIENT-SIDE: Executing Jupiter swap...");
         console.log(
@@ -1017,8 +1175,9 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
 
         // Execute swap directly on client using network mode
         const result = await executeJupiterSwap({
-          mnemonic: wallet.mnemonic,
+          mnemonic: mnemonicToUse,
           quoteResponse: jupiterQuote,
+          accountIndex: accountIndexToUse,
           isTestnet: network.isTestnet, // Use network context
         });
 
@@ -1030,6 +1189,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         console.log("✅ [Swap] Signature:", result.signature);
 
         // Save swap to local history
+        // Include mint addresses for symbol resolution in case symbol is "TOKEN"
         saveSwapToHistory({
           signature: result.signature || `swap_${Date.now()}`,
           fromToken: fromTokenData?.symbol || '',
@@ -1040,6 +1200,8 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           fee: jupiterQuote?.fee ? jupiterQuote.fee * (fromTokenData?.price || 0) : undefined,
           feeAmount: jupiterQuote?.fee,
           walletAddress: wallet.addresses?.solana || '',
+          fromMint: fromTokenData?.mint || jupiterQuote?.inputMint,
+          toMint: toTokenData?.mint || jupiterQuote?.outputMint,
         });
 
         // Play success sound
@@ -1601,6 +1763,48 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           </div>
         )}
 
+        {/* Insufficient SOL Warning */}
+        {!network.isTestnet && !hasEnoughSolForFees && (
+          <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-xl p-3 backdrop-blur-sm">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-red-400 text-sm font-medium">
+                  Insufficient SOL for Transaction Fees
+                </p>
+                <p className="text-red-400/70 text-xs mt-1">
+                  You need at least {MIN_SOL_FOR_SWAP} SOL to pay for transaction fees.
+                  Current balance: {solBalance.toFixed(4)} SOL
+                </p>
+                <p className="text-red-400/70 text-xs mt-1">
+                  Please deposit SOL to your wallet first.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* SOL Balance After Swap Warning */}
+        {!network.isTestnet && isSwappingSol && fromAmount && hasEnoughSolForFees && !willHaveEnoughSolAfterSwap && (
+          <div className="mt-4 bg-orange-500/10 border border-orange-500/30 rounded-xl p-3 backdrop-blur-sm">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-orange-400 text-sm font-medium">
+                  Low SOL Balance After Swap
+                </p>
+                <p className="text-orange-400/70 text-xs mt-1">
+                  After this swap, you'll have ~{solBalanceAfterSwap.toFixed(4)} SOL remaining.
+                  You may not have enough for future transaction fees.
+                </p>
+                <p className="text-orange-400/70 text-xs mt-1">
+                  Consider keeping at least {MIN_SOL_FOR_SWAP} SOL for fees.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Rate Info */}
         {fromAmount && (
           <div className="mt-4 bg-slate-900/50 border border-slate-800/30 rounded-xl p-4 backdrop-blur-sm">
@@ -1628,7 +1832,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-400">Slippage tolerance</span>
-              <span className="text-white">{slippage}%</span>
+              <span className="text-white">{slippageMode === "auto" ? "3" : slippage}%</span>
             </div>
 
             {/* Jupiter Quote Details */}
@@ -1658,9 +1862,14 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               (fromTokenData &&
                 parseFloat(fromAmount) + feeInFromToken >
                   fromTokenData.balance) ||
-              fromTokenOptions.length === 0
+              fromTokenOptions.length === 0 ||
+              (!network.isTestnet && !hasEnoughSolForFees)
             }
-            className="w-full h-14 mt-6 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white disabled:opacity-50 shadow-lg shadow-purple-500/30 transition-all"
+            className={`w-full h-14 mt-6 text-white disabled:opacity-50 shadow-lg transition-all ${
+              !network.isTestnet && !hasEnoughSolForFees
+                ? 'bg-gradient-to-r from-red-600 to-red-700 shadow-red-500/30'
+                : 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 shadow-purple-500/30'
+            }`}
           >
             {isSwapping ? (
               <div className="flex items-center gap-2">
@@ -1671,6 +1880,11 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               <div className="flex items-center gap-2">
                 <Loader2 className="w-5 h-5 animate-spin" />
                 <span>Getting quote...</span>
+              </div>
+            ) : !network.isTestnet && !hasEnoughSolForFees ? (
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5" />
+                <span>Need SOL for fees</span>
               </div>
             ) : fromTokenOptions.length === 0 ? (
               "No tokens with balance"
@@ -1760,7 +1974,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               <span className="text-white">Slippage</span>
               <div className="flex items-center gap-2">
                 <span className="text-slate-400">
-                  {slippageMode === "auto" ? "Auto" : `${slippage}%`}
+                  {slippageMode === "auto" ? "Auto (3%)" : `${slippage}%`}
                 </span>
                 <ChevronDown className="w-4 h-4 text-slate-400 -rotate-90" />
               </div>
@@ -1839,12 +2053,12 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
                 />
               </div>
               <p className="text-sm text-slate-400 ml-11">
-                Phantom will find the lowest slippage for a successful swap.
+                Uses 3% slippage - good for most tokens including meme coins.
               </p>
             </div>
 
             {/* Preset Options */}
-            {["0.5", "1", "2"].map((value) => (
+            {["0.5", "1", "2", "5", "10"].map((value) => (
               <button
                 key={value}
                 onClick={() => {
@@ -1872,7 +2086,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             <div
               className={`bg-slate-900/50 rounded-xl p-4 ${
                 slippageMode === "custom" &&
-                !["0.5", "1", "2"].includes(slippage)
+                !["0.5", "1", "2", "5", "10"].includes(slippage)
                   ? "ring-2 ring-purple-600"
                   : ""
               }`}
@@ -2429,7 +2643,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         />
       )}
 
-      {/* From Token Search Dialog */}
+      {/* From Token Search Dialog - Shows wallet tokens first, then all tokens */}
       <Dialog open={showFromTokenSearch} onOpenChange={setShowFromTokenSearch}>
         <DialogContent
           className="p-0 max-w-full h-full m-0 bg-black border-0"
@@ -2440,11 +2654,12 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             walletId={walletId}
             onSelectToken={handleFromTokenSelect}
             onBack={() => setShowFromTokenSearch(false)}
+            walletTokens={allCoins as WalletToken[]}
           />
         </DialogContent>
       </Dialog>
 
-      {/* To Token Search Dialog */}
+      {/* To Token Search Dialog - Shows wallet tokens first, then all tokens */}
       <Dialog open={showToTokenSearch} onOpenChange={setShowToTokenSearch}>
         <DialogContent
           className="p-0 max-w-full h-full m-0 bg-black border-0"
@@ -2455,6 +2670,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             walletId={walletId}
             onSelectToken={handleToTokenSelect}
             onBack={() => setShowToTokenSearch(false)}
+            walletTokens={allCoins as WalletToken[]}
           />
         </DialogContent>
       </Dialog>

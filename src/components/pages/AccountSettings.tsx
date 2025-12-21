@@ -167,9 +167,10 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
 
   const loadWalletInfo = async () => {
     try {
-      // Try to load username from backend first
-      let username = localStorage.getItem('saturn_username') || '@account1';
-      
+      // Load username from localStorage first (this is the source of truth for local state)
+      const localUsername = localStorage.getItem('saturn_username');
+      let username = localUsername || '@account1';
+
       try {
         const response = await fetch(
           `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet/${walletId}`,
@@ -179,7 +180,7 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
             },
           }
         );
-        
+
         if (response.ok) {
           const data = await response.json();
           if (data.username) {
@@ -189,7 +190,8 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
           }
         }
       } catch (fetchError) {
-        console.log('[AccountSettings] Could not fetch from backend, using localStorage');
+        // If backend fetch fails, use the localStorage value we already loaded
+        console.log('[AccountSettings] Could not fetch from backend, using localStorage:', localUsername);
       }
       
       const walletName = localStorage.getItem('saturn_wallet_name') || 'Suprik Wallet';

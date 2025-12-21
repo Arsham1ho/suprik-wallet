@@ -49,23 +49,34 @@ export async function isBiometricAvailable(): Promise<boolean> {
  */
 export async function registerBiometric(walletId: string): Promise<BiometricAuthResult> {
   try {
-    console.log('[Biometric] Registering credential for wallet:', walletId);
+    // Validate walletId - must be a non-empty string
+    if (!walletId || typeof walletId !== 'string' || walletId.trim() === '') {
+      console.error('[Biometric] Invalid walletId:', walletId);
+      return { success: false, error: 'Invalid wallet ID. Please ensure you are logged in.' };
+    }
+
+    // Use a sanitized version of walletId
+    const sanitizedWalletId = walletId.trim();
+    console.log('[Biometric] Registering credential for wallet:', sanitizedWalletId);
 
     // Generate a random challenge
     const challenge = new Uint8Array(32);
     crypto.getRandomValues(challenge);
 
+    // Generate a unique user ID (must be non-empty)
+    const userId = new TextEncoder().encode(sanitizedWalletId || 'suprik-user');
+
     // Create credential options
     const publicKeyOptions: PublicKeyCredentialCreationOptions = {
       challenge,
       rp: {
-        name: 'Saturn Wallet',
+        name: 'Suprik Wallet',
         id: window.location.hostname,
       },
       user: {
-        id: new TextEncoder().encode(walletId),
-        name: walletId,
-        displayName: 'Saturn Wallet User',
+        id: userId,
+        name: sanitizedWalletId || 'suprik-user',
+        displayName: 'Suprik Wallet User',
       },
       pubKeyCredParams: [
         { alg: -7, type: 'public-key' },  // ES256
@@ -94,7 +105,7 @@ export async function registerBiometric(walletId: string): Promise<BiometricAuth
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
     
-    localStorage.setItem(`biometric_credential_${walletId}`, credentialId);
+    localStorage.setItem(`biometric_credential_${sanitizedWalletId}`, credentialId);
 
     console.log('[Biometric] ✓ Registration successful');
     return { success: true };
@@ -114,14 +125,21 @@ export async function registerBiometric(walletId: string): Promise<BiometricAuth
  */
 export async function authenticateBiometric(walletId: string, reason?: string): Promise<BiometricAuthResult> {
   try {
-    console.log('[Biometric] Authenticating for wallet:', walletId, 'Reason:', reason);
+    // Validate walletId - must be a non-empty string
+    if (!walletId || typeof walletId !== 'string' || walletId.trim() === '') {
+      console.error('[Biometric] Invalid walletId for authentication:', walletId);
+      return { success: false, error: 'Invalid wallet ID. Please ensure you are logged in.' };
+    }
+
+    const sanitizedWalletId = walletId.trim();
+    console.log('[Biometric] Authenticating for wallet:', sanitizedWalletId, 'Reason:', reason);
 
     // Check if credential exists
-    const credentialId = localStorage.getItem(`biometric_credential_${walletId}`);
+    const credentialId = localStorage.getItem(`biometric_credential_${sanitizedWalletId}`);
     if (!credentialId) {
       console.log('[Biometric] No credential found, need to register first');
       // Try to register if no credential exists
-      return await registerBiometric(walletId);
+      return await registerBiometric(sanitizedWalletId);
     }
 
     // Generate a random challenge
@@ -155,7 +173,7 @@ export async function authenticateBiometric(walletId: string, reason?: string): 
     }
 
     // Update last auth time
-    localStorage.setItem(`biometric_last_auth_${walletId}`, Date.now().toString());
+    localStorage.setItem(`biometric_last_auth_${sanitizedWalletId}`, Date.now().toString());
 
     console.log('[Biometric] ✓ Authentication successful');
     return { success: true };

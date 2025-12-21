@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { motion } from "motion/react";
 import { projectId, publicAnonKey } from "../../utils/supabase/info";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import {
   isBiometricAvailable,
   registerBiometric,
@@ -29,6 +29,7 @@ import {
 import { SecureStorage, WalletStorage } from "../../utils/wallet";
 import { useWallet } from "../../utils/WalletContext";
 import { exportPrivateKey } from "../../utils/web3/walletManager";
+import { AccountManager } from "../../utils/accountManager";
 import bs58 from "bs58";
 
 interface SecuritySettingsProps {
@@ -163,62 +164,50 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
   };
 
   const setPassword = async () => {
-    // If changing existing wallet password
-    if (userSettings?.usePassword && userSettings?.password) {
-      if (!oldPassword) {
-        toast.error("Please enter your current password");
-        return;
-      }
+    // Validate old password is provided
+    if (!oldPassword) {
+      toast.error("Please enter your current password");
+      return;
+    }
 
-      // Try to decrypt mnemonic with old password to verify it
+    // Validate new password
+    if (newPassword !== confirmPassword) {
+      toast.error("New passwords do not match");
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      toast.error("New password must be at least 8 characters");
+      return;
+    }
+
+    // Verify old password by trying to decrypt the mnemonic
+    // This is the source of truth - the password encrypts the mnemonic locally
+    try {
       const mnemonic = await SecureStorage.retrieveMnemonic(oldPassword);
       if (!mnemonic) {
         toast.error("Current password is incorrect");
         return;
       }
 
-      // Verify new password
-      if (newPassword !== confirmPassword) {
-        toast.error("New passwords do not match");
-        return;
-      }
-
-      if (newPassword.length < 8) {
-        toast.error("New password must be at least 8 characters");
-        return;
-      }
-
       // Re-encrypt mnemonic with new password
+      await SecureStorage.storeMnemonic(mnemonic, newPassword);
+
+      // Also update server settings (non-blocking, for backup)
       try {
-        await SecureStorage.storeMnemonic(mnemonic, newPassword);
-        await updateSettings({ usePassword: true, password: newPassword });
-        setShowPasswordForm(false);
-        setNewPassword("");
-        setConfirmPassword("");
-        setOldPassword("");
-        toast.success("Wallet password changed successfully");
-      } catch (error) {
-        console.error("Failed to change wallet password:", error);
-        toast.error("Failed to change password. Please try again.");
-      }
-    } else {
-      // Setting password for first time
-      if (newPassword !== confirmPassword) {
-        toast.error("Passwords do not match");
-        return;
+        await updateSettings({ usePassword: true });
+      } catch (e) {
+        console.warn("[SecuritySettings] Could not sync password change to server (non-critical)");
       }
 
-      if (newPassword.length < 8) {
-        toast.error("Password must be at least 8 characters");
-        return;
-      }
-
-      await updateSettings({ usePassword: true, password: newPassword });
       setShowPasswordForm(false);
       setNewPassword("");
       setConfirmPassword("");
       setOldPassword("");
-      toast.success("Password set successfully");
+      toast.success("Password changed successfully");
+    } catch (error) {
+      console.error("Failed to change wallet password:", error);
+      toast.error("Current password is incorrect");
     }
   };
 
@@ -328,15 +317,93 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
   };
 
   const downloadLogs = () => {
+    // Collect all accounts (sanitized - no private keys)
+    const accounts = AccountManager.getAccounts().map(acc => ({
+      id: acc.id,
+      name: acc.name,
+      accountIndex: acc.accountIndex,
+      solanaAddress: acc.addresses?.solana || 'Not available',
+      ethereumAddress: acc.addresses?.ethereum || 'Not available',
+      createdAt: acc.createdAt ? new Date(acc.createdAt).toISOString() : 'Unknown',
+      hasEmoji: !!acc.selectedEmoji,
+      hasProfilePicture: !!acc.profilePicture,
+    }));
+
+    // Get active account
+    const activeAccount = AccountManager.getActiveAccount();
+
+    // Collect localStorage keys (sanitized - no sensitive data)
+    const localStorageInfo: Record<string, string> = {};
+    const sensitiveKeys = ['mnemonic', 'password', 'private', 'secret', 'key', 'seed'];
+
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        const isSensitive = sensitiveKeys.some(s => key.toLowerCase().includes(s));
+        if (isSensitive) {
+          localStorageInfo[key] = '[REDACTED]';
+        } else if (key.startsWith('suprik_') || key.startsWith('saturn_')) {
+          const value = localStorage.getItem(key);
+          // Truncate long values
+          localStorageInfo[key] = value && value.length > 200
+            ? `${value.substring(0, 200)}... [truncated]`
+            : value || '';
+        }
+      }
+    }
+
+    // Device and browser info
+    const deviceInfo = {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      language: navigator.language,
+      cookiesEnabled: navigator.cookieEnabled,
+      onLine: navigator.onLine,
+      screenWidth: window.screen.width,
+      screenHeight: window.screen.height,
+      devicePixelRatio: window.devicePixelRatio,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    };
+
+    // Network info
+    const networkInfo = {
+      networkMode: localStorage.getItem('suprik_network_mode') || localStorage.getItem('saturn_network_mode') || 'mainnet',
+      isTestnet: localStorage.getItem('suprik_is_testnet') === 'true' || localStorage.getItem('saturn_is_testnet') === 'true',
+      customRpc: localStorage.getItem('suprik_custom_rpc') ? '[SET]' : '[NOT SET]',
+    };
+
     const logs = {
-      walletId,
-      timestamp: new Date().toISOString(),
-      version: "1.0.0",
-      settings: userSettings,
-      message: "Saturn Wallet Logs",
-      account: {
-        username: walletInfo?.username,
-        created: walletInfo?.createdAt,
+      appInfo: {
+        name: "Suprik Wallet",
+        version: "1.0.0",
+        buildDate: "2024",
+      },
+      exportInfo: {
+        timestamp: new Date().toISOString(),
+        walletId: walletId ? `${walletId.substring(0, 8)}...${walletId.substring(walletId.length - 6)}` : 'Unknown',
+      },
+      accounts: {
+        total: accounts.length,
+        activeAccountId: activeAccount?.id || 'None',
+        activeAccountName: activeAccount?.name || 'None',
+        list: accounts,
+      },
+      settings: {
+        biometricEnabled: userSettings?.biometric?.enabled || false,
+        autoLockMinutes: userSettings?.biometric?.autoLockMinutes || 0,
+        requireBiometricForTransactions: userSettings?.biometric?.requireForTransactions || false,
+        language: userSettings?.language || 'en',
+        currency: userSettings?.currency || 'USD',
+      },
+      network: networkInfo,
+      device: deviceInfo,
+      storage: localStorageInfo,
+      diagnostics: {
+        hasEncryptedMnemonic: !!localStorage.getItem('saturn_encrypted_mnemonic'),
+        hasWalletId: !!localStorage.getItem('saturn_wallet_id'),
+        accountsCount: accounts.length,
+        isWalletUnlocked: wallet.isUnlocked,
+        hasAddresses: !!(wallet.addresses?.solana),
       },
     };
 
@@ -346,7 +413,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `saturn-logs-${new Date().toISOString()}.json`;
+    a.download = `suprik-logs-${new Date().toISOString()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

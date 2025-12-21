@@ -111,9 +111,9 @@ async function fetchTokenLogos(symbols: string[]): Promise<{ [key: string]: stri
     
     console.log('[TokenLoader] Fetching token logos from CoinGecko...');
     
-    // Fetch first page of coins (top 250)
+    // Fetch first page of coins (top 500)
     const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=1&per_page=250`,
+      `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=1&per_page=500`,
       {
         headers: {
           'Authorization': `Bearer ${publicAnonKey}`

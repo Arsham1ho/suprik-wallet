@@ -15,14 +15,16 @@ import { useWallet } from '../../utils/WalletContext';
 import { useNetwork } from '../../utils/NetworkContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Html5Qrcode } from 'html5-qrcode';
-import { 
-  sendSolanaTransaction, 
+import {
+  sendSolanaTransaction,
   sendEthereumTransaction,
   sendSPLTokenTransaction,
   sendERC20TokenTransaction,
   estimateSolanaFee,
   estimateEthereumFee
 } from '../../utils/transactions';
+import { AccountManager } from '../../utils/accountManager';
+import { decryptWithPassword } from '../../utils/wallet';
 import cosmicBackground from 'figma:asset/4c2d67025139ca6ca7ae0065c97386bd40e32baa.png';
 
 interface Token {
@@ -210,26 +212,64 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
         console.error('[Send] API returned error:', (coinGeckoData as any).error);
         throw new Error((coinGeckoData as any).error);
       }
-      
-      // Merge CoinGecko data with wallet tokens
+
+      // STEP 1: Get all wallet tokens with balance
+      const walletTokensWithBalance = tokens.filter(t => t.amount > 0);
+      console.log('[Send] Wallet tokens with balance:', walletTokensWithBalance.map(t => ({
+        symbol: t.symbol,
+        name: t.name,
+        amount: t.amount
+      })));
+
+      // Create maps for fast lookup
+      const walletTokensBySymbol = new Map<string, typeof tokens[0]>();
+      const walletTokensByName = new Map<string, typeof tokens[0]>();
+
+      walletTokensWithBalance.forEach(t => {
+        // Only add to symbol map if it looks like a real symbol (not a mint address)
+        if (t.symbol && t.symbol.length < 20) {
+          walletTokensBySymbol.set(t.symbol.toUpperCase(), t);
+        }
+        if (t.name) {
+          walletTokensByName.set(t.name.toLowerCase(), t);
+        }
+      });
+
+      // STEP 2: Merge CoinGecko data with wallet tokens
       const mergedCoins: SendToken[] = [];
       const seenSymbols = new Set<string>();
-      
+      const matchedWalletMints = new Set<string>();
+
       coinGeckoData.forEach(coin => {
         const symbolUpper = coin.symbol.toUpperCase();
-        
+
         // Skip duplicates - only add first occurrence of each symbol
         if (seenSymbols.has(symbolUpper)) {
           console.log(`[Send] ⏭️ Skipping duplicate: ${symbolUpper}`);
           return;
         }
         seenSymbols.add(symbolUpper);
-        
-        // Find matching token in wallet
-        const walletToken = tokens.find(t => 
-          t.symbol.toLowerCase() === coin.symbol.toLowerCase() ||
-          t.name.toLowerCase() === coin.name.toLowerCase()
-        );
+
+        // Find matching token in wallet using multiple methods
+        let walletToken = walletTokensBySymbol.get(symbolUpper);
+
+        // Try name match
+        if (!walletToken) {
+          walletToken = walletTokensByName.get(coin.name.toLowerCase());
+        }
+
+        // Try partial name match
+        if (!walletToken) {
+          walletToken = walletTokensWithBalance.find(t =>
+            t.name.toLowerCase().includes(coin.name.toLowerCase()) ||
+            coin.name.toLowerCase().includes(t.name.toLowerCase())
+          );
+        }
+
+        // Track matched wallet tokens
+        if (walletToken?.mint) {
+          matchedWalletMints.add(walletToken.mint);
+        }
 
         mergedCoins.push({
           id: coin.id,
@@ -248,16 +288,54 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
         });
       });
 
+      // STEP 3: Add wallet tokens that weren't matched to CoinGecko
+      walletTokensWithBalance.forEach(walletToken => {
+        const alreadyMatched = walletToken.mint && matchedWalletMints.has(walletToken.mint);
+
+        if (!alreadyMatched) {
+          console.log('[Send] Adding unmatched wallet token:', walletToken.symbol, walletToken.name);
+
+          // Use proper symbol - if it looks like a mint address, use name instead
+          let displaySymbol = walletToken.symbol.toUpperCase();
+          if (displaySymbol.length > 10) {
+            displaySymbol = walletToken.name?.toUpperCase().substring(0, 6) || displaySymbol.substring(0, 4);
+          }
+
+          mergedCoins.push({
+            id: walletToken.mint || walletToken.symbol.toLowerCase(),
+            mint: walletToken.mint,
+            symbol: displaySymbol,
+            name: walletToken.name || 'Unknown Token',
+            amount: walletToken.amount,
+            value: walletToken.value || 0,
+            price: walletToken.price || 0,
+            change: 0,
+            logo: displaySymbol.charAt(0),
+            color: walletToken.color || 'from-purple-600 to-purple-400',
+            logoUrl: walletToken.logoUrl || '',
+            network: walletToken.network || 'solana',
+            hasBalance: true
+          });
+
+          if (walletToken.mint) matchedWalletMints.add(walletToken.mint);
+        }
+      });
+
+      // Log final tokens with balance
+      const tokensWithBalance = mergedCoins.filter(t => t.hasBalance);
+      console.log('[Send] Final tokens with balance:', tokensWithBalance.length,
+        tokensWithBalance.map(t => ({ symbol: t.symbol, name: t.name })));
+
       // Sort: tokens with balance first, then by network, then by price
       mergedCoins.sort((a, b) => {
         // First priority: tokens with balance
         if (a.hasBalance && !b.hasBalance) return -1;
         if (!a.hasBalance && b.hasBalance) return 1;
-        
+
         // Second priority: sort by network alphabetically
         const networkCompare = a.network.localeCompare(b.network);
         if (networkCompare !== 0) return networkCompare;
-        
+
         // Third priority: sort by price (highest first)
         return b.price - a.price;
       });
@@ -632,7 +710,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
     console.log('[Send] 🎯 network object:', network);
     console.log('[Send] 🎯 network.isTestnet:', network.isTestnet);
     console.log('[Send] 🎯 typeof network.isTestnet:', typeof network.isTestnet);
-    
+
     if (!wallet.mnemonic) {
       toast.error('Wallet is locked. Please unlock first.');
       return;
@@ -642,12 +720,56 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
     setTransactionStatus('processing');
 
     try {
+      // Check if active account is an imported account with its own mnemonic
+      const activeAccount = AccountManager.getActiveAccount();
+      let mnemonicToUse = wallet.mnemonic;
+
+      if (activeAccount?.isImportedSeedPhrase) {
+        // Check if this imported account has an encrypted mnemonic stored
+        if (activeAccount?.encryptedMnemonic) {
+          console.log('[Send] 🔐 Active account is imported, decrypting its mnemonic...');
+
+          // We need the password to decrypt - get it from wallet context
+          if (!wallet.password) {
+            toast.error('Wallet password not available. Please unlock the wallet again.');
+            setSending(false);
+            setTransactionStatus('idle');
+            return;
+          }
+
+          const decryptedMnemonic = await decryptWithPassword(activeAccount.encryptedMnemonic, wallet.password);
+          if (!decryptedMnemonic) {
+            toast.error('Failed to decrypt imported account mnemonic. Please delete and re-import this account.');
+            setSending(false);
+            setTransactionStatus('idle');
+            return;
+          }
+
+          mnemonicToUse = decryptedMnemonic;
+          console.log('[Send] ✅ Successfully decrypted imported account mnemonic');
+        } else {
+          // This is an old imported account without encrypted mnemonic
+          // User needs to re-import it with the new system
+          console.error('[Send] ❌ Imported account missing encrypted mnemonic - needs re-import');
+          toast.error('This imported account needs to be re-imported. Please delete it and import again using Settings > Add Account.');
+          setSending(false);
+          setTransactionStatus('idle');
+          return;
+        }
+      }
+
+      // Get the account index for derivation
+      // For imported accounts, use their stored accountIndex
+      const accountIndexToUse = activeAccount?.accountIndex ?? 0;
+
       console.log('[Send] 🚀 Starting CLIENT-SIDE transaction');
       console.log('[Send] Token:', selectedToken!.symbol);
       console.log('[Send] Network:', selectedToken!.network);
       console.log('[Send] To:', address);
       console.log('[Send] Amount:', parseFloat(amount));
       console.log('[Send] Is Testnet:', network.isTestnet);
+      console.log('[Send] Using imported mnemonic:', activeAccount?.isImportedSeedPhrase ? 'Yes' : 'No');
+      console.log('[Send] Account index:', accountIndexToUse);
 
       let result;
 
@@ -656,39 +778,42 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
         console.log('[Send] 💎 Sending native SOL');
         // Send SOL
         result = await sendSolanaTransaction({
-          mnemonic: wallet.mnemonic,
+          mnemonic: mnemonicToUse,
           toAddress: address,
           amount: parseFloat(amount),
+          accountIndex: accountIndexToUse,
           isTestnet: network.isTestnet, // Pass testnet mode
         });
       } else if (selectedToken!.symbol === 'ETH') {
         console.log('[Send] 💎 Sending native ETH');
         // Send ETH
         result = await sendEthereumTransaction({
-          mnemonic: wallet.mnemonic,
+          mnemonic: mnemonicToUse,
           toAddress: address,
           amount: parseFloat(amount),
+          accountIndex: accountIndexToUse,
           isTestnet: network.isTestnet, // Pass testnet mode
         });
-      } 
+      }
       // SPL tokens
       else if (selectedToken!.network === 'solana') {
         console.log('[Send] 🪙 Sending SPL token');
         console.log('[Send] Token mint:', selectedToken!.mint);
-        
+
         // Check if we have a valid mint address (needed for mainnet)
         if (!network.isTestnet && !selectedToken!.mint) {
           throw new Error(`No mint address found for ${selectedToken!.symbol}. This token may not be in your wallet.`);
         }
-        
+
         // Send SPL token (USDC, USDT, etc)
         const decimals = selectedToken!.symbol === 'USDC' || selectedToken!.symbol === 'USDT' ? 6 : 9;
         result = await sendSPLTokenTransaction({
-          mnemonic: wallet.mnemonic,
+          mnemonic: mnemonicToUse,
           toAddress: address,
           amount: parseFloat(amount),
           tokenMint: selectedToken!.mint || 'mock-mint-testnet', // Use mock mint for testnet
           decimals,
+          accountIndex: accountIndexToUse,
           isTestnet: network.isTestnet, // Pass testnet mode
         });
       }
@@ -696,20 +821,21 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
       else if (selectedToken!.network === 'ethereum') {
         console.log('[Send] 🪙 Sending ERC20 token');
         console.log('[Send] Token address:', selectedToken!.mint);
-        
+
         // Check if we have a valid token address (needed for mainnet)
         if (!network.isTestnet && !selectedToken!.mint) {
           throw new Error(`No contract address found for ${selectedToken!.symbol}. This token may not be in your wallet.`);
         }
-        
+
         // Send ERC20 token
         const decimals = selectedToken!.symbol === 'USDC' ? 6 : 18;
         result = await sendERC20TokenTransaction({
-          mnemonic: wallet.mnemonic,
+          mnemonic: mnemonicToUse,
           toAddress: address,
           amount: parseFloat(amount),
           tokenAddress: selectedToken!.mint || '0xmocktestnet', // Use mock address for testnet
           decimals,
+          accountIndex: accountIndexToUse,
           isTestnet: network.isTestnet, // Pass testnet mode
         });
       } else {

@@ -1,14 +1,48 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { GradientButton } from './GradientButton';
-import { ArrowLeft, Key, FileText } from 'lucide-react';
+import { ArrowLeft, Key, FileText, Users, Check, Loader2, Fingerprint, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
-import { validateMnemonic, deriveWalletId, SecureStorage, WalletStorage } from '../utils/wallet';
+import { validateMnemonic, deriveWalletId, SecureStorage, WalletStorage, deriveAddresses } from '../utils/wallet';
 import { Card } from './ui/card';
 import { useWallet } from '../utils/WalletContext';
+import { fetchSolanaBalance } from '../utils/blockchain';
+import { AccountManager } from '../utils/accountManager';
+import { isBiometricAvailable, registerBiometric, getBiometricTypeName } from '../utils/biometric';
+import type { BiometricSettings } from '../utils/biometric';
 import bs58 from 'bs58';
 import { Keypair } from '@solana/web3.js';
+
+type PasswordStrength = 'weak' | 'medium' | 'strong';
+
+function getPasswordStrength(password: string): PasswordStrength {
+  if (password.length < 8) return 'weak';
+
+  let score = 0;
+
+  // Length bonus
+  if (password.length >= 8) score += 1;
+  if (password.length >= 12) score += 1;
+  if (password.length >= 16) score += 1;
+
+  // Character variety
+  if (/[a-z]/.test(password)) score += 1;
+  if (/[A-Z]/.test(password)) score += 1;
+  if (/[0-9]/.test(password)) score += 1;
+  if (/[^a-zA-Z0-9]/.test(password)) score += 1;
+
+  if (score >= 6) return 'strong';
+  if (score >= 4) return 'medium';
+  return 'weak';
+}
+
+interface DiscoveredAccount {
+  index: number;
+  address: string;
+  balance: number;
+  ethereumAddress: string;
+}
 
 interface SignInProps {
   onSuccess: (token: string, walletId: string) => void;
@@ -18,13 +52,119 @@ interface SignInProps {
 export function SignIn({ onSuccess, onBack }: SignInProps) {
   const wallet = useWallet();
   const [importMode, setImportMode] = useState<'select' | 'mnemonic' | 'privateKey'>('select');
-  const [step, setStep] = useState<'input' | 'password'>('input');
+  const [step, setStep] = useState<'input' | 'scanning' | 'select-accounts' | 'password' | 'confirm-password' | 'biometric'>('input');
   const [words, setWords] = useState<string[]>(Array(12).fill(''));
   const [privateKey, setPrivateKey] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [mnemonic, setMnemonic] = useState('');
   const [derivedPublicKey, setDerivedPublicKey] = useState('');
+  const [discoveredAccounts, setDiscoveredAccounts] = useState<DiscoveredAccount[]>([]);
+  const [selectedAccounts, setSelectedAccounts] = useState<number[]>([]);
+  const [scanProgress, setScanProgress] = useState(0);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [enableBiometric, setEnableBiometric] = useState(false);
+  const [biometricName, setBiometricName] = useState('Touch ID');
+
+  // Check biometric availability on mount
+  useEffect(() => {
+    isBiometricAvailable().then((available) => {
+      setBiometricAvailable(available);
+      if (available) {
+        setBiometricName(getBiometricTypeName());
+        setEnableBiometric(true); // Default to enabled if available
+      }
+    });
+  }, []);
+
+  // Get password strength
+  const passwordStrength = getPasswordStrength(password);
+  const strengthColors = {
+    weak: { bg: 'bg-red-500', text: 'text-red-400', label: 'Weak' },
+    medium: { bg: 'bg-yellow-500', text: 'text-yellow-400', label: 'Medium' },
+    strong: { bg: 'bg-green-500', text: 'text-green-400', label: 'Strong' },
+  };
+
+  // Scan for accounts with balance on the seed phrase
+  const scanForAccounts = async (mnemonicStr: string): Promise<DiscoveredAccount[]> => {
+    const accounts: DiscoveredAccount[] = [];
+    const MAX_SCAN = 10; // Scan up to 10 derivation paths
+    const MAX_EMPTY_IN_ROW = 3; // Stop after 3 empty accounts in a row
+
+    let emptyInRow = 0;
+
+    for (let i = 0; i < MAX_SCAN; i++) {
+      setScanProgress(((i + 1) / MAX_SCAN) * 100);
+
+      try {
+        const addresses = await deriveAddresses(mnemonicStr, i);
+
+        // Check if this address has any balance
+        const balanceData = await fetchSolanaBalance(addresses.solana, 'mainnet');
+        const balance = balanceData.native;
+
+        console.log(`[SignIn] Account ${i}: ${addresses.solana.slice(0, 8)}... Balance: ${balance} SOL`);
+
+        if (balance > 0 || balanceData.tokens.length > 0) {
+          accounts.push({
+            index: i,
+            address: addresses.solana,
+            balance: balance,
+            ethereumAddress: addresses.ethereum,
+          });
+          emptyInRow = 0; // Reset empty counter
+        } else {
+          emptyInRow++;
+          // Always include the first account (index 0) even if empty
+          if (i === 0) {
+            accounts.push({
+              index: i,
+              address: addresses.solana,
+              balance: 0,
+              ethereumAddress: addresses.ethereum,
+            });
+          }
+          // Stop scanning after 3 empty accounts in a row (after index 0)
+          if (emptyInRow >= MAX_EMPTY_IN_ROW && i > 0) {
+            console.log(`[SignIn] Stopping scan after ${MAX_EMPTY_IN_ROW} empty accounts`);
+            break;
+          }
+        }
+      } catch (err) {
+        console.error(`[SignIn] Error scanning account ${i}:`, err);
+        // On error, still include the first account
+        if (i === 0) {
+          const addresses = await deriveAddresses(mnemonicStr, 0);
+          accounts.push({
+            index: 0,
+            address: addresses.solana,
+            balance: 0,
+            ethereumAddress: addresses.ethereum,
+          });
+        }
+        break;
+      }
+    }
+
+    return accounts;
+  };
+
+  const handleAccountSelection = (index: number) => {
+    setSelectedAccounts(prev => {
+      if (prev.includes(index)) {
+        // Don't allow deselecting all accounts
+        if (prev.length === 1) return prev;
+        return prev.filter(i => i !== index);
+      } else {
+        return [...prev, index];
+      }
+    });
+  };
+
+  const handleConfirmAccounts = () => {
+    setStep('password');
+  };
 
   // Validate and parse private key (supports base58 and array formats)
   const parsePrivateKey = (input: string): Uint8Array | null => {
@@ -135,7 +275,31 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
         throw new Error('Failed to unlock wallet after import');
       }
 
-      toast.success('Wallet imported successfully!');
+      // Register biometric if user opted in
+      if (enableBiometric && biometricAvailable) {
+        console.log('[SignIn] 🔐 Registering biometric for private key import...');
+        const biometricResult = await registerBiometric(walletId);
+
+        if (biometricResult.success) {
+          // Save biometric settings
+          const biometricSettings: BiometricSettings = {
+            enabled: true,
+            autoLockMinutes: 5,
+            requireForTransactions: false,
+          };
+          localStorage.setItem('biometric_settings', JSON.stringify(biometricSettings));
+          console.log('[SignIn] ✅ Biometric registered successfully');
+          toast.success(`Wallet imported with ${biometricName} enabled!`);
+        } else if (!biometricResult.cancelled) {
+          console.warn('[SignIn] ⚠️ Biometric registration failed:', biometricResult.error);
+          toast.success('Wallet imported successfully!');
+        } else {
+          toast.success('Wallet imported successfully!');
+        }
+      } else {
+        toast.success('Wallet imported successfully!');
+      }
+
       onSuccess(walletId, walletId);
     } catch (error: any) {
       console.error('[SignIn] Private key import error:', error);
@@ -164,7 +328,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
     }
   };
 
-  const handleContinueToPassword = () => {
+  const handleContinueToPassword = async () => {
     const filledWords = words.filter(w => w.length > 0);
     if (filledWords.length !== 12) {
       toast.error('Please enter all 12 words');
@@ -172,14 +336,48 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
     }
 
     const mnemonicString = words.join(' ');
-    
+
     if (!validateMnemonic(mnemonicString)) {
       toast.error('Invalid recovery phrase');
       return;
     }
 
     setMnemonic(mnemonicString);
-    setStep('password');
+
+    // Start scanning for accounts
+    setStep('scanning');
+    setLoading(true);
+    setScanProgress(0);
+
+    try {
+      const accounts = await scanForAccounts(mnemonicString);
+      setDiscoveredAccounts(accounts);
+
+      // Pre-select all accounts with balance, or just the first one
+      const accountsWithBalance = accounts.filter(a => a.balance > 0);
+      if (accountsWithBalance.length > 0) {
+        setSelectedAccounts(accountsWithBalance.map(a => a.index));
+      } else {
+        setSelectedAccounts([0]); // Select first account by default
+      }
+
+      setLoading(false);
+
+      if (accounts.length > 1 || (accounts.length === 1 && accounts.some(a => a.balance > 0))) {
+        // Show account selection if multiple accounts or account with balance found
+        setStep('select-accounts');
+      } else {
+        // Only one empty account found, proceed directly to password
+        setStep('password');
+      }
+    } catch (err) {
+      console.error('[SignIn] Scan error:', err);
+      setLoading(false);
+      toast.error('Failed to scan accounts. Proceeding with default account.');
+      // Fallback to password step
+      setSelectedAccounts([0]);
+      setStep('password');
+    }
   };
 
   const handleImport = async () => {
@@ -205,7 +403,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
       // Store wallet ID
       WalletStorage.setWalletId(walletId);
       WalletStorage.setCurrentAccount(0);
-      
+
       // Generate default username if not exists (Phantom style: lowercase)
       const existingUsername = localStorage.getItem('saturn_username');
       if (!existingUsername) {
@@ -213,22 +411,97 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
         localStorage.setItem('saturn_username', defaultUsername);
         console.log('[SignIn] Generated default username:', defaultUsername);
       }
-      
+
       console.log('[SignIn] ✅ Wallet restored locally (client-side only)');
       console.log('[SignIn] Wallet ID:', walletId);
-      
+
+      // Create accounts for all selected derivation paths
+      const accounts: any[] = [];
+      const accountsToImport = selectedAccounts.length > 0 ? selectedAccounts : [0];
+
+      for (const selectedIndex of accountsToImport.sort((a, b) => a - b)) {
+        const discoveredAccount = discoveredAccounts.find(a => a.index === selectedIndex);
+
+        let address: string;
+        let ethereumAddress: string;
+
+        if (discoveredAccount) {
+          // Use already discovered addresses
+          address = discoveredAccount.address;
+          ethereumAddress = discoveredAccount.ethereumAddress;
+        } else {
+          // Derive addresses for this index
+          const addresses = await deriveAddresses(mnemonic, selectedIndex);
+          address = addresses.solana;
+          ethereumAddress = addresses.ethereum;
+        }
+
+        const uniqueAccountId = `${walletId}_${selectedIndex}_${Date.now()}`;
+
+        accounts.push({
+          id: uniqueAccountId,
+          name: `Account ${accounts.length + 1}`,
+          accountIndex: selectedIndex,
+          addresses: {
+            solana: address,
+            ethereum: ethereumAddress,
+          },
+          createdAt: Date.now(),
+        });
+
+        console.log(`[SignIn] Created account ${selectedIndex}: ${address.slice(0, 8)}...`);
+      }
+
+      // Save all accounts
+      localStorage.setItem('saturn_accounts', JSON.stringify(accounts));
+
+      // Set first account as active
+      if (accounts.length > 0) {
+        AccountManager.setActiveAccount(accounts[0].id);
+        localStorage.setItem('saturn_imported_pubkey', accounts[0].addresses.solana);
+      }
+
+      console.log(`[SignIn] ✅ Imported ${accounts.length} account(s)`);
+
       // ⚡ IMPORTANT: Unlock the wallet immediately after import
       // This ensures addresses are derived and ready when user lands on Home
       console.log('[SignIn] 🔓 Auto-unlocking wallet...');
       const unlocked = await wallet.unlock(password);
-      
+
       if (!unlocked) {
         throw new Error('Failed to unlock wallet after import');
       }
-      
+
       console.log('[SignIn] ✅ Wallet unlocked and addresses derived');
 
-      toast.success('Welcome back!');
+      // Register biometric if user opted in
+      if (enableBiometric && biometricAvailable) {
+        console.log('[SignIn] 🔐 Registering biometric...');
+        const biometricResult = await registerBiometric(walletId);
+
+        if (biometricResult.success) {
+          // Save biometric settings
+          const biometricSettings: BiometricSettings = {
+            enabled: true,
+            autoLockMinutes: 5,
+            requireForTransactions: false,
+          };
+          localStorage.setItem('biometric_settings', JSON.stringify(biometricSettings));
+          console.log('[SignIn] ✅ Biometric registered successfully');
+          toast.success(`Wallet imported with ${biometricName} enabled!`);
+        } else if (!biometricResult.cancelled) {
+          console.warn('[SignIn] ⚠️ Biometric registration failed:', biometricResult.error);
+          toast.success('Welcome back!');
+        } else {
+          toast.success('Welcome back!');
+        }
+      } else {
+        const accountCount = accounts.length;
+        toast.success(accountCount > 1
+          ? `Welcome back! ${accountCount} accounts imported.`
+          : 'Welcome back!');
+      }
+
       onSuccess(walletId, walletId);
     } catch (error: any) {
       console.error('[SignIn] Error:', error);
@@ -239,16 +512,78 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
   };
 
   const handleBack = () => {
-    if (step === 'password') {
-      setStep('input');
+    if (step === 'biometric') {
+      setStep('confirm-password');
+    } else if (step === 'confirm-password') {
+      setStep('password');
+      setConfirmPassword('');
+    } else if (step === 'password') {
+      // Go back to account selection if we have discovered accounts, otherwise go to input
+      if (importMode === 'mnemonic' && discoveredAccounts.length > 1) {
+        setStep('select-accounts');
+      } else {
+        setStep('input');
+      }
       setPassword('');
+      setConfirmPassword('');
+    } else if (step === 'select-accounts') {
+      setStep('input');
+      setDiscoveredAccounts([]);
+      setSelectedAccounts([]);
+      setScanProgress(0);
+    } else if (step === 'scanning') {
+      // Can't go back during scanning, but handle it just in case
+      setStep('input');
     } else if (importMode !== 'select') {
       setImportMode('select');
       setPrivateKey('');
       setDerivedPublicKey('');
       setWords(Array(12).fill(''));
+      setDiscoveredAccounts([]);
+      setSelectedAccounts([]);
+      setScanProgress(0);
+      setPassword('');
+      setConfirmPassword('');
     } else {
       onBack();
+    }
+  };
+
+  // Handle password step continue
+  const handlePasswordContinue = () => {
+    if (password.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
+    setStep('confirm-password');
+  };
+
+  // Handle confirm password step continue
+  const handleConfirmPasswordContinue = async () => {
+    if (password !== confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+    // If biometric available, go to biometric step, otherwise import wallet
+    if (biometricAvailable) {
+      setStep('biometric');
+    } else {
+      await performImport();
+    }
+  };
+
+  // Handle biometric step continue
+  const handleBiometricContinue = async (enable: boolean) => {
+    setEnableBiometric(enable);
+    await performImport();
+  };
+
+  // Perform the actual import
+  const performImport = async () => {
+    if (importMode === 'privateKey') {
+      await handlePrivateKeyImport();
+    } else {
+      await handleImport();
     }
   };
 
@@ -455,21 +790,148 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
             </motion.div>
           )}
 
-          {/* Password Step */}
-          {step === 'password' && (
+          {/* Scanning Step */}
+          {step === 'scanning' && (
             <motion.div
-              key="password"
+              key="scanning"
+              className="space-y-6"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <div className="space-y-3 text-center">
+                <div className="w-20 h-20 mx-auto rounded-full bg-purple-500/20 flex items-center justify-center">
+                  <Loader2 className="w-10 h-10 text-purple-400 animate-spin" />
+                </div>
+                <h1 className="text-2xl font-bold">Scanning for Accounts</h1>
+                <p className="text-slate-400 leading-relaxed">
+                  Looking for accounts with balance on this seed phrase...
+                </p>
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-full bg-slate-800 rounded-full h-2.5">
+                <motion.div
+                  className="bg-purple-500 h-2.5 rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${scanProgress}%` }}
+                  transition={{ duration: 0.3 }}
+                />
+              </div>
+              <p className="text-center text-sm text-slate-500">
+                Checking derivation paths... {Math.round(scanProgress)}%
+              </p>
+            </motion.div>
+          )}
+
+          {/* Account Selection Step */}
+          {step === 'select-accounts' && (
+            <motion.div
+              key="select-accounts"
               className="space-y-6"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
             >
               <div className="space-y-3">
+                <h1 className="text-3xl font-bold">Select Accounts</h1>
+                <p className="text-slate-400 leading-relaxed">
+                  Choose which accounts you want to import.
+                </p>
+              </div>
+
+              <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4">
+                <p className="text-sm text-green-200 flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  Found {discoveredAccounts.length} account{discoveredAccounts.length > 1 ? 's' : ''} on this seed phrase
+                </p>
+              </div>
+
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {discoveredAccounts.map((account) => (
+                  <motion.button
+                    key={account.index}
+                    onClick={() => handleAccountSelection(account.index)}
+                    className={`w-full p-4 rounded-xl border transition-all flex items-center justify-between ${
+                      selectedAccounts.includes(account.index)
+                        ? 'bg-purple-500/20 border-purple-500/50'
+                        : 'bg-slate-950/50 border-slate-800/50 hover:border-slate-600/50'
+                    }`}
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${
+                        selectedAccounts.includes(account.index)
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-slate-700 text-slate-300'
+                      }`}>
+                        {account.index + 1}
+                      </div>
+                      <div className="text-left">
+                        <p className="text-base font-semibold text-white">
+                          Account {account.index + 1}
+                        </p>
+                        <p className="text-sm text-slate-400 font-mono">
+                          {account.address.slice(0, 6)}...{account.address.slice(-4)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {account.balance > 0 && (
+                        <span className="text-sm px-3 py-1 rounded-lg bg-green-500/20 text-green-400 font-medium">
+                          {account.balance.toFixed(4)} SOL
+                        </span>
+                      )}
+                      {selectedAccounts.includes(account.index) && (
+                        <Check className="w-6 h-6 text-purple-400" />
+                      )}
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
+
+              <p className="text-sm text-slate-500 text-center">
+                Select the accounts you want to import
+              </p>
+
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <GradientButton
+                  onClick={handleConfirmAccounts}
+                  disabled={selectedAccounts.length === 0}
+                  className="w-full h-12"
+                >
+                  <Check className="w-5 h-5 mr-2" />
+                  Import {selectedAccounts.length} Account{selectedAccounts.length > 1 ? 's' : ''}
+                </GradientButton>
+              </motion.div>
+            </motion.div>
+          )}
+
+          {/* Password Step - Enter Password */}
+          {step === 'password' && (
+            <motion.div
+              key="password"
+              className="space-y-5"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <div className="space-y-2">
                 <h1 className="text-3xl font-bold">Create Password</h1>
                 <p className="text-slate-400 leading-relaxed">
                   Set a password to secure your imported wallet on this device.
                 </p>
               </div>
+
+              {/* Show selected accounts summary for mnemonic import */}
+              {importMode === 'mnemonic' && selectedAccounts.length > 0 && (
+                <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
+                  <p className="text-sm text-purple-200">
+                    Importing {selectedAccounts.length} account{selectedAccounts.length > 1 ? 's' : ''} from this seed phrase
+                  </p>
+                </div>
+              )}
 
               {/* Show derived address for private key import */}
               {importMode === 'privateKey' && derivedPublicKey && (
@@ -479,39 +941,192 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
                 </div>
               )}
 
-              <Card className="bg-slate-950/50 backdrop-blur-sm border-slate-800/50 p-6">
+              <div className="space-y-4">
                 <div>
                   <label className="text-sm text-slate-400 mb-2 block">Password</label>
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-900/50 border border-slate-800/50 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all"
+                    className="w-full bg-slate-950/50 border border-slate-800/50 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-lg"
                     placeholder="Enter password (min 8 characters)"
                     autoFocus
                   />
                 </div>
-              </Card>
 
-              <motion.div
-                className="bg-blue-950/20 border border-blue-900/30 rounded-xl p-4 backdrop-blur-sm"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-              >
+                {/* Password Strength Indicator */}
+                {password.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="space-y-2"
+                  >
+                    <div className="flex gap-1.5">
+                      <div className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                        password.length >= 1 ? strengthColors[passwordStrength].bg : 'bg-slate-800'
+                      }`} />
+                      <div className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                        passwordStrength === 'medium' || passwordStrength === 'strong' ? strengthColors[passwordStrength].bg : 'bg-slate-800'
+                      }`} />
+                      <div className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                        passwordStrength === 'strong' ? strengthColors[passwordStrength].bg : 'bg-slate-800'
+                      }`} />
+                    </div>
+                    <p className={`text-sm ${strengthColors[passwordStrength].text}`}>
+                      Password strength: {strengthColors[passwordStrength].label}
+                    </p>
+                  </motion.div>
+                )}
+              </div>
+
+              <div className="bg-blue-950/20 border border-blue-900/30 rounded-xl p-4 backdrop-blur-sm">
                 <p className="text-blue-200/90 text-sm leading-relaxed">
-                  <strong className="text-blue-400 font-semibold">Note:</strong> This password will encrypt your wallet on this device.
+                  <strong className="text-blue-400 font-semibold">Tip:</strong> Use a mix of uppercase, lowercase, numbers, and special characters for a stronger password.
                 </p>
-              </motion.div>
+              </div>
 
               <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                 <GradientButton
-                  onClick={importMode === 'privateKey' ? handlePrivateKeyImport : handleImport}
-                  disabled={!password || password.length < 8 || loading}
+                  onClick={handlePasswordContinue}
+                  disabled={password.length < 8}
                   className="w-full h-12"
                 >
-                  {loading ? 'Importing...' : 'Import Wallet'}
+                  Continue
                 </GradientButton>
               </motion.div>
+            </motion.div>
+          )}
+
+          {/* Confirm Password Step */}
+          {step === 'confirm-password' && (
+            <motion.div
+              key="confirm-password"
+              className="space-y-5"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <div className="space-y-2">
+                <h1 className="text-3xl font-bold">Confirm Password</h1>
+                <p className="text-slate-400 leading-relaxed">
+                  Enter your password again to make sure you remember it.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-sm text-slate-400 mb-2 block">Confirm Password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full bg-slate-950/50 border border-slate-800/50 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-lg"
+                  placeholder="Re-enter your password"
+                  autoFocus
+                />
+              </div>
+
+              {/* Password match indicator */}
+              {confirmPassword.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`flex items-center gap-2 ${
+                    password === confirmPassword ? 'text-green-400' : 'text-red-400'
+                  }`}
+                >
+                  {password === confirmPassword ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span className="text-sm">Passwords match</span>
+                    </>
+                  ) : (
+                    <span className="text-sm">Passwords do not match</span>
+                  )}
+                </motion.div>
+              )}
+
+              <div className="bg-amber-950/20 border border-amber-900/30 rounded-xl p-4 backdrop-blur-sm">
+                <p className="text-amber-200/90 text-sm leading-relaxed">
+                  <strong className="text-amber-400 font-semibold">Important:</strong> This password cannot be recovered. Make sure to remember it!
+                </p>
+              </div>
+
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <GradientButton
+                  onClick={handleConfirmPasswordContinue}
+                  disabled={!confirmPassword || password !== confirmPassword || loading}
+                  className="w-full h-12"
+                >
+                  {loading && !biometricAvailable ? 'Importing...' : 'Continue'}
+                </GradientButton>
+              </motion.div>
+            </motion.div>
+          )}
+
+          {/* Biometric Step */}
+          {step === 'biometric' && (
+            <motion.div
+              key="biometric"
+              className="space-y-6"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+            >
+              <div className="space-y-2 text-center">
+                <motion.div
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.1 }}
+                  className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center mb-4"
+                >
+                  <Fingerprint className="w-12 h-12 text-purple-400" />
+                </motion.div>
+                <h1 className="text-3xl font-bold">Enable {biometricName}?</h1>
+                <p className="text-slate-400 leading-relaxed">
+                  Unlock your wallet quickly and securely using {biometricName}.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-4 bg-slate-950/50 border border-slate-800/50 rounded-xl">
+                  <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
+                    <Check className="w-5 h-5 text-green-400" />
+                  </div>
+                  <div>
+                    <p className="text-white font-medium">Quick Access</p>
+                    <p className="text-slate-400 text-sm">Unlock in seconds without typing</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 p-4 bg-slate-950/50 border border-slate-800/50 rounded-xl">
+                  <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
+                    <ShieldCheck className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-white font-medium">Secure</p>
+                    <p className="text-slate-400 text-sm">Your biometric data stays on device</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <GradientButton
+                  onClick={() => handleBiometricContinue(true)}
+                  disabled={loading}
+                  className="w-full h-12"
+                >
+                  {loading ? 'Importing Wallet...' : `Enable ${biometricName}`}
+                </GradientButton>
+
+                <Button
+                  variant="ghost"
+                  onClick={() => handleBiometricContinue(false)}
+                  disabled={loading}
+                  className="w-full h-12 text-slate-400 hover:text-white hover:bg-slate-900/50"
+                >
+                  Skip for now
+                </Button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
