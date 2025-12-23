@@ -29,6 +29,14 @@ import { UnlockWallet } from './components/UnlockWallet';
 import { initializeEnvironment } from './utils/initEnv';
 import { AccountManager } from './utils/accountManager';
 import { preloadJupiterTokens } from './utils/jupiterTokens';
+import { checkVersionAndReload } from './utils/version';
+
+// Check for version update FIRST - before anything else
+// This will force reload if user has old cached version
+if (checkVersionAndReload()) {
+  // Page will reload, so don't render anything
+  console.log('[App] Version mismatch - reloading...');
+}
 
 // Preload Jupiter tokens in background for faster search
 preloadJupiterTokens();
