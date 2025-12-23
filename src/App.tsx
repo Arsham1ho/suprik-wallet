@@ -22,14 +22,13 @@ import { LanguageProvider } from './utils/i18n/LanguageContext';
 import { NetworkProvider } from './utils/NetworkContext';
 import { isWalletLocked, type BiometricSettings } from './utils/biometric';
 import { getUserSettings } from './utils/userSettings';
-import { initPWAInstall, registerServiceWorker, onUpdateAvailable, forceUpdate } from './utils/mobile/pwa';
+import { initPWAInstall, registerServiceWorker } from './utils/mobile/pwa';
 import { installPWAIconsToCache } from './utils/generatePWAIcons';
 import { SecureStorage, WalletStorage } from './utils/wallet';
 import { UnlockWallet } from './components/UnlockWallet';
 import { initializeEnvironment } from './utils/initEnv';
 import { AccountManager } from './utils/accountManager';
 import { preloadJupiterTokens } from './utils/jupiterTokens';
-import { checkVersionAndReload } from './utils/version';
 
 // Preload Jupiter tokens in background for faster search
 preloadJupiterTokens();
@@ -53,13 +52,8 @@ export default function App() {
   // Cache for biometric check to prevent multiple calls
   const biometricCheckCache = useRef<{ [key: string]: Promise<void> }>({});
 
-  // Initialize environment and check for version updates on mount
+  // Initialize environment on mount
   useEffect(() => {
-    // Check for version update - will reload if user has old cached version
-    if (checkVersionAndReload()) {
-      return; // Page will reload
-    }
-
     initializeEnvironment().catch(() => {
       // Environment initialization failed silently
     });
@@ -177,19 +171,6 @@ export default function App() {
   // Initialize PWA on mount
   useEffect(() => {
     initPWAInstall();
-
-    // Set up update notification callback
-    onUpdateAvailable(() => {
-      toast('New version available!', {
-        description: 'Tap to update and get the latest features.',
-        duration: 10000,
-        action: {
-          label: 'Update Now',
-          onClick: () => forceUpdate(),
-        },
-      });
-    });
-
     registerServiceWorker().catch(() => {
       // Silently handle SW errors - app works fine without it
     });

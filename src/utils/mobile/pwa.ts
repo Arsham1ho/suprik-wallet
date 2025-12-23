@@ -3,14 +3,6 @@
  */
 
 let deferredPrompt: any = null;
-let updateCallback: (() => void) | null = null;
-
-/**
- * Set callback for when update is available
- */
-export function onUpdateAvailable(callback: () => void) {
-  updateCallback = callback;
-}
 
 /**
  * Listen for install prompt
@@ -92,51 +84,6 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 
       console.log('[PWA] ✓ Service Worker registered:', registration);
 
-      // Listen for messages from SW (like SW_UPDATED)
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data?.type === 'SW_UPDATED') {
-          console.log('[PWA] Service Worker updated to version:', event.data.version);
-          if (updateCallback) {
-            updateCallback();
-          }
-        }
-      });
-
-      // Check for updates on registration
-      registration.addEventListener('updatefound', () => {
-        const newWorker = registration.installing;
-        console.log('[PWA] Service Worker update found');
-
-        if (newWorker) {
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed') {
-              if (navigator.serviceWorker.controller) {
-                // New SW available, old one still controlling
-                console.log('[PWA] New version available! Refresh to update.');
-                if (updateCallback) {
-                  updateCallback();
-                }
-              } else {
-                // First install
-                console.log('[PWA] Service Worker installed for the first time');
-              }
-            }
-          });
-        }
-      });
-
-      // Check for updates every 5 minutes
-      setInterval(() => {
-        registration.update().catch(() => {});
-      }, 5 * 60 * 1000);
-
-      // Also check for updates when app becomes visible
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-          registration.update().catch(() => {});
-        }
-      });
-
       return registration;
     } catch (error) {
       console.log('[PWA] Service Worker registration skipped:', error instanceof Error ? error.message : 'Unknown error');
@@ -147,23 +94,6 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 
   console.log('[PWA] Service Workers not supported in this browser');
   return null;
-}
-
-/**
- * Force update the service worker and reload
- */
-export async function forceUpdate(): Promise<void> {
-  if ('serviceWorker' in navigator) {
-    const registration = await navigator.serviceWorker.ready;
-
-    // Tell waiting SW to skip waiting
-    if (registration.waiting) {
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-    }
-
-    // Reload the page to get the new version
-    window.location.reload();
-  }
 }
 
 /**
