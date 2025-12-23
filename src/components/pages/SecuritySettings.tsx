@@ -17,8 +17,8 @@ import {
   Lock,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { projectId, publicAnonKey } from "../../utils/supabase/info";
 import { toast } from "sonner";
+import { getUserSettings, saveUserSettings } from "../../utils/userSettings";
 import {
   isBiometricAvailable,
   registerBiometric,
@@ -109,19 +109,20 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
         networkStatus: null,
       });
 
-      // Try to load user settings from server (these are stored server-side)
+      // Load user settings from localStorage (client-side)
       try {
-        const settingsResponse = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/user-settings/${walletId}`,
-          {
-            headers: { Authorization: `Bearer ${publicAnonKey}` },
-          }
-        );
-
-        if (settingsResponse.ok) {
-          const data = await settingsResponse.json();
-          setUserSettings(data);
-        }
+        console.log("[SecuritySettings] Loading settings from localStorage...");
+        const settings = getUserSettings(walletId);
+        setUserSettings({
+          language: settings.language || 'en',
+          currency: settings.currency || 'USD',
+          usePassword: false,
+          biometric: settings.biometricEnabled ? {
+            enabled: true,
+            autoLockMinutes: settings.autoLockMinutes || 5,
+            requireForTransactions: false,
+          } : undefined,
+        });
       } catch (settingsError) {
         console.log(
           "[SecuritySettings] No user settings found, using defaults"
@@ -137,26 +138,20 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
     }
   };
 
-  const updateSettings = async (newSettings: Partial<UserSettings>) => {
+  // Update settings in localStorage (client-side, instant)
+  const updateSettings = (newSettings: Partial<UserSettings>) => {
     try {
       const updatedSettings = { ...userSettings, ...newSettings };
 
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/update-settings`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ walletId, settings: updatedSettings }),
-        }
-      );
-
-      if (!response.ok) throw new Error("Failed to update settings");
+      // Save to localStorage
+      saveUserSettings({
+        biometricEnabled: newSettings.biometric?.enabled,
+        autoLockMinutes: newSettings.biometric?.autoLockMinutes,
+      }, walletId);
 
       setUserSettings(updatedSettings as UserSettings);
       toast.success("Security settings updated");
+      console.log("[SecuritySettings] ✅ Settings saved (client-side)");
     } catch (error) {
       console.error("Error updating settings:", error);
       toast.error("Failed to update settings");
@@ -242,7 +237,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
           toast.error("Incorrect password. Please try again.");
           return;
         }
-        console.log("[SecuritySettings] Password verified successfully");
+        // Password verified successfully
       } catch (error) {
         toast.error("Incorrect password. Please try again.");
         return;
@@ -263,7 +258,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
           const newBiometricSettings: BiometricSettings = {
             enabled: true,
             autoLockMinutes: 5, // Default to 5 minutes
-            requireForTransactions: true,
+            requireForTransactions: false,
           };
           await updateSettings({
             biometric: newBiometricSettings,
@@ -298,7 +293,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
     const currentBiometric = userSettings?.biometric || {
       enabled: true,
       autoLockMinutes: 5,
-      requireForTransactions: true,
+      requireForTransactions: false,
     };
     await updateSettings({
       biometric: { ...currentBiometric, autoLockMinutes: minutes },
@@ -536,8 +531,20 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
         console.log(
           "[SecuritySettings] ✅ Wallet already unlocked, using mnemonic from context"
         );
-        const privateKeyBytes = exportPrivateKey(wallet.mnemonic);
-        const privateKeyBase58 = bs58.encode(privateKeyBytes);
+        // Need to get password for export - prompt user
+        const pwd = prompt("Enter your wallet password to view private key:");
+        if (!pwd) {
+          toast.error("Password required to view private key");
+          setLoadingPrivateKey(false);
+          return;
+        }
+        const result = await exportPrivateKey(wallet.mnemonic, pwd);
+        if (!result.success || !result.privateKey.length) {
+          toast.error(result.error || "Failed to export private key");
+          setLoadingPrivateKey(false);
+          return;
+        }
+        const privateKeyBase58 = bs58.encode(result.privateKey);
         setPrivateKey(privateKeyBase58);
         setPrivateKeyConfirmed(true);
         setLoadingPrivateKey(false);
@@ -558,12 +565,14 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
             console.log(
               "[SecuritySettings] ✅ Mnemonic retrieved with OAuth password"
             );
-            const privateKeyBytes = exportPrivateKey(mnemonic);
-            const privateKeyBase58 = bs58.encode(privateKeyBytes);
-            setPrivateKey(privateKeyBase58);
-            setPrivateKeyConfirmed(true);
-            setLoadingPrivateKey(false);
-            return;
+            const result = await exportPrivateKey(mnemonic, oauthPassword);
+            if (result.success && result.privateKey.length) {
+              const privateKeyBase58 = bs58.encode(result.privateKey);
+              setPrivateKey(privateKeyBase58);
+              setPrivateKeyConfirmed(true);
+              setLoadingPrivateKey(false);
+              return;
+            }
           }
         }
       }
@@ -587,9 +596,16 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
         return;
       }
 
-      console.log("[SecuritySettings] ✅ Private key loaded successfully");
-      const privateKeyBytes = exportPrivateKey(mnemonic);
-      const privateKeyBase58 = bs58.encode(privateKeyBytes);
+      console.log("[SecuritySettings] ✅ Mnemonic retrieved, exporting private key...");
+      const result = await exportPrivateKey(mnemonic, password);
+
+      if (!result.success || !result.privateKey.length) {
+        toast.error(result.error || "Failed to export private key");
+        setLoadingPrivateKey(false);
+        return;
+      }
+
+      const privateKeyBase58 = bs58.encode(result.privateKey);
       setPrivateKey(privateKeyBase58);
       setPrivateKeyConfirmed(true);
       toast.success("Private key loaded");

@@ -54,19 +54,33 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
               />
               
               {/* Logo */}
-              <div className="relative w-32 h-32 rounded-full flex items-center justify-center">
-                <motion.img 
-                  src={logo} 
-                  alt="Suprik Logo" 
-                  className="w-32 h-32 rounded-full"
-                  animate={{ rotate: 360 }}
-                  transition={{
-                    duration: 8,
-                    repeat: Infinity,
-                    ease: "linear"
+              <motion.div
+                className="relative w-32 h-32 flex items-center justify-center"
+                style={{
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  clipPath: 'circle(50%)',
+                  WebkitClipPath: 'circle(50%)',
+                  transform: 'translateZ(0)',
+                  WebkitTransform: 'translateZ(0)',
+                }}
+                animate={{ rotate: 360 }}
+                transition={{
+                  duration: 8,
+                  repeat: Infinity,
+                  ease: "linear"
+                }}
+              >
+                <img
+                  src={logo}
+                  alt="Suprik Logo"
+                  className="w-32 h-32"
+                  style={{
+                    borderRadius: '50%',
+                    display: 'block',
                   }}
                 />
-              </div>
+              </motion.div>
             </div>
 
             {/* Brand & Tagline */}

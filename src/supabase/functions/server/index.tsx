@@ -432,14 +432,14 @@ app.post("/make-server-e5bc10d1/create-wallet", async (c) => {
       ]
     }));
 
-    console.log('Wallet created successfully:', walletId);
+    // Wallet created successfully
 
     return c.json({
       success: true,
       walletId,
     });
   } catch (error: any) {
-    console.error('Wallet creation error:', error);
+    // Wallet creation error
     return c.json({ error: error.message || 'Failed to create wallet' }, 500);
   }
 });
@@ -472,7 +472,7 @@ app.post("/make-server-e5bc10d1/signin", async (c) => {
       return c.json({ error: "Wallet not found. Please create a new wallet." }, 404);
     }
 
-    console.log('User signed in successfully:', walletId);
+    // User signed in successfully
 
     return c.json({
       success: true,
@@ -521,7 +521,7 @@ app.get("/make-server-e5bc10d1/wallet/:walletId", async (c) => {
       username: wallet.username,
     });
   } catch (error: any) {
-    console.error('Wallet fetch error:', error);
+    // Wallet fetch error
     return c.json({ error: error.message || 'Failed to fetch wallet' }, 500);
   }
 });
@@ -978,7 +978,7 @@ app.post("/make-server-e5bc10d1/generate-addresses", async (c) => {
       return c.json({ error: 'Wallet ID is required' }, 400);
     }
     
-    console.log('Generating addresses for wallet:', walletId);
+    // Generating addresses
     
     // Get the seed phrase and account index from KV store
     let seedPhrase = providedSeedPhrase;
@@ -987,7 +987,7 @@ app.post("/make-server-e5bc10d1/generate-addresses", async (c) => {
     if (!seedPhrase) {
       // Try to get from KV store (for backward compatibility)
       const wallet = await kv.get(`wallet:${walletId}`);
-      console.log('Wallet data retrieved from KV:', wallet ? 'Found' : 'Not found');
+      // Wallet data retrieved
       
       if (wallet && wallet.seedPhrase) {
         seedPhrase = wallet.seedPhrase;
@@ -1109,7 +1109,7 @@ app.post("/make-server-e5bc10d1/store-addresses", async (c) => {
       return c.json({ error: 'Addresses are required' }, 400);
     }
     
-    console.log('[Store Addresses] Storing addresses for wallet:', walletId);
+    // Storing addresses
     
     // Store addresses in KV store
     await kv.set(`wallet:${walletId}:addresses`, addresses);
@@ -1168,7 +1168,7 @@ app.post("/make-server-e5bc10d1/set-dev-mode", async (c) => {
     
     try {
       await kv.set(`wallet:${walletId}:settings`, settings);
-      console.log('Dev mode updated:', walletId, devMode);
+      // Dev mode updated
     } catch (kvError: any) {
       console.error('KV set error (dev mode not persisted):', kvError.message);
     }
@@ -1213,7 +1213,7 @@ app.get("/make-server-e5bc10d1/wallet-settings/:walletId", async (c) => {
       solanaNetwork: settings.solanaNetwork || 'mainnet',
     });
   } catch (error: any) {
-    console.error('Get wallet settings error:', error);
+    // Get wallet settings error
     // Return defaults instead of failing
     return c.json({
       devMode: false,
@@ -1252,14 +1252,14 @@ app.post("/make-server-e5bc10d1/wallet-settings", async (c) => {
     // Try to save settings, return success even if save fails
     try {
       await kv.set(`wallet:${walletId}:settings`, settings);
-      console.log('Wallet settings updated:', walletId, settings);
+      // Wallet settings updated
     } catch (kvError: any) {
       console.error('KV set error (settings not persisted):', kvError.message);
     }
     
     return c.json({ success: true, settings });
   } catch (error: any) {
-    console.error('Update wallet settings error:', error);
+    // Update wallet settings error
     return c.json({ error: error.message }, 500);
   }
 });
@@ -1273,7 +1273,7 @@ app.post("/make-server-e5bc10d1/dev-receive", async (c) => {
       return c.json({ error: 'walletId, tokenSymbol, and amount are required' }, 400);
     }
     
-    console.log('Dev mode receive request:', { walletId, tokenSymbol, amount });
+    // Dev mode receive request
     
     // Check if dev mode is enabled
     const settings = await kv.get(`wallet:${walletId}:settings`) || {};
@@ -1384,7 +1384,8 @@ app.post("/make-server-e5bc10d1/dev-receive", async (c) => {
     const activities = await kv.get(`wallet:${walletId}:activities`) || [];
     
     // Generate a fake signature for dev mode (so the "View on Explorer" button works)
-    const fakeSignature = `DEV${Date.now()}${Math.random().toString(36).substring(2, 15)}`;
+    const randomBytes = crypto.getRandomValues(new Uint8Array(8));
+    const fakeSignature = `DEV${Date.now()}${Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('')}`;
     
     // Get wallet addresses for 'to' field
     const addresses = await kv.get(`wallet:${walletId}:addresses`) || {};
@@ -2532,83 +2533,105 @@ console.log('✅ Blockchain balance endpoints registered');
 // All swap functionality now uses client-side demo mode with realistic mock data
 
 // Get coins list from CoinGecko
+// CoinGecko free API limits: max 250 per page, 30 calls/minute
+// To get 500+ tokens, we fetch multiple pages and combine them
 app.get("/make-server-e5bc10d1/coingecko-coins", async (c) => {
   try {
-    const page = c.req.query('page') || '1';
-    const perPage = c.req.query('per_page') || '100';
-    
-    console.log(`Fetching CoinGecko coins list (page: ${page}, per_page: ${perPage})...`);
-    
-    // All data comes from real CoinGecko API
-    // Users can add any token from CoinGecko's 10,000+ supported cryptocurrencies
-    
+    const requestedPage = parseInt(c.req.query('page') || '1');
+    const requestedPerPage = parseInt(c.req.query('per_page') || '250');
+
+    // CoinGecko max per_page is 250, so we need to fetch multiple pages
+    const COINGECKO_MAX_PER_PAGE = 250;
+
+    // For page 1 with 500 requested, we fetch pages 1+2 from CoinGecko (250+250)
+    // For page 2 with 500 requested, we fetch pages 3+4 from CoinGecko
+    const effectivePerPage = Math.min(requestedPerPage, 500); // Cap at 500 to avoid too many API calls
+    const pagesNeeded = Math.ceil(effectivePerPage / COINGECKO_MAX_PER_PAGE);
+    const startPage = (requestedPage - 1) * pagesNeeded + 1;
+
+    console.log(`Fetching CoinGecko coins (requested: page=${requestedPage}, per_page=${requestedPerPage})`);
+    console.log(`Will fetch ${pagesNeeded} CoinGecko pages starting from ${startPage}`);
+
     // Check cache first
-    const cacheKey = `coingecko:coins:page${page}:per${perPage}:v2`;
+    const cacheKey = `coingecko:coins:page${requestedPage}:per${effectivePerPage}:v3`;
     const cached = await kv.get(cacheKey);
-    
+
     // Cache for 24 hours to reduce API calls and avoid rate limits
-    const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours - crypto prices don't change that much
+    const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
     if (cached && cached.timestamp && Date.now() - cached.timestamp < CACHE_TTL) {
-      console.log('✅ Returning cached CoinGecko data (fresh cache)');
+      console.log(`✅ Returning cached CoinGecko data (${cached.data?.length || 0} coins)`);
       return c.json(cached.data);
     }
-    
-    // If we have stale cache (older than 24 hours but exists), return it immediately
-    // This prevents 429 errors - we prefer stale data over no data
+
+    // If we have stale cache, return it to avoid rate limiting
     if (cached && cached.data) {
-      console.log('⚠️ Using stale cache to avoid rate limiting (better than 429 error)');
+      console.log('⚠️ Using stale cache to avoid rate limiting');
       return c.json(cached.data);
     }
-    
-    // Fetch from CoinGecko API
-    const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${perPage}&page=${page}&sparkline=false&price_change_percentage=24h`;
-    
-    console.log('Fetching from CoinGecko:', url);
-    
-    // Apply rate limiting
-    await coinGeckoRateLimiter.wait();
-    
-    const response = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-      }
-    });
-    
-    if (!response.ok) {
-      console.error('CoinGecko API error:', response.status, response.statusText);
-      
-      // If rate limited (429) - try to return any cache we have, or use minimal fallback
-      if (response.status === 429) {
-        console.log('⚠️⚠️⚠️ RATE LIMITED BY COINGECKO (429) ⚠️⚠️⚠️');
-        
-        if (cached && cached.data) {
-          console.log('✅ Returning stale cache data (any cache is better than error)');
-          return c.json(cached.data);
-        }
-        
-        // No cache available - return empty array for page > 1, minimal data for page 1
-        if (parseInt(page) > 1) {
-          console.log('⚠️ Rate limited on page > 1 with no cache - returning empty array (signals end of list)');
+
+    // Fetch multiple pages from CoinGecko and combine
+    const allCoins: any[] = [];
+
+    for (let i = 0; i < pagesNeeded; i++) {
+      const cgPage = startPage + i;
+      const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${COINGECKO_MAX_PER_PAGE}&page=${cgPage}&sparkline=false&price_change_percentage=24h`;
+
+      console.log(`Fetching CoinGecko page ${cgPage}...`);
+
+      // Apply rate limiting between requests
+      await coinGeckoRateLimiter.wait();
+
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json' }
+      });
+
+      if (!response.ok) {
+        console.error('CoinGecko API error:', response.status);
+
+        if (response.status === 429) {
+          console.log('⚠️ Rate limited by CoinGecko');
+          // If we already have some coins, return what we have
+          if (allCoins.length > 0) {
+            console.log(`Returning ${allCoins.length} coins fetched before rate limit`);
+            break;
+          }
+
+          // Return fallback for page 1
+          if (requestedPage === 1) {
+            return c.json(getMinimalFallbackCoins());
+          }
           return c.json([]);
         }
-        
-        console.log('⚠️ Rate limited on page 1 with no cache! Returning minimal fallback data...');
-        const fallbackCoins = [
-          { id: 'bitcoin', symbol: 'BTC', name: 'Bitcoin', image: 'https://cryptologos.cc/logos/bitcoin-btc-logo.png', current_price: 43250, market_cap: 845000000000, market_cap_rank: 1, price_change_percentage_24h: 1.5, total_volume: 25000000000 },
-          { id: 'ethereum', symbol: 'ETH', name: 'Ethereum', image: 'https://cryptologos.cc/logos/ethereum-eth-logo.png', current_price: 2856, market_cap: 343000000000, market_cap_rank: 2, price_change_percentage_24h: -2.1, total_volume: 15000000000 },
-          { id: 'solana', symbol: 'SOL', name: 'Solana', image: 'https://cryptologos.cc/logos/solana-sol-logo.png', current_price: 142.54, market_cap: 62000000000, market_cap_rank: 5, price_change_percentage_24h: 3.2, total_volume: 3000000000 },
-        ];
-        return c.json(fallbackCoins);
+
+        throw new Error(`CoinGecko API error: ${response.status}`);
       }
-      
-      throw new Error(`CoinGecko API error: ${response.status}`);
+
+      const data = await response.json();
+      console.log(`Got ${data.length} coins from CoinGecko page ${cgPage}`);
+
+      if (data.length === 0) {
+        console.log('No more coins available from CoinGecko');
+        break;
+      }
+
+      allCoins.push(...data);
+
+      // If we got less than 250, this is the last page
+      if (data.length < COINGECKO_MAX_PER_PAGE) {
+        console.log(`CoinGecko returned ${data.length} < 250, reached end of data`);
+        break;
+      }
+
+      // Small delay between API calls to be respectful
+      if (i < pagesNeeded - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
-    
-    const data = await response.json();
-    console.log(`Fetched ${data.length} coins from CoinGecko`);
-    
-    // Transform the data to our format
-    const coins = data.map((coin: any) => ({
+
+    console.log(`Total coins fetched: ${allCoins.length}`);
+
+    // Transform to our format
+    const coins = allCoins.map((coin: any) => ({
       id: coin.id,
       symbol: coin.symbol.toUpperCase(),
       name: coin.name,
@@ -2619,54 +2642,59 @@ app.get("/make-server-e5bc10d1/coingecko-coins", async (c) => {
       price_change_percentage_24h: coin.price_change_percentage_24h,
       total_volume: coin.total_volume,
     }));
-    
-    // Cache the CoinGecko data
+
+    // Cache the combined data
     await kv.set(cacheKey, {
       data: coins,
       timestamp: Date.now(),
     });
-    
+
     return c.json(coins);
   } catch (error: any) {
-    console.error('CoinGecko fetch error:', error.message, error.stack);
-    
-    // Try to return cached data even if expired in case of error
-    const page = c.req.query('page') || '1';
-    const perPage = c.req.query('per_page') || '100';
-    const cacheKey = `coingecko:coins:page${page}:per${perPage}:v2`;
-    
+    console.error('CoinGecko fetch error:', error.message);
+
+    const page = parseInt(c.req.query('page') || '1');
+    const perPage = parseInt(c.req.query('per_page') || '250');
+    const cacheKey = `coingecko:coins:page${page}:per${Math.min(perPage, 500)}:v3`;
+
     try {
       const cached = await kv.get(cacheKey);
       if (cached && cached.data) {
-        console.log('Error occurred, returning expired cache as fallback');
+        console.log('Returning expired cache as fallback');
         return c.json(cached.data);
       }
     } catch (cacheError) {
-      console.error('Cache retrieval also failed:', cacheError);
+      console.error('Cache retrieval failed:', cacheError);
     }
-    
-    // If page 1 and no cache, return minimal fallback data to keep app functional
-    if (parseInt(page) === 1) {
-      console.log('⚠️ Returning minimal fallback data for page 1');
-      const fallbackCoins = [
-        { id: 'bitcoin', symbol: 'BTC', name: 'Bitcoin', image: 'https://cryptologos.cc/logos/bitcoin-btc-logo.png', current_price: 95000, market_cap: 1800000000000, market_cap_rank: 1, price_change_percentage_24h: 1.5, total_volume: 40000000000 },
-        { id: 'ethereum', symbol: 'ETH', name: 'Ethereum', image: 'https://cryptologos.cc/logos/ethereum-eth-logo.png', current_price: 3400, market_cap: 410000000000, market_cap_rank: 2, price_change_percentage_24h: -0.8, total_volume: 20000000000 },
-        { id: 'solana', symbol: 'SOL', name: 'Solana', image: 'https://cryptologos.cc/logos/solana-sol-logo.png', current_price: 190, market_cap: 90000000000, market_cap_rank: 4, price_change_percentage_24h: 2.3, total_volume: 5000000000 },
-        { id: 'binancecoin', symbol: 'BNB', name: 'BNB', image: 'https://cryptologos.cc/logos/bnb-bnb-logo.png', current_price: 680, market_cap: 100000000000, market_cap_rank: 5, price_change_percentage_24h: 1.2, total_volume: 2000000000 },
-        { id: 'ripple', symbol: 'XRP', name: 'XRP', image: 'https://cryptologos.cc/logos/xrp-xrp-logo.png', current_price: 2.5, market_cap: 140000000000, market_cap_rank: 3, price_change_percentage_24h: 5.4, total_volume: 8000000000 },
-        { id: 'cardano', symbol: 'ADA', name: 'Cardano', image: 'https://cryptologos.cc/logos/cardano-ada-logo.png', current_price: 1.05, market_cap: 37000000000, market_cap_rank: 8, price_change_percentage_24h: -1.5, total_volume: 1500000000 },
-        { id: 'dogecoin', symbol: 'DOGE', name: 'Dogecoin', image: 'https://cryptologos.cc/logos/dogecoin-doge-logo.png', current_price: 0.38, market_cap: 56000000000, market_cap_rank: 6, price_change_percentage_24h: 3.8, total_volume: 4000000000 },
-        { id: 'tron', symbol: 'TRX', name: 'TRON', image: 'https://cryptologos.cc/logos/tron-trx-logo.png', current_price: 0.24, market_cap: 21000000000, market_cap_rank: 10, price_change_percentage_24h: 0.5, total_volume: 800000000 },
-        { id: 'usd-coin', symbol: 'USDC', name: 'USDC', image: 'https://cryptologos.cc/logos/usd-coin-usdc-logo.png', current_price: 1.00, market_cap: 40000000000, market_cap_rank: 7, price_change_percentage_24h: 0.0, total_volume: 8000000000 },
-        { id: 'tether', symbol: 'USDT', name: 'Tether', image: 'https://cryptologos.cc/logos/tether-usdt-logo.png', current_price: 1.00, market_cap: 140000000000, market_cap_rank: 3, price_change_percentage_24h: 0.0, total_volume: 100000000000 },
-      ];
-      return c.json(fallbackCoins);
+
+    if (page === 1) {
+      return c.json(getMinimalFallbackCoins());
     }
-    
-    // For other pages, return empty array
+
     return c.json([]);
   }
 });
+
+// Helper function for fallback coins
+function getMinimalFallbackCoins() {
+  return [
+    { id: 'bitcoin', symbol: 'BTC', name: 'Bitcoin', image: 'https://cryptologos.cc/logos/bitcoin-btc-logo.png', current_price: 95000, market_cap: 1800000000000, market_cap_rank: 1, price_change_percentage_24h: 1.5, total_volume: 40000000000 },
+    { id: 'ethereum', symbol: 'ETH', name: 'Ethereum', image: 'https://cryptologos.cc/logos/ethereum-eth-logo.png', current_price: 3400, market_cap: 410000000000, market_cap_rank: 2, price_change_percentage_24h: -0.8, total_volume: 20000000000 },
+    { id: 'solana', symbol: 'SOL', name: 'Solana', image: 'https://cryptologos.cc/logos/solana-sol-logo.png', current_price: 190, market_cap: 90000000000, market_cap_rank: 4, price_change_percentage_24h: 2.3, total_volume: 5000000000 },
+    { id: 'binancecoin', symbol: 'BNB', name: 'BNB', image: 'https://cryptologos.cc/logos/bnb-bnb-logo.png', current_price: 680, market_cap: 100000000000, market_cap_rank: 5, price_change_percentage_24h: 1.2, total_volume: 2000000000 },
+    { id: 'ripple', symbol: 'XRP', name: 'XRP', image: 'https://cryptologos.cc/logos/xrp-xrp-logo.png', current_price: 2.5, market_cap: 140000000000, market_cap_rank: 3, price_change_percentage_24h: 5.4, total_volume: 8000000000 },
+    { id: 'cardano', symbol: 'ADA', name: 'Cardano', image: 'https://cryptologos.cc/logos/cardano-ada-logo.png', current_price: 1.05, market_cap: 37000000000, market_cap_rank: 8, price_change_percentage_24h: -1.5, total_volume: 1500000000 },
+    { id: 'dogecoin', symbol: 'DOGE', name: 'Dogecoin', image: 'https://cryptologos.cc/logos/dogecoin-doge-logo.png', current_price: 0.38, market_cap: 56000000000, market_cap_rank: 6, price_change_percentage_24h: 3.8, total_volume: 4000000000 },
+    { id: 'tron', symbol: 'TRX', name: 'TRON', image: 'https://cryptologos.cc/logos/tron-trx-logo.png', current_price: 0.24, market_cap: 21000000000, market_cap_rank: 10, price_change_percentage_24h: 0.5, total_volume: 800000000 },
+    { id: 'usd-coin', symbol: 'USDC', name: 'USDC', image: 'https://cryptologos.cc/logos/usd-coin-usdc-logo.png', current_price: 1.00, market_cap: 40000000000, market_cap_rank: 7, price_change_percentage_24h: 0.0, total_volume: 8000000000 },
+    { id: 'tether', symbol: 'USDT', name: 'Tether', image: 'https://cryptologos.cc/logos/tether-usdt-logo.png', current_price: 1.00, market_cap: 140000000000, market_cap_rank: 3, price_change_percentage_24h: 0.0, total_volume: 100000000000 },
+    { id: 'avalanche-2', symbol: 'AVAX', name: 'Avalanche', image: 'https://cryptologos.cc/logos/avalanche-avax-logo.png', current_price: 45, market_cap: 18000000000, market_cap_rank: 11, price_change_percentage_24h: 2.1, total_volume: 1200000000 },
+    { id: 'polkadot', symbol: 'DOT', name: 'Polkadot', image: 'https://cryptologos.cc/logos/polkadot-new-dot-logo.png', current_price: 8.5, market_cap: 12000000000, market_cap_rank: 12, price_change_percentage_24h: 1.8, total_volume: 600000000 },
+    { id: 'chainlink', symbol: 'LINK', name: 'Chainlink', image: 'https://cryptologos.cc/logos/chainlink-link-logo.png', current_price: 22, market_cap: 14000000000, market_cap_rank: 13, price_change_percentage_24h: -0.5, total_volume: 900000000 },
+    { id: 'shiba-inu', symbol: 'SHIB', name: 'Shiba Inu', image: 'https://cryptologos.cc/logos/shiba-inu-shib-logo.png', current_price: 0.000024, market_cap: 14000000000, market_cap_rank: 14, price_change_percentage_24h: 4.2, total_volume: 700000000 },
+    { id: 'polygon', symbol: 'MATIC', name: 'Polygon', image: 'https://cryptologos.cc/logos/polygon-matic-logo.png', current_price: 0.58, market_cap: 5600000000, market_cap_rank: 15, price_change_percentage_24h: 1.1, total_volume: 400000000 },
+  ];
+}
 
 // Add coin to wallet
 app.post("/make-server-e5bc10d1/add-coin-to-wallet", async (c) => {
@@ -2711,7 +2739,7 @@ app.post("/make-server-e5bc10d1/add-coin-to-wallet", async (c) => {
       });
     }
   } catch (error: any) {
-    console.error('Error adding coin to wallet:', error.message, error.stack);
+    // Error adding coin to wallet
     return c.json({ error: error.message || 'Failed to add coin to wallet' }, 500);
   }
 });
@@ -2749,7 +2777,7 @@ app.post("/make-server-e5bc10d1/remove-coin-from-wallet", async (c) => {
       message: `${symbol} removed from wallet`
     });
   } catch (error: any) {
-    console.error('Error removing coin from wallet:', error.message, error.stack);
+    // Error removing coin from wallet
     return c.json({ error: error.message || 'Failed to remove coin from wallet' }, 500);
   }
 });
@@ -3864,8 +3892,8 @@ app.post("/make-server-e5bc10d1/send-token", async (c) => {
     
     // Add to activity log
     const activities = await kv.get(`wallet:${walletId}:activities`) || [];
-    console.log(`[Activity Update] Current activities count: ${activities.length} (simulation)`);
-    const txId = `sim-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const txIdBytes = crypto.getRandomValues(new Uint8Array(8));
+    const txId = `sim-${Date.now()}-${Array.from(txIdBytes, b => b.toString(16).padStart(2, '0')).join('')}`;
     
     activities.unshift({
       id: txId,
@@ -4257,7 +4285,8 @@ app.post("/make-server-e5bc10d1/swap-tokens", async (c) => {
 
     // Add to activity log
     const activities = await kv.get(`wallet:${walletId}:activities`) || [];
-    const swapId = `swap-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const swapIdBytes = crypto.getRandomValues(new Uint8Array(8));
+    const swapId = `swap-${Date.now()}-${Array.from(swapIdBytes, b => b.toString(16).padStart(2, '0')).join('')}`;
     
     activities.unshift({
       id: swapId,
@@ -4399,7 +4428,7 @@ app.get("/make-server-e5bc10d1/wallet-info/:walletId", async (c) => {
       networkStatus: networkStatus,
     });
   } catch (error: any) {
-    console.error('Get wallet info error:', error);
+    // Get wallet info error
     return c.json({ error: error.message || 'Failed to get wallet info' }, 500);
   }
 });
@@ -4729,11 +4758,11 @@ app.post("/make-server-e5bc10d1/delete-wallet", async (c) => {
     await kv.del(`wallet:${walletId}:settings`);
     await kv.del(`wallet:${walletId}:transactions`);
     
-    console.log('Wallet deleted successfully:', walletId);
+    // Wallet deleted successfully
     
     return c.json({ success: true, message: 'Wallet deleted successfully' });
   } catch (error: any) {
-    console.error('Delete wallet error:', error);
+    // Delete wallet error
     return c.json({ error: error.message || 'Failed to delete wallet' }, 500);
   }
 });
@@ -4844,7 +4873,8 @@ app.post("/make-server-e5bc10d1/create-account", async (c) => {
     const suiAddress = '0x' + Array.from(suiAddressBytes).map(b => b.toString(16).padStart(2, '0')).join('');
     
     // Generate new wallet ID for the account
-    const newWalletId = `wallet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const newWalletIdBytes = crypto.getRandomValues(new Uint8Array(16));
+    const newWalletId = `wallet_${Array.from(newWalletIdBytes, b => b.toString(16).padStart(2, '0')).join('')}`;
     
     // Create new wallet with same seed phrase but different account index
     const newWallet = {
@@ -4972,7 +5002,7 @@ app.post("/make-server-e5bc10d1/upload-profile-picture", async (c) => {
     wallet.profilePicture = signedUrlData.signedUrl;
     await kv.set(`wallet:${walletId}`, wallet);
 
-    console.log('Profile picture uploaded successfully for wallet:', walletId);
+    // Profile picture uploaded successfully
 
     return c.json({ 
       success: true, 
@@ -5256,8 +5286,9 @@ app.post("/make-server-e5bc10d1/chat/:tokenSymbol/send", async (c) => {
     });
     
     // Create new message
+    const msgIdBytes = crypto.getRandomValues(new Uint8Array(8));
     const newMessage = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `msg_${Date.now()}_${Array.from(msgIdBytes, b => b.toString(16).padStart(2, '0')).join('')}`,
       walletId,
       username: username || 'Anonymous',
       message: message.trim(),
@@ -5475,8 +5506,9 @@ app.post("/make-server-e5bc10d1/send-verification-code", async (c) => {
       return c.json({ error: "Email is required" }, 400);
     }
 
-    // Generate 6-digit code
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate cryptographically secure 6-digit code
+    const randomBytes = crypto.getRandomValues(new Uint32Array(1));
+    const code = (100000 + (randomBytes[0] % 900000)).toString();
 
     // Store code with 10 minute expiration
     const codeKey = `verification:${email.toLowerCase()}`;
@@ -5489,7 +5521,6 @@ app.post("/make-server-e5bc10d1/send-verification-code", async (c) => {
     // Send email via Resend
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     if (!resendApiKey) {
-      console.error('RESEND_API_KEY not configured');
       return c.json({ error: 'Email service not configured' }, 500);
     }
 
@@ -5538,27 +5569,19 @@ app.post("/make-server-e5bc10d1/send-verification-code", async (c) => {
       if (errorData.statusCode === 403 || 
           errorData.name === 'validation_error' || 
           (errorData.message && errorData.message.includes('testing emails'))) {
-        console.log('═══════════════════════════════════════════════════════════');
-        console.log('📧 DEMO MODE ACTIVATED - Resend Domain Not Verified');
-        console.log('───────────────────────────────────────────────────────────');
-        console.log('Reason: Resend requires domain verification for production');
-        console.log('Email:', email);
-        console.log('Verification Code:', code);
-        console.log('Expires:', new Date(Date.now() + 10 * 60 * 1000).toLocaleString());
-        console.log('═══════════════════════════════════════════════════════════');
-        
+        // Demo mode - code stored but not sent
+        // NEVER log verification codes or return them to client
         return c.json({
           success: true,
-          message: 'Verification code generated (Demo Mode - check server logs)',
-          demo: true,
-          code: code
+          message: 'Verification code sent',
+          demo: true
         });
       }
       
       return c.json({ error: 'Failed to send verification email' }, 500);
     }
 
-    console.log('✅ Verification code sent to:', email);
+    // Verification code sent successfully
     
     return c.json({
       success: true,
@@ -5809,8 +5832,9 @@ app.post("/make-server-e5bc10d1/send-verification-code", async (c) => {
       return c.json({ error: "Email is required" }, 400);
     }
 
-    // Generate 6-digit code
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate cryptographically secure 6-digit code
+    const randomBytes = crypto.getRandomValues(new Uint32Array(1));
+    const code = (100000 + (randomBytes[0] % 900000)).toString();
 
     // Store code with 10 minute expiration
     const codeKey = `verification:${email.toLowerCase()}`;
@@ -5823,7 +5847,6 @@ app.post("/make-server-e5bc10d1/send-verification-code", async (c) => {
     // Send email via Resend
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     if (!resendApiKey) {
-      console.error('RESEND_API_KEY not configured');
       return c.json({ error: 'Email service not configured' }, 500);
     }
 
@@ -5872,37 +5895,26 @@ app.post("/make-server-e5bc10d1/send-verification-code", async (c) => {
       if (errorData.statusCode === 403 || 
           errorData.name === 'validation_error' || 
           (errorData.message && errorData.message.includes('testing emails'))) {
-        console.log('═══════════════════════════════════════════════════════════');
-        console.log('📧 DEMO MODE ACTIVATED - Resend Domain Not Verified');
-        console.log('─────────────────────────────────────────────────────��─────');
-        console.log('Reason: Resend requires domain verification for production');
-        console.log('Email:', email);
-        console.log('Verification Code:', code);
-        console.log('Expires:', new Date(Date.now() + 10 * 60 * 1000).toLocaleString());
-        console.log('═══════════════════════════════════════════════════════════');
-        console.log('ℹ️  To send real emails, verify a domain at resend.com/domains');
-        console.log('═══════════════════════════════════════════════════════════');
-        
-        return c.json({ 
+        // Demo mode - code stored but not sent
+        // NEVER log verification codes or return them to client
+        return c.json({
           success: true,
-          message: 'Verification code generated (Demo Mode)',
+          message: 'Verification code sent',
           demoMode: true,
-          code, // Return code for frontend to display
-          demoReason: 'Email service requires domain verification. Code displayed for testing.',
         });
       }
       
       return c.json({ error: 'Failed to send verification email' }, 500);
     }
 
-    console.log('Verification code sent to:', email);
+    // Verification code sent
 
     return c.json({
       success: true,
       message: 'Verification code sent',
     });
   } catch (error: any) {
-    console.error('Send verification code error:', error);
+    // Send verification code error
     return c.json({ error: error.message || 'Failed to send verification code' }, 500);
   }
 });
@@ -5994,9 +6006,11 @@ app.post("/make-server-e5bc10d1/verify-email-signup", async (c) => {
       'blood', 'blossom', 'blouse', 'blue', 'blur', 'blush', 'board', 'boat', 'body', 'boil',
     ];
     
+    // Use crypto.getRandomValues for secure randomness
+    const randomIndices = crypto.getRandomValues(new Uint32Array(12));
     const seedPhrase: string[] = [];
     for (let i = 0; i < 12; i++) {
-      const randomIndex = Math.floor(Math.random() * wordList.length);
+      const randomIndex = randomIndices[i] % wordList.length;
       seedPhrase.push(wordList[randomIndex]);
     }
     const seedPhraseString = seedPhrase.join(' ');
@@ -6017,14 +6031,14 @@ app.post("/make-server-e5bc10d1/verify-email-signup", async (c) => {
     await retryWithBackoff(() => kv.set(`wallet:${walletId}`, walletData));
     await retryWithBackoff(() => kv.set(`email:${email.toLowerCase()}`, { walletId }));
 
-    console.log('User created successfully with email:', email);
+    // User created successfully
 
     return c.json({
       success: true,
       walletId,
     });
   } catch (error: any) {
-    console.error('Email signup verification error:', error);
+    // Email signup verification error
     return c.json({ error: error.message || 'Failed to create account' }, 500);
   }
 });
@@ -6084,14 +6098,14 @@ app.post("/make-server-e5bc10d1/verify-email-signin", async (c) => {
       return c.json({ error: "Invalid email or password" }, 401);
     }
 
-    console.log('User signed in successfully with email:', email);
+    // User signed in successfully
 
     return c.json({
       success: true,
       walletId,
     });
   } catch (error: any) {
-    console.error('Email signin verification error:', error);
+    // Email signin verification error
     return c.json({ error: error.message || 'Failed to sign in' }, 500);
   }
 });
@@ -6162,9 +6176,11 @@ app.post("/make-server-e5bc10d1/email-signup", async (c) => {
       'blood', 'blossom', 'blouse', 'blue', 'blur', 'blush', 'board', 'boat', 'body', 'boil',
     ];
     
+    // Use crypto.getRandomValues for secure randomness
+    const randomIndices = crypto.getRandomValues(new Uint32Array(12));
     const seedPhrase: string[] = [];
     for (let i = 0; i < 12; i++) {
-      const randomIndex = Math.floor(Math.random() * wordList.length);
+      const randomIndex = randomIndices[i] % wordList.length;
       seedPhrase.push(wordList[randomIndex]);
     }
     const seedPhraseString = seedPhrase.join(' ');
@@ -6185,14 +6201,14 @@ app.post("/make-server-e5bc10d1/email-signup", async (c) => {
     await retryWithBackoff(() => kv.set(`wallet:${walletId}`, walletData));
     await retryWithBackoff(() => kv.set(`email:${email.toLowerCase()}`, { walletId }));
 
-    console.log('User created successfully with email:', email);
+    // User created successfully
 
     return c.json({
       success: true,
       walletId,
     });
   } catch (error: any) {
-    console.error('Email signup error:', error);
+    // Email signup error
     return c.json({ error: error.message || 'Failed to create account' }, 500);
   }
 });
@@ -6231,14 +6247,14 @@ app.post("/make-server-e5bc10d1/email-signin", async (c) => {
       return c.json({ error: "Invalid email or password" }, 401);
     }
 
-    console.log('User signed in successfully with email:', email);
+    // User signed in successfully
 
     return c.json({
       success: true,
       walletId,
     });
   } catch (error: any) {
-    console.error('Email signin error:', error);
+    // Email signin error
     return c.json({ error: error.message || 'Failed to sign in' }, 500);
   }
 });
@@ -6306,14 +6322,14 @@ app.post("/make-server-e5bc10d1/email-signup", async (c) => {
     await retryWithBackoff(() => kv.set(`wallet:${walletId}`, walletData));
     await retryWithBackoff(() => kv.set(`email:${email.toLowerCase()}`, { walletId }));
 
-    console.log('✅ User created successfully with email:', email);
+    // User created successfully
 
     return c.json({
       success: true,
       walletId,
     });
   } catch (error: any) {
-    console.error('Email signup error:', error);
+    // Email signup error
     return c.json({ error: error.message || 'Failed to create account' }, 500);
   }
 });
@@ -6350,14 +6366,14 @@ app.post("/make-server-e5bc10d1/email-signin", async (c) => {
       return c.json({ error: "Invalid email or password" }, 401);
     }
 
-    console.log('✅ User signed in successfully:', email);
+    // User signed in successfully
 
     return c.json({
       success: true,
       walletId: emailData.walletId,
     });
   } catch (error: any) {
-    console.error('Email signin error:', error);
+    // Email signin error
     return c.json({ error: error.message || 'Failed to sign in' }, 500);
   }
 });
@@ -6493,14 +6509,13 @@ app.post("/make-server-e5bc10d1/save-transaction", async (c) => {
       return c.json({ error: 'Wallet ID, type, and token symbol are required' }, 400);
     }
     
-    console.log('[Save Transaction] Saving transaction for wallet:', walletId, 'type:', type, 'token:', tokenSymbol);
-    
     // Get current activities
     const activities = await retryWithBackoff(() => kv.get(`wallet:${walletId}:activities`)) || [];
-    
+
     // Create new transaction
+    const txIdBytes = crypto.getRandomValues(new Uint8Array(8));
     const transaction = {
-      id: `tx_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      id: `tx_${Date.now()}_${Array.from(txIdBytes, b => b.toString(16).padStart(2, '0')).join('')}`,
       type,
       tokenSymbol,
       amount,

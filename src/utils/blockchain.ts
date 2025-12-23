@@ -1,5 +1,22 @@
+/**
+ * Blockchain Module - Client-Side RPC (Phantom-like architecture)
+ *
+ * This module now uses DIRECT RPC calls instead of server proxies.
+ * All blockchain data is fetched client-side, just like Phantom wallet.
+ *
+ * Changes from previous version:
+ * - Removed Supabase proxy for Solana balance
+ * - Direct calls to Helius RPC / Solana public RPC
+ * - Token detection via Helius DAS API
+ * - Prices via Jupiter Price API
+ */
+
+import { fetchSolanaBalanceClient } from './blockchainClient';
+
+// Keep Supabase imports for non-Solana functions (will be migrated later)
 import { projectId, publicAnonKey } from './supabase/info';
 
+// Re-export for backward compatibility
 export type NetworkMode = 'mainnet' | 'testnet' | 'devnet';
 
 export interface ChainBalance {
@@ -9,94 +26,39 @@ export interface ChainBalance {
 }
 
 /**
- * Fetch Solana balance with retry logic
+ * Fetch Solana balance - DIRECT RPC (Phantom-like)
+ * No longer uses Supabase proxy - all client-side
  */
 export async function fetchSolanaBalance(address: string, networkMode: NetworkMode = 'mainnet'): Promise<ChainBalance> {
-  const maxRetries = 1; // Reduce to 1 attempt for faster response
-  let lastError: Error | null = null;
-  
-  const networkLabel = networkMode === 'mainnet' ? 'mainnet-beta' : networkMode;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`[Blockchain] Fetching Solana balance for ${address.substring(0, 8)}... (attempt ${attempt}/${maxRetries}) on ${networkLabel}`);
-      
-      // Reduce timeout for faster failure
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout (reduced from 30s)
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/solana-balance`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`
-          },
-          body: JSON.stringify({ address, networkMode }),
-          signal: controller.signal
-        }
-      );
-      
-      clearTimeout(timeoutId);
+  console.log(`[Blockchain] Fetching Solana balance via direct RPC (Phantom-like)...`);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[Blockchain] ❌ Error fetching Solana balance (attempt ${attempt}):`, errorText);
-        
-        // If server is unavailable, fail fast
-        if (response.status >= 500) {
-          console.warn('[Blockchain] ⚠️ Server error, failing fast');
-          break;
-        }
-        
-        throw new Error(`Failed to fetch Solana balance: ${response.status}`);
-      }
+  try {
+    const result = await fetchSolanaBalanceClient(address, networkMode);
 
-      const data = await response.json();
-      
-      console.log(`[Blockchain] ✅ SOL balance on ${networkLabel}:`, data.native.toFixed(6), 'SOL');
-      console.log(`[Blockchain] ✅ Found ${data.tokens.length} SPL tokens`);
+    console.log(`[Blockchain] ✅ SOL balance: ${result.native.toFixed(6)} SOL`);
+    console.log(`[Blockchain] ✅ Found ${result.tokens.length} SPL tokens`);
 
-      return {
-        native: data.native,
-        tokens: data.tokens,
-        totalUsdValue: data.totalUsdValue || 0
-      };
-    } catch (error: any) {
-      lastError = error;
-      
-      // Handle abort/timeout errors
-      if (error.name === 'AbortError') {
-        console.error(`[Blockchain] ❌ Request timed out after 15s (RPC is slow or rate limited)`);
-      } else {
-        console.error(`[Blockchain] ❌ Attempt ${attempt} failed:`, error.message);
-      }
-      
-      // No retry - fail fast for better UX
-      break;
+    return {
+      native: result.native,
+      tokens: result.tokens,
+      totalUsdValue: result.totalUsdValue,
+    };
+  } catch (error: any) {
+    console.error('[Blockchain] ❌ Error fetching Solana balance:', error.message);
+
+    // Dispatch event so UI can show a helpful message
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('blockchainTimeout', {
+        detail: { chain: 'solana', error: error?.message }
+      }));
     }
+
+    return {
+      native: 0,
+      tokens: [],
+      totalUsdValue: 0
+    };
   }
-  
-  // All retries failed - return gracefully with zero balance
-  console.warn('[Blockchain] ⚠️ Could not fetch Solana balance from server, using zero balance');
-  console.warn('[Blockchain] 💡 Tip: This usually means RPC is slow or rate limited. Wallet will retry automatically.');
-  if (lastError?.message) {
-    console.warn('[Blockchain] ⚠️ Last error:', lastError.message);
-  }
-  
-  // Dispatch event so UI can show a helpful message
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('blockchainTimeout', {
-      detail: { chain: 'solana', error: lastError?.message }
-    }));
-  }
-  
-  return {
-    native: 0,
-    tokens: [],
-    totalUsdValue: 0
-  };
 }
 
 /**
@@ -376,49 +338,104 @@ export async function fetchAllBalances(addresses: {
 }
 
 /**
- * Fetch token prices from server
+ * Fetch token prices - CLIENT-SIDE via CoinGecko API (primary) with Jupiter fallback
+ * Uses CoinGecko for accurate price + 24h change data
  */
 export async function fetchTokenPrices(symbols: string[]): Promise<Record<string, number>> {
+  // Import CoinGecko utilities
+  const { SYMBOL_TO_COINGECKO, fetchCoinGeckoPrices } = await import('./coingecko');
+
+  // Known mint addresses for common symbols (for Jupiter fallback)
+  const SYMBOL_TO_MINT: Record<string, string> = {
+    'SOL': 'So11111111111111111111111111111111111111112',
+    'USDC': 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    'USDT': 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+    'BONK': 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+    'JUP': 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
+    'WIF': 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm',
+    'RAY': '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R',
+    'ORCA': 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE',
+  };
+
+  const prices: Record<string, number> = {};
+
   try {
-    console.log('[Blockchain] Fetching token prices for:', symbols.join(', '));
-    
-    // Add timeout to prevent hanging
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 second timeout (allows backend to respond)
-    
-    const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/token-prices`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`
-        },
-        body: JSON.stringify({ symbols }),
-        signal: controller.signal
+    console.log('[Blockchain] Fetching token prices via CoinGecko API...');
+
+    // Convert symbols to CoinGecko IDs
+    const coinGeckoIds: string[] = [];
+    const symbolToId: Record<string, string> = {};
+
+    for (const symbol of symbols) {
+      const cgId = SYMBOL_TO_COINGECKO[symbol.toUpperCase()];
+      if (cgId) {
+        coinGeckoIds.push(cgId);
+        symbolToId[symbol.toUpperCase()] = cgId;
       }
-    );
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      console.error('[Blockchain] ❌ Error fetching token prices:', response.status);
-      throw new Error(`Failed to fetch token prices: ${response.status}`);
     }
-    
-    const data = await response.json();
-    console.log('[Blockchain] ✅ Token prices fetched:', data.prices);
-    
-    return data.prices || {};
+
+    if (coinGeckoIds.length > 0) {
+      // Fetch prices from CoinGecko (batch request)
+      const cgPrices = await fetchCoinGeckoPrices(coinGeckoIds);
+
+      // Map CoinGecko prices back to symbols
+      for (const [symbol, cgId] of Object.entries(symbolToId)) {
+        const priceData = cgPrices[cgId];
+        if (priceData?.price) {
+          prices[symbol] = priceData.price;
+        }
+      }
+
+      console.log('[Blockchain] ✅ CoinGecko prices fetched:', Object.keys(prices).length, 'tokens');
+    }
+
+    // FALLBACK: Jupiter API for tokens not on CoinGecko
+    const missingSymbols = symbols.filter(s => !prices[s.toUpperCase()]);
+    if (missingSymbols.length > 0) {
+      console.log('[Blockchain] Fetching remaining prices via Jupiter API...');
+
+      const mints = missingSymbols
+        .map(s => SYMBOL_TO_MINT[s.toUpperCase()])
+        .filter(Boolean);
+
+      if (mints.length > 0) {
+        try {
+          const response = await fetch(
+            `https://api.jup.ag/price/v2?ids=${mints.join(',')}`,
+            { signal: AbortSignal.timeout(5000) }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+
+            // Map mint addresses back to symbols
+            for (const [symbol, mint] of Object.entries(SYMBOL_TO_MINT)) {
+              if (!prices[symbol]) {
+                const priceData = data.data?.[mint];
+                if (priceData?.price) {
+                  prices[symbol] = parseFloat(priceData.price);
+                }
+              }
+            }
+
+            console.log('[Blockchain] ✅ Jupiter prices added:', Object.keys(prices).length, 'total');
+          }
+        } catch (jupError) {
+          console.warn('[Blockchain] Jupiter API failed:', jupError);
+        }
+      }
+    }
+
+    // Return prices if we got any
+    if (Object.keys(prices).length > 0) {
+      return prices;
+    }
+
+    throw new Error('No prices fetched');
   } catch (error: any) {
-    if (error.name === 'AbortError') {
-      console.warn('[Blockchain] ⚠️ Token prices request timed out after 12s, using fallback prices');
-    } else {
-      console.warn('[Blockchain] ⚠️ Error fetching token prices:', error.message);
-    }
-    
-    // 🔥 FALLBACK: Use hardcoded prices when API is unavailable
-    console.log('[Blockchain] 💾 Using cached fallback prices');
+    console.warn('[Blockchain] ⚠️ Price APIs failed, using fallback prices:', error.message);
+
+    // Fallback prices (always available)
     const fallbackPrices: Record<string, number> = {
       'SOL': 245.00,
       'ETH': 3200.00,
@@ -441,13 +458,13 @@ export async function fetchTokenPrices(symbols: string[]): Promise<Record<string
       'PARAI': 0.059,
       'PAI': 0.059,
     };
-    
+
     // Return only requested symbols
     const result: Record<string, number> = {};
     symbols.forEach(symbol => {
       result[symbol] = fallbackPrices[symbol] || 0;
     });
-    
+
     return result;
   }
 }

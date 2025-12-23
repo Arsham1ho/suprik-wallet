@@ -204,7 +204,7 @@ export function AboutSuprik({ onBack }: AboutSuprikProps) {
           <div className="bg-slate-900/50 border border-slate-800/30 rounded-xl p-4">
             <h4 className="text-white font-medium mb-2 text-sm">License</h4>
             <p className="text-slate-400 text-xs">
-              Suprik Wallet is open source software. Licensed under MIT License.
+              Suprik Wallet is open source software. Licensed under PAI² License.
             </p>
           </div>
 

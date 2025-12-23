@@ -36,7 +36,6 @@ export function BiometricConfirmDialog({
   const handleAuthenticate = async () => {
     // Validate walletId before attempting authentication
     if (!walletId || walletId.trim() === '') {
-      console.error('[BiometricConfirm] Invalid walletId:', walletId);
       setError('Wallet not found. Please log in again.');
       return;
     }

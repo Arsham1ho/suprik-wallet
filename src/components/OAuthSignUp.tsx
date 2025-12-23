@@ -49,7 +49,7 @@ export function OAuthSignUp({ provider, onSuccess, onBack }: OAuthSignUpProps) {
       
       // Listen for OAuth callback
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log('[OAuth] Auth state changed:', event, session?.user?.email);
+        // Auth state changed - processing
         
         if (event === 'SIGNED_IN' && session) {
           setStatus('Creating your wallet...');
@@ -110,10 +110,7 @@ export function OAuthSignUp({ provider, onSuccess, onBack }: OAuthSignUpProps) {
               throw new Error('Failed to unlock wallet after creation');
             }
             
-            console.log('[OAuth] ✅ Wallet created and unlocked');
-            console.log('[OAuth] Wallet ID:', walletId);
-            console.log('[OAuth] Username:', defaultUsername);
-            console.log('[OAuth] Provider:', provider);
+            // Wallet created and unlocked successfully
             
             toast.success(`Welcome! Signed in with ${provider === 'google' ? 'Google' : 'Apple'}`);
             

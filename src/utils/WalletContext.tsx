@@ -1,12 +1,134 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
 import { SecureStorage, WalletStorage, deriveAddresses } from './wallet';
-import type { DerivedAccount } from './wallet';
-import { useNetwork } from './NetworkContext';
+
+// Rate limiting for unlock attempts - prevents brute force attacks
+const UNLOCK_RATE_LIMIT_KEY = 'saturn_unlock_attempts';
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes lockout
+
+interface UnlockAttempts {
+  count: number;
+  firstAttempt: number;
+  lockedUntil: number;
+}
+
+function getUnlockAttempts(): UnlockAttempts {
+  try {
+    const stored = localStorage.getItem(UNLOCK_RATE_LIMIT_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return { count: 0, firstAttempt: 0, lockedUntil: 0 };
+}
+
+function recordFailedAttempt(): { isLocked: boolean; remainingSeconds: number } {
+  const attempts = getUnlockAttempts();
+  const now = Date.now();
+
+  // Check if currently locked
+  if (attempts.lockedUntil > now) {
+    return { isLocked: true, remainingSeconds: Math.ceil((attempts.lockedUntil - now) / 1000) };
+  }
+
+  // Reset if first attempt was more than lockout duration ago
+  if (now - attempts.firstAttempt > LOCKOUT_DURATION_MS) {
+    attempts.count = 0;
+    attempts.firstAttempt = now;
+  }
+
+  attempts.count++;
+
+  // Lock if max attempts reached
+  if (attempts.count >= MAX_ATTEMPTS) {
+    attempts.lockedUntil = now + LOCKOUT_DURATION_MS;
+    localStorage.setItem(UNLOCK_RATE_LIMIT_KEY, JSON.stringify(attempts));
+    return { isLocked: true, remainingSeconds: Math.ceil(LOCKOUT_DURATION_MS / 1000) };
+  }
+
+  if (attempts.firstAttempt === 0) {
+    attempts.firstAttempt = now;
+  }
+
+  localStorage.setItem(UNLOCK_RATE_LIMIT_KEY, JSON.stringify(attempts));
+  return { isLocked: false, remainingSeconds: 0 };
+}
+
+function clearFailedAttempts(): void {
+  localStorage.removeItem(UNLOCK_RATE_LIMIT_KEY);
+}
+
+function isCurrentlyLocked(): { isLocked: boolean; remainingSeconds: number } {
+  const attempts = getUnlockAttempts();
+  const now = Date.now();
+
+  if (attempts.lockedUntil > now) {
+    return { isLocked: true, remainingSeconds: Math.ceil((attempts.lockedUntil - now) / 1000) };
+  }
+  return { isLocked: false, remainingSeconds: 0 };
+}
+
+// Secure session storage - NOT exposed in React state/DevTools
+// Uses closure to protect sensitive data
+const createSecureSession = () => {
+  let _mnemonic: string | null = null;
+  let _password: string | null = null;
+  let _sessionExpiry: number = 0;
+  const SESSION_DURATION = 30 * 60 * 1000; // 30 minutes
+
+  return {
+    setCredentials: (mnemonic: string, password: string) => {
+      _mnemonic = mnemonic;
+      _password = password;
+      _sessionExpiry = Date.now() + SESSION_DURATION;
+    },
+    getMnemonic: (): string | null => {
+      if (Date.now() > _sessionExpiry) {
+        _mnemonic = null;
+        _password = null;
+        return null;
+      }
+      return _mnemonic;
+    },
+    getPassword: (): string | null => {
+      if (Date.now() > _sessionExpiry) {
+        _mnemonic = null;
+        _password = null;
+        return null;
+      }
+      return _password;
+    },
+    clear: () => {
+      // Overwrite before clearing (best effort for strings)
+      _mnemonic = '';
+      _password = '';
+      _mnemonic = null;
+      _password = null;
+      _sessionExpiry = 0;
+    },
+    isValid: (): boolean => {
+      return _mnemonic !== null && Date.now() < _sessionExpiry;
+    },
+    extendSession: () => {
+      if (_mnemonic) {
+        _sessionExpiry = Date.now() + SESSION_DURATION;
+      }
+    }
+  };
+};
+
+// Single instance for the app
+const secureSession = createSecureSession();
+
+// Export for use in unlock UI
+export { isCurrentlyLocked };
 
 interface WalletContextType {
-  mnemonic: string | null;
+  // SECURITY: mnemonic and password are NOT exposed in context
+  // Use getMnemonic() and getPassword() which access secure session
   walletId: string | null;
-  password: string | null; // Stored temporarily for decrypting imported account mnemonics
   addresses: {
     solana: string;
     ethereum: string;
@@ -20,22 +142,31 @@ interface WalletContextType {
   unlock: (password: string) => Promise<boolean>;
   lock: () => void;
   switchAccount: (accountIndex: number) => Promise<void>;
+  // Secure accessors - these get values from protected closure, not React state
+  getMnemonic: () => string | null;
+  getPassword: () => string | null;
+  // Convenience getter for mnemonic (calls getMnemonic internally)
+  mnemonic: string | null;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
-export function WalletProvider({ 
-  children, 
-  walletId 
-}: { 
+export function WalletProvider({
+  children,
+  walletId
+}: {
   children: ReactNode;
   walletId?: string;
 }) {
-  const [mnemonic, setMnemonic] = useState<string | null>(null);
-  const [password, setPassword] = useState<string | null>(null);
+  // SECURITY: mnemonic and password are NO LONGER stored in React state
+  // They are stored in secureSession closure which is not accessible via React DevTools
   const [addresses, setAddresses] = useState<WalletContextType['addresses']>(null);
   const [currentAccount, setCurrentAccount] = useState(0);
   const [isUnlocked, setIsUnlocked] = useState(false);
+
+  // Secure accessor functions - these call into the protected closure
+  const getMnemonic = (): string | null => secureSession.getMnemonic();
+  const getPassword = (): string | null => secureSession.getPassword();
 
   useEffect(() => {
     // Load current account from storage
@@ -47,10 +178,10 @@ export function WalletProvider({
   useEffect(() => {
     const handleAccountSwitch = async (event: CustomEvent) => {
       const { accountId } = event.detail;
-      console.log('[WalletContext] 🔄 Account switch event received:', accountId);
 
       // Re-derive addresses for the new account if wallet is unlocked
-      if (mnemonic && isUnlocked) {
+      const currentMnemonic = secureSession.getMnemonic();
+      if (currentMnemonic && isUnlocked) {
         try {
           // Get the account from AccountManager to get its index
           const { AccountManager } = await import('./accountManager');
@@ -58,10 +189,9 @@ export function WalletProvider({
 
           if (account) {
             const accountIndex = account.accountIndex;
-            console.log('[WalletContext] 📍 Switching to account index:', accountIndex);
 
             // Derive addresses for this account
-            const derivedAddresses = await deriveAddresses(mnemonic, accountIndex);
+            const derivedAddresses = await deriveAddresses(currentMnemonic, accountIndex);
             setAddresses(derivedAddresses);
             setCurrentAccount(accountIndex);
             WalletStorage.setCurrentAccount(accountIndex);
@@ -71,7 +201,6 @@ export function WalletProvider({
 
             if (isImported) {
               // For imported accounts, use THEIR stored addresses
-              console.log('[WalletContext] 📌 Switched to imported account, using stored addresses');
               setAddresses({
                 solana: account.addresses.solana,
                 ethereum: account.addresses.ethereum,
@@ -83,7 +212,6 @@ export function WalletProvider({
             } else {
               // Sync AccountManager if address doesn't match (non-imported accounts)
               if (account.addresses.solana !== derivedAddresses.solana) {
-                console.log('[WalletContext] ⚠️ Updating stale address for account:', accountId);
                 AccountManager.updateAccount(accountId, {
                   addresses: {
                     solana: derivedAddresses.solana,
@@ -92,14 +220,9 @@ export function WalletProvider({
                 });
               }
             }
-
-            console.log('[WalletContext] ✅ Addresses updated for new account:', {
-              solana: isImported ? account.addresses.solana : derivedAddresses.solana,
-              ethereum: isImported ? account.addresses.ethereum : derivedAddresses.ethereum,
-            });
           }
-        } catch (error) {
-          console.error('[WalletContext] Error switching account:', error);
+        } catch {
+          // Error switching account
         }
       }
     };
@@ -109,37 +232,41 @@ export function WalletProvider({
     return () => {
       window.removeEventListener('accountSwitched', handleAccountSwitch as EventListener);
     };
-  }, [mnemonic, isUnlocked]);
+  }, [isUnlocked]);
 
   const unlock = async (password: string): Promise<boolean> => {
+    // Check rate limiting first
+    const lockStatus = isCurrentlyLocked();
+    if (lockStatus.isLocked) {
+      return false;
+    }
+
     try {
       const decryptedData = await SecureStorage.retrieveMnemonic(password);
 
       if (!decryptedData) {
-        console.error('[WalletContext] Failed to decrypt wallet data');
+        // Record failed attempt for rate limiting
+        recordFailedAttempt();
         return false;
       }
 
+      // Successful unlock - clear failed attempts
+      clearFailedAttempts();
+
       // Check if this is a private key import
       if (decryptedData.startsWith('PRIVKEY:')) {
-        console.log('[WalletContext] ✅ Private key import detected');
-        const privateKeyBase58 = decryptedData.substring(8);
-
         // For private key imports, we stored the public key separately
         const importedPubkey = localStorage.getItem('saturn_imported_pubkey');
 
         if (!importedPubkey) {
-          console.error('[WalletContext] Missing imported public key');
           return false;
         }
 
-        // Store the private key data (not a mnemonic, but we reuse the field)
-        setMnemonic(decryptedData);
-        setPassword(password); // Store password for decrypting imported account mnemonics
+        // Store credentials in secure session (NOT in React state)
+        secureSession.setCredentials(decryptedData, password);
         setIsUnlocked(true);
 
         // For private key imports, we only have Solana address
-        // Other chains will show placeholder addresses
         setAddresses({
           solana: importedPubkey,
           ethereum: '0x0000000000000000000000000000000000000000',
@@ -149,42 +276,27 @@ export function WalletProvider({
           sui: 'Private key import - Solana only',
         });
 
-        console.log('[WalletContext] 🔑 Private key wallet unlocked:', {
-          solana: importedPubkey,
-        });
-
         return true;
       }
 
-      console.log('[WalletContext] ✅ Mnemonic decrypted successfully');
-      setMnemonic(decryptedData);
-      setPassword(password); // Store password for decrypting imported account mnemonics
+      // Store credentials in secure session (NOT in React state)
+      secureSession.setCredentials(decryptedData, password);
       setIsUnlocked(true);
 
       // Derive addresses
       const derivedAddresses = await deriveAddresses(decryptedData, currentAccount);
       setAddresses(derivedAddresses);
 
-      console.log('[WalletContext] 🔑 Addresses derived:', {
-        solana: derivedAddresses.solana,
-        ethereum: derivedAddresses.ethereum,
-      });
-
-      // CRITICAL: Sync AccountManager with freshly derived addresses
-      // This ensures the Receive page shows the same address as transactions use
-      // BUT: Don't override addresses for accounts imported from different seed phrases!
+      // Sync AccountManager with freshly derived addresses
       try {
         const { AccountManager } = await import('./accountManager');
         const activeAccount = AccountManager.getActiveAccount();
 
         if (activeAccount) {
-          // Check if this is an imported account from a different seed phrase
           const isImported = (activeAccount as any).isImportedSeedPhrase || (activeAccount as any).isPrivateKeyImport;
 
           if (isImported) {
-            // For imported accounts, use THEIR stored addresses, not derived ones
-            console.log('[WalletContext] 📌 Using imported account addresses (not deriving)');
-            console.log('[WalletContext] Imported address:', activeAccount.addresses.solana);
+            // For imported accounts, use THEIR stored addresses
             setAddresses({
               solana: activeAccount.addresses.solana,
               ethereum: activeAccount.addresses.ethereum,
@@ -194,22 +306,16 @@ export function WalletProvider({
               sui: 'Imported account',
             });
           } else if (activeAccount.addresses.solana !== derivedAddresses.solana) {
-            // For non-imported accounts, sync if addresses don't match
-            console.log('[WalletContext] ⚠️ AccountManager has stale address, updating...');
-            console.log('[WalletContext] Old:', activeAccount.addresses.solana);
-            console.log('[WalletContext] New:', derivedAddresses.solana);
-
             AccountManager.updateAccount(activeAccount.id, {
               addresses: {
                 solana: derivedAddresses.solana,
                 ethereum: derivedAddresses.ethereum,
               }
             });
-            console.log('[WalletContext] ✅ AccountManager addresses synced');
           }
         }
       } catch (error) {
-        console.warn('[WalletContext] Could not sync AccountManager:', error);
+        // Non-critical, wallet still works
       }
 
       // Store addresses in server KV store for blockchain check endpoint
@@ -218,7 +324,7 @@ export function WalletProvider({
           const { projectId, publicAnonKey } = await import('../utils/supabase/info');
 
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
 
           await fetch(
             `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/store-addresses`,
@@ -237,35 +343,27 @@ export function WalletProvider({
           );
 
           clearTimeout(timeoutId);
-          console.log('[WalletContext] 📡 Addresses synced to server');
         } catch (error: any) {
-          if (error.name === 'AbortError') {
-            console.warn('[WalletContext] ⚠️ Address sync timeout');
-          } else {
-            console.warn('[WalletContext] ⚠️ Failed to sync addresses:', error.message);
-          }
           // Non-critical error, wallet still works locally
         }
       }
 
       return true;
     } catch (error) {
-      console.error('[WalletContext] Error unlocking wallet:', error);
       return false;
     }
   };
 
   const lock = () => {
-    setMnemonic(null);
-    setPassword(null); // Clear password on lock
+    // Securely clear credentials from the protected session
+    secureSession.clear();
     setIsUnlocked(false);
     setAddresses(null);
-    console.log('[WalletContext] 🔒 Wallet locked');
   };
 
   const switchAccount = async (accountIndex: number) => {
-    if (!mnemonic) {
-      console.error('[WalletContext] Cannot switch account - wallet is locked');
+    const currentMnemonic = secureSession.getMnemonic();
+    if (!currentMnemonic) {
       return;
     }
 
@@ -273,7 +371,7 @@ export function WalletProvider({
     WalletStorage.setCurrentAccount(accountIndex);
 
     // Re-derive addresses for new account
-    const derivedAddresses = await deriveAddresses(mnemonic, accountIndex);
+    const derivedAddresses = await deriveAddresses(currentMnemonic, accountIndex);
     setAddresses(derivedAddresses);
 
     // Handle imported accounts differently
@@ -286,7 +384,6 @@ export function WalletProvider({
 
         if (isImported) {
           // For imported accounts, use THEIR stored addresses
-          console.log('[WalletContext] 📌 Switched to imported account, using stored addresses');
           setAddresses({
             solana: account.addresses.solana,
             ethereum: account.addresses.ethereum,
@@ -296,8 +393,6 @@ export function WalletProvider({
             sui: 'Imported account',
           });
         } else if (account.addresses.solana !== derivedAddresses.solana) {
-          // For non-imported accounts, sync if needed
-          console.log('[WalletContext] ⚠️ Updating stale address for account', accountIndex);
           AccountManager.updateAccount(account.id, {
             addresses: {
               solana: derivedAddresses.solana,
@@ -307,26 +402,31 @@ export function WalletProvider({
         }
       }
     } catch (error) {
-      console.warn('[WalletContext] Could not sync AccountManager:', error);
+      // Non-critical
     }
-
-    console.log('[WalletContext] 🔄 Switched to account', accountIndex);
   };
 
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    walletId: walletId || null,
+    addresses,
+    currentAccount,
+    isUnlocked,
+    unlock,
+    lock,
+    switchAccount,
+    // Secure accessors - call into protected closure
+    getMnemonic,
+    getPassword,
+    // Convenience getter for mnemonic (for backwards compatibility)
+    // Note: This is computed fresh each time but the value only changes when isUnlocked changes
+    get mnemonic() {
+      return getMnemonic();
+    },
+  }), [walletId, addresses, currentAccount, isUnlocked]);
+
   return (
-    <WalletContext.Provider
-      value={{
-        mnemonic,
-        walletId,
-        password,
-        addresses,
-        currentAccount,
-        isUnlocked,
-        unlock,
-        lock,
-        switchAccount,
-      }}
-    >
+    <WalletContext.Provider value={contextValue}>
       {children}
     </WalletContext.Provider>
   );

@@ -3,9 +3,9 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { ArrowLeft, Globe, DollarSign, Languages } from 'lucide-react';
 import { motion } from 'motion/react';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { toast } from 'sonner';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
+import { getUserSettings } from '../../utils/userSettings';
 
 interface PreferencesSettingsProps {
   onBack: () => void;
@@ -50,7 +50,7 @@ const currencies = [
 ];
 
 export function PreferencesSettings({ onBack, walletId }: PreferencesSettingsProps) {
-  const { t, language, currency, setLanguage, setCurrency } = useLanguage();
+  const { t, setLanguage, setCurrency } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [userSettings, setUserSettings] = useState<UserSettings>({
     language: 'en',
@@ -62,57 +62,40 @@ export function PreferencesSettings({ onBack, walletId }: PreferencesSettingsPro
     loadUserSettings();
   }, [walletId]);
 
-  const loadUserSettings = async () => {
+  // Load settings from localStorage (client-side, instant)
+  const loadUserSettings = () => {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/user-settings/${walletId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        setUserSettings(data);
-      }
+      console.log('[PreferencesSettings] Loading from localStorage (client-side)...');
+      const settings = getUserSettings(walletId);
+      setUserSettings({
+        language: settings.language || 'en',
+        currency: settings.currency || 'USD',
+        usePassword: false,
+      });
+      console.log('[PreferencesSettings] ✅ Settings loaded');
     } catch (error) {
       console.error('Error loading settings:', error);
-      toast.error('Failed to load preferences');
     } finally {
       setLoading(false);
     }
   };
 
-  const updateSettings = async (newSettings: Partial<UserSettings>) => {
+  // Update settings via context (which saves to localStorage)
+  const updateSettings = (newSettings: Partial<UserSettings>) => {
     try {
       const updatedSettings = { ...userSettings, ...newSettings };
-      
-      // Update context immediately
+
+      // Update context (which saves to localStorage automatically)
       if (newSettings.language) {
         setLanguage(newSettings.language);
       }
       if (newSettings.currency) {
         setCurrency(newSettings.currency);
       }
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/update-settings`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ walletId, settings: updatedSettings }),
-        }
-      );
 
-      if (!response.ok) throw new Error('Failed to update settings');
-      
       setUserSettings(updatedSettings);
       toast.success(t.messages.success.settingsUpdated);
+      console.log('[PreferencesSettings] ✅ Settings saved (client-side)');
     } catch (error) {
       console.error('Error updating settings:', error);
       toast.error(t.messages.error.saveFailed);
@@ -182,9 +165,9 @@ export function PreferencesSettings({ onBack, walletId }: PreferencesSettingsPro
           <p className="text-slate-400 text-sm mb-3">
             {t.settings.chooseLanguage}
           </p>
-          
-          <Select 
-            value={userSettings.language} 
+
+          <Select
+            value={userSettings.language}
             onValueChange={(value) => updateSettings({ language: value })}
           >
             <SelectTrigger className="bg-slate-900 border-slate-700 text-white h-12">
@@ -197,8 +180,8 @@ export function PreferencesSettings({ onBack, walletId }: PreferencesSettingsPro
             </SelectTrigger>
             <SelectContent className="bg-slate-900 border-slate-700">
               {languages.map((lang) => (
-                <SelectItem 
-                  key={lang.code} 
+                <SelectItem
+                  key={lang.code}
                   value={lang.code}
                   className="text-white hover:bg-slate-800"
                 >
@@ -226,9 +209,9 @@ export function PreferencesSettings({ onBack, walletId }: PreferencesSettingsPro
           <p className="text-slate-400 text-sm mb-3">
             {t.settings.chooseCurrency}
           </p>
-          
-          <Select 
-            value={userSettings.currency} 
+
+          <Select
+            value={userSettings.currency}
             onValueChange={(value) => updateSettings({ currency: value })}
           >
             <SelectTrigger className="bg-slate-900 border-slate-700 text-white h-12">
@@ -241,8 +224,8 @@ export function PreferencesSettings({ onBack, walletId }: PreferencesSettingsPro
             </SelectTrigger>
             <SelectContent className="bg-slate-900 border-slate-700">
               {currencies.map((curr) => (
-                <SelectItem 
-                  key={curr.code} 
+                <SelectItem
+                  key={curr.code}
                   value={curr.code}
                   className="text-white hover:bg-slate-800"
                 >
@@ -264,7 +247,7 @@ export function PreferencesSettings({ onBack, walletId }: PreferencesSettingsPro
           className="bg-blue-950/20 border border-blue-900/30 rounded-xl p-4"
         >
           <p className="text-blue-300 text-sm">
-            ℹ️ Your preferences are automatically saved and synced across all your devices.
+            Your preferences are saved locally on this device for instant access.
           </p>
         </motion.div>
       </div>

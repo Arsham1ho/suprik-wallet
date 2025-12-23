@@ -85,8 +85,6 @@ export function ImportWalletDialog({
         const balanceData = await fetchSolanaBalance(addresses.solana, 'mainnet');
         const balance = balanceData.native;
 
-        console.log(`[ImportWallet] Account ${i}: ${addresses.solana.slice(0, 8)}... Balance: ${balance} SOL`);
-
         if (balance > 0 || balanceData.tokens.length > 0) {
           accounts.push({
             index: i,
@@ -108,12 +106,10 @@ export function ImportWalletDialog({
           }
           // Stop scanning after 3 empty accounts in a row (after index 0)
           if (emptyInRow >= MAX_EMPTY_IN_ROW && i > 0) {
-            console.log(`[ImportWallet] Stopping scan after ${MAX_EMPTY_IN_ROW} empty accounts`);
             break;
           }
         }
-      } catch (err) {
-        console.error(`[ImportWallet] Error scanning account ${i}:`, err);
+      } catch {
         // On error, still include the first account
         if (i === 0) {
           const addresses = await deriveAddresses(mnemonic, 0);
@@ -217,8 +213,7 @@ export function ImportWalletDialog({
             setStep('password');
           }
         }
-      } catch (err) {
-        console.error('[ImportWallet] Scan error:', err);
+      } catch {
         setLoading(false);
         setError('Failed to scan accounts. Proceeding with default account.');
         // Fallback to simple import
@@ -296,7 +291,6 @@ export function ImportWalletDialog({
           (acc: any) => acc.addresses?.solana === account.address
         );
         if (existingAccount) {
-          console.log(`[ImportWallet] Skipping duplicate account: ${account.address.slice(0, 8)}...`);
           continue;
         }
 
@@ -327,8 +321,6 @@ export function ImportWalletDialog({
 
       localStorage.setItem('saturn_accounts', JSON.stringify(accounts));
 
-      console.log(`[ImportWallet] Added ${addedCount} accounts (marked as imported)`);
-
       // Dispatch event with detail to indicate imported accounts
       window.dispatchEvent(new CustomEvent('walletImported', { detail: { isImportedSeedPhrase: true } }));
 
@@ -336,7 +328,6 @@ export function ImportWalletDialog({
       onSuccess?.();
       handleOpenChange(false);
     } catch (err: any) {
-      console.error('Import error:', err);
       setError(err.message || 'Failed to add accounts');
     } finally {
       setLoading(false);
@@ -355,7 +346,6 @@ export function ImportWalletDialog({
       // Encrypt the imported mnemonic for each account
       // This allows transactions to work for accounts from different seed phrases
       const encryptedMnemonic = await encryptWithPassword(mnemonic, pwd);
-      console.log('[ImportWallet] 🔐 Encrypted mnemonic for imported accounts');
 
       // Check if this is adding to an existing wallet or creating new
       const existingAccounts = AccountManager.getAccounts();
@@ -379,7 +369,6 @@ export function ImportWalletDialog({
           (acc: any) => acc.addresses?.solana === account.address
         );
         if (existingAccount) {
-          console.log(`[ImportWallet] Skipping duplicate account: ${account.address.slice(0, 8)}...`);
           continue;
         }
 
@@ -422,7 +411,6 @@ export function ImportWalletDialog({
       onSuccess?.();
       handleOpenChange(false);
     } catch (err: any) {
-      console.error('Import error:', err);
       setError(err.message || 'Failed to import wallet');
     } finally {
       setLoading(false);
@@ -475,8 +463,6 @@ export function ImportWalletDialog({
 
         // Set as active account
         AccountManager.setActiveAccount(newAccount.id);
-
-        console.log('[ImportWallet] Added account (no password):', newAccount);
       } else {
         // Private key import
         const key = privateKey.trim();
@@ -523,8 +509,6 @@ export function ImportWalletDialog({
 
         // Set as active account
         AccountManager.setActiveAccount(newAccount.id);
-
-        console.log('[ImportWallet] Added private key account (no password):', newAccount);
       }
 
       // Notify that wallet was imported
@@ -534,7 +518,6 @@ export function ImportWalletDialog({
       onSuccess?.();
       handleOpenChange(false);
     } catch (err: any) {
-      console.error('Import error:', err);
       setError(err.message || 'Failed to add account');
     } finally {
       setLoading(false);
@@ -556,7 +539,6 @@ export function ImportWalletDialog({
       onSuccess?.();
       handleOpenChange(false);
     } catch (err: any) {
-      console.error('Import error:', err);
       setError(err.message || 'Failed to import wallet');
     } finally {
       setLoading(false);
@@ -567,15 +549,11 @@ export function ImportWalletDialog({
     // Normalize mnemonic: lowercase, trim, and collapse multiple spaces to single space
     const mnemonic = seedPhrase.trim().toLowerCase().replace(/\s+/g, ' ');
 
-    console.log('[ImportWallet] Normalized mnemonic words:', mnemonic.split(' ').length);
-
     // Generate wallet ID from mnemonic
     const walletId = await deriveWalletId(mnemonic);
-    console.log('[ImportWallet] Wallet ID:', walletId);
 
     // Derive addresses from the mnemonic (always use index 0 for imported wallets)
     const addresses = await deriveAddresses(mnemonic, 0);
-    console.log('[ImportWallet] Derived addresses:', addresses);
 
     // Store encrypted mnemonic
     await SecureStorage.storeMnemonic(mnemonic, pwd);
@@ -607,23 +585,15 @@ export function ImportWalletDialog({
     accounts.push(newAccount);
     localStorage.setItem('saturn_accounts', JSON.stringify(accounts));
 
-    console.log('[ImportWallet] Created account:', newAccount);
-
     // Set the new account as active
     AccountManager.setActiveAccount(newAccount.id);
-    console.log('[ImportWallet] Set active account to:', newAccount.id);
 
-    // ⚡ CRITICAL: Unlock wallet to update WalletContext with new mnemonic and addresses
-    // This is the same pattern used in SignIn.tsx - without this, WalletContext still has old addresses
-    console.log('[ImportWallet] 🔓 Unlocking wallet to refresh WalletContext...');
+    // Unlock wallet to update WalletContext with new mnemonic and addresses
     const unlocked = await wallet.unlock(pwd);
 
     if (!unlocked) {
-      console.error('[ImportWallet] ❌ Failed to unlock wallet after import');
       throw new Error('Failed to unlock wallet after import');
     }
-
-    console.log('[ImportWallet] ✅ Wallet unlocked, WalletContext updated with new addresses');
 
     // Notify that wallet was imported
     window.dispatchEvent(new Event('walletImported'));
@@ -644,7 +614,6 @@ export function ImportWalletDialog({
     }
 
     const publicKey = bs58.encode(keypair.publicKey);
-    console.log('[ImportWallet] Derived public key:', publicKey);
 
     // Generate a wallet ID from the public key
     const encoder = new TextEncoder();
@@ -674,22 +643,15 @@ export function ImportWalletDialog({
       }
     );
 
-    console.log('[ImportWallet] Created account from private key:', newAccount);
-
     // Set the new account as active
     AccountManager.setActiveAccount(newAccount.id);
-    console.log('[ImportWallet] Set active account to:', newAccount.id);
 
-    // ⚡ CRITICAL: Unlock wallet to update WalletContext with new private key
-    console.log('[ImportWallet] 🔓 Unlocking wallet to refresh WalletContext...');
+    // Unlock wallet to update WalletContext with new private key
     const unlocked = await wallet.unlock(pwd);
 
     if (!unlocked) {
-      console.error('[ImportWallet] ❌ Failed to unlock wallet after private key import');
       throw new Error('Failed to unlock wallet after import');
     }
-
-    console.log('[ImportWallet] ✅ Wallet unlocked, WalletContext updated');
 
     // Notify that wallet was imported
     window.dispatchEvent(new Event('walletImported'));

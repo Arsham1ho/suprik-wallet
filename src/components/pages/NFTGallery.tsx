@@ -3,9 +3,9 @@ import { Button } from '../ui/button';
 import { ArrowLeft, ExternalLink, Loader2, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
-import { toast } from 'sonner';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
+import { getHeliusApiKey } from '../../utils/env';
+import { useWallet } from '../../utils/WalletContext';
 
 interface NFT {
   id: string;
@@ -26,6 +26,7 @@ interface NFTGalleryProps {
 
 export function NFTGallery({ walletId, onBack }: NFTGalleryProps) {
   const { t } = useLanguage();
+  const wallet = useWallet();
   const [nfts, setNfts] = useState<NFT[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedNFT, setSelectedNFT] = useState<NFT | null>(null);
@@ -37,24 +38,76 @@ export function NFTGallery({ walletId, onBack }: NFTGalleryProps) {
   const fetchNFTs = async () => {
     try {
       setLoading(true);
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet/${walletId}/nfts`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
+
+      // Get Solana address from wallet context
+      const solanaAddress = wallet.addresses?.solana;
+      if (!solanaAddress) {
+        console.log('[NFTGallery] No Solana address available');
+        setNfts([]);
+        return;
+      }
+
+      // Get Helius API key
+      const heliusKey = getHeliusApiKey();
+      if (!heliusKey) {
+        console.log('[NFTGallery] No Helius API key - NFTs not available');
+        setNfts([]);
+        return;
+      }
+
+      // Use Helius DAS API to fetch NFTs directly
+      console.log('[NFTGallery] Fetching NFTs via Helius DAS API...');
+      const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'nft-gallery',
+          method: 'getAssetsByOwner',
+          params: {
+            ownerAddress: solanaAddress,
+            page: 1,
+            limit: 100,
+            displayOptions: {
+              showFungible: false, // Only NFTs
+              showNativeBalance: false,
+            },
           },
-        }
-      );
+        }),
+      });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch NFTs');
+        throw new Error(`Helius API error: ${response.status}`);
       }
 
       const data = await response.json();
-      setNfts(data || []);
+
+      if (data.error) {
+        throw new Error(data.error.message || 'Helius DAS API error');
+      }
+
+      // Parse NFTs from Helius response
+      const items = data.result?.items || [];
+      const parsedNfts: NFT[] = items
+        .filter((item: any) => item.interface === 'V1_NFT' || item.interface === 'ProgrammableNFT')
+        .map((item: any) => ({
+          id: item.id,
+          name: item.content?.metadata?.name || 'Unknown NFT',
+          description: item.content?.metadata?.description || '',
+          image: item.content?.links?.image || item.content?.files?.[0]?.uri || '',
+          collection: item.grouping?.find((g: any) => g.group_key === 'collection')?.group_value || 'Unknown Collection',
+          mint: item.id,
+          attributes: item.content?.metadata?.attributes || [],
+          floorPrice: undefined,
+          network: 'solana',
+        }));
+
+      console.log(`[NFTGallery] Found ${parsedNfts.length} NFTs`);
+      setNfts(parsedNfts);
     } catch (error) {
       console.error('Error fetching NFTs:', error);
       // Don't show error toast, just show empty state
+      setNfts([]);
     } finally {
       setLoading(false);
     }

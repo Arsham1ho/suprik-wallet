@@ -382,7 +382,6 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
       // Validate walletId exists
       if (!walletId) {
         toast.error('Wallet ID not found. Please try reloading the page.');
-        console.error('[AccountSettings] ❌ walletId is missing:', walletId);
         return;
       }
       

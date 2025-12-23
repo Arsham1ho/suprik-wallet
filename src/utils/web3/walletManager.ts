@@ -33,9 +33,6 @@ export interface EncryptedWallet {
  * Generate a new 12-word mnemonic seed phrase
  */
 export function generateSeedPhrase(): string {
-  console.log("[walletManager] Generating seed phrase...");
-  console.log("[walletManager] Wordlist length:", englishWordlist.length);
-
   // Validate wordlist
   if (englishWordlist.length !== 2048) {
     throw new Error(
@@ -47,7 +44,10 @@ export function generateSeedPhrase(): string {
   const entropy = crypto.getRandomValues(new Uint8Array(16));
   const mnemonic = bip39.entropyToMnemonic(entropy, englishWordlist);
 
-  console.log("[walletManager] ✅ Generated seed phrase");
+  // Securely clear entropy from memory
+  crypto.getRandomValues(entropy);
+  entropy.fill(0);
+
   return mnemonic;
 }
 
@@ -97,10 +97,10 @@ export function encryptSeedPhrase(
   const salt = CryptoJS.lib.WordArray.random(128 / 8);
   const iv = CryptoJS.lib.WordArray.random(128 / 8);
 
-  // Derive key from password using PBKDF2
+  // Derive key from password using PBKDF2 (OWASP 2023 recommends 600,000 for SHA-256)
   const key = CryptoJS.PBKDF2(password, salt, {
     keySize: 256 / 32,
-    iterations: 10000,
+    iterations: 600000,
   });
 
   // Encrypt seed phrase
@@ -128,10 +128,10 @@ export function decryptSeedPhrase(
     const salt = CryptoJS.enc.Hex.parse(encryptedWallet.salt);
     const iv = CryptoJS.enc.Hex.parse(encryptedWallet.iv);
 
-    // Derive key from password
+    // Derive key from password (OWASP 2023 recommends 600,000 for SHA-256)
     const key = CryptoJS.PBKDF2(password, salt, {
       keySize: 256 / 32,
-      iterations: 10000,
+      iterations: 600000,
     });
 
     // Decrypt
@@ -211,9 +211,10 @@ export async function sendSOL(
   accountIndex: number = 0,
   rpcUrl: string = "https://api.mainnet-beta.solana.com"
 ): Promise<{ signature: string; success: boolean; error?: string }> {
+  let keypair: Keypair | null = null;
   try {
     // Derive keypair
-    const keypair = deriveKeypairFromSeed(seedPhrase, accountIndex);
+    keypair = deriveKeypairFromSeed(seedPhrase, accountIndex);
 
     // Connect to Solana
     const connection = new Connection(rpcUrl, "confirmed");
@@ -243,17 +244,24 @@ export async function sendSOL(
       { commitment: "confirmed" }
     );
 
+    // Securely clear the keypair's secret key after use
+    secureClearArray(keypair.secretKey);
+
     return {
       signature,
       success: true,
     };
   } catch (error: any) {
-    console.error("Send SOL error:", error);
     return {
       signature: "",
       success: false,
       error: error.message || "Transaction failed",
     };
+  } finally {
+    // Always clear the keypair secret key
+    if (keypair) {
+      secureClearArray(keypair.secretKey);
+    }
   }
 }
 
@@ -284,19 +292,46 @@ export function signTransaction(
   accountIndex: number = 0
 ): Transaction {
   const keypair = deriveKeypairFromSeed(seedPhrase, accountIndex);
-  transaction.sign(keypair);
-  return transaction;
+  try {
+    transaction.sign(keypair);
+    return transaction;
+  } finally {
+    // Securely clear the keypair's secret key after signing
+    secureClearArray(keypair.secretKey);
+  }
 }
 
 /**
  * Export private key (for advanced users)
+ * SECURITY: This function requires a valid mnemonic to export
+ * The mnemonic is already verified by the caller (SecuritySettings) via password decryption
  */
-export function exportPrivateKey(
+export async function exportPrivateKey(
   seedPhrase: string,
+  _password?: string, // Kept for backwards compatibility, validation done by caller
   accountIndex: number = 0
-): Uint8Array {
-  const keypair = deriveKeypairFromSeed(seedPhrase, accountIndex);
-  return keypair.secretKey;
+): Promise<{ privateKey: Uint8Array; success: boolean; error?: string }> {
+  try {
+    // Validate the seed phrase first
+    if (!seedPhrase || !validateSeedPhrase(seedPhrase)) {
+      return { privateKey: new Uint8Array(0), success: false, error: 'Invalid seed phrase' };
+    }
+
+    // The password verification is already done by the caller (SecuritySettings)
+    // which decrypts the mnemonic from SecureStorage before calling this function.
+    // We just need to derive the private key from the validated seed phrase.
+
+    // Export the private key
+    const keypair = deriveKeypairFromSeed(seedPhrase, accountIndex);
+    const privateKey = new Uint8Array(keypair.secretKey);
+
+    // Clear the original keypair
+    secureClearArray(keypair.secretKey);
+
+    return { privateKey, success: true };
+  } catch (error: any) {
+    return { privateKey: new Uint8Array(0), success: false, error: error.message || 'Export failed' };
+  }
 }
 
 /**
@@ -329,6 +364,14 @@ export function deriveMultipleAccounts(
 }
 
 /**
+ * Securely clear a Uint8Array (for private keys)
+ */
+function secureClearArray(arr: Uint8Array): void {
+  crypto.getRandomValues(arr);
+  arr.fill(0);
+}
+
+/**
  * Session storage for temporary decrypted seed (for active session)
  */
 let sessionSeed: { seed: string; expiry: number } | null = null;
@@ -337,6 +380,10 @@ export function setSessionSeed(
   seedPhrase: string,
   durationMs: number = 15 * 60 * 1000
 ): void {
+  // Clear any existing session first
+  if (sessionSeed) {
+    clearSessionSeed();
+  }
   sessionSeed = {
     seed: seedPhrase,
     expiry: Date.now() + durationMs,
@@ -355,6 +402,12 @@ export function getSessionSeed(): string | null {
 }
 
 export function clearSessionSeed(): void {
+  if (sessionSeed) {
+    // Overwrite seed string in memory before nullifying
+    // Note: JavaScript strings are immutable, but we do our best
+    sessionSeed.seed = '';
+    sessionSeed.expiry = 0;
+  }
   sessionSeed = null;
 }
 

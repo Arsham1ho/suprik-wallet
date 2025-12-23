@@ -10,7 +10,7 @@ import { generateMnemonic, deriveWalletId, SecureStorage, WalletStorage } from '
 import { useWallet } from '../utils/WalletContext';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { isBiometricAvailable, registerBiometric, getBiometricTypeName } from '../utils/biometric';
-import type { BiometricSettings } from '../utils/biometric';
+import { saveUserSettings } from '../utils/userSettings';
 
 interface SignUpProps {
   onSuccess: (token: string, walletId: string) => void;
@@ -72,6 +72,13 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
       }
     });
   }, []);
+
+  // Security: Clear sensitive data from state after use
+  const clearSensitiveState = () => {
+    setSeedPhrase('');
+    setPassword('');
+    setConfirmPassword('');
+  };
 
   const handleCopy = async () => {
     const success = await copyToClipboard(seedPhrase);
@@ -141,13 +148,9 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
       const defaultUsername = `@user${walletId.substring(0, 6).toLowerCase()}`;
       localStorage.setItem('saturn_username', defaultUsername);
 
-      console.log('[SignUp] ✅ Wallet created locally (client-side only)');
-      console.log('[SignUp] Wallet ID:', walletId);
-      console.log('[SignUp] Default username:', defaultUsername);
-
       // Register username to backend (don't block on failure)
       try {
-        const response = await fetch(
+        await fetch(
           `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/update-username`,
           {
             method: 'POST',
@@ -158,44 +161,35 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
             body: JSON.stringify({ walletId, username: defaultUsername }),
           }
         );
-
-        if (response.ok) {
-          console.log('[SignUp] ✅ Username registered to backend');
-        } else {
-          console.warn('[SignUp] ⚠️ Failed to register username to backend (non-critical)');
-        }
-      } catch (backendError) {
-        console.warn('[SignUp] ⚠️ Could not sync username to backend:', backendError);
+      } catch {
+        // Non-critical: username sync to backend failed
       }
 
-      // ⚡ IMPORTANT: Unlock the wallet immediately after creation
+      // Unlock the wallet immediately after creation
       // This ensures addresses are derived and ready when user lands on Home
-      console.log('[SignUp] 🔓 Auto-unlocking wallet...');
       const unlocked = await wallet.unlock(password);
 
       if (!unlocked) {
         throw new Error('Failed to unlock wallet after creation');
       }
 
-      console.log('[SignUp] ✅ Wallet unlocked and addresses derived');
-
       // Register biometric if user opted in
       if (enableBiometric && biometricAvailable) {
-        console.log('[SignUp] 🔐 Registering biometric...');
         const biometricResult = await registerBiometric(walletId);
 
         if (biometricResult.success) {
-          // Save biometric settings
-          const biometricSettings: BiometricSettings = {
-            enabled: true,
+          // Save biometric settings to userSettings (correct location)
+          saveUserSettings({
+            biometricEnabled: true,
             autoLockMinutes: 5,
-            requireForTransactions: false,
-          };
-          localStorage.setItem('biometric_settings', JSON.stringify(biometricSettings));
-          console.log('[SignUp] ✅ Biometric registered successfully');
+          }, walletId);
+
+          // Also store the password for biometric unlock
+          // This is needed so biometric can unlock the wallet
+          await WalletStorage.setOAuthPassword(password);
+
           toast.success(`Wallet created with ${biometricName} enabled!`);
         } else if (!biometricResult.cancelled) {
-          console.warn('[SignUp] ⚠️ Biometric registration failed:', biometricResult.error);
           toast.success('Wallet created securely!');
         } else {
           toast.success('Wallet created securely!');
@@ -204,9 +198,10 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
         toast.success('Wallet created securely!');
       }
 
+      // Security: Clear sensitive data from state before navigation
+      clearSensitiveState();
       onSuccess(walletId, walletId);
     } catch (error: any) {
-      console.error('[SignUp] Error:', error);
       toast.error(error.message || 'Failed to create wallet');
     } finally {
       setLoading(false);
@@ -538,6 +533,7 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
             <motion.div
               key="biometric"
               className="space-y-6"
+              style={{ paddingTop: '90px' }}
               initial={{ y: 10 }}
               animate={{ y: 0 }}
               exit={{ y: -10 }}

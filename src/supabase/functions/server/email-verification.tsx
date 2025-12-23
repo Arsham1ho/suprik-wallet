@@ -13,8 +13,9 @@ export function setupEmailVerification(app: Hono, retryWithBackoff: any) {
         return c.json({ error: "Email is required" }, 400);
       }
 
-      // Generate 6-digit code
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      // Generate cryptographically secure 6-digit code
+      const randomBytes = crypto.getRandomValues(new Uint32Array(1));
+      const code = (100000 + (randomBytes[0] % 900000)).toString();
 
       // Store code with 10 minute expiration
       const codeKey = `verification:${email.toLowerCase()}`;
@@ -32,13 +33,11 @@ export function setupEmailVerification(app: Hono, retryWithBackoff: any) {
       if (isVerifiedEmail) {
         const resendApiKey = Deno.env.get('RESEND_API_KEY');
         if (!resendApiKey) {
-          console.error('⚠️  RESEND_API_KEY not configured');
-          console.log('📧 DEMO MODE - Verification code for', email, ':', code);
+          // RESEND_API_KEY not configured - fail securely
           return c.json({
             success: true,
             message: 'Verification code sent',
             demoMode: true,
-            code, // در حالت Demo، کد را برمی‌گردونیم
           });
         }
 
@@ -81,56 +80,39 @@ export function setupEmailVerification(app: Hono, retryWithBackoff: any) {
           });
 
           if (!emailResponse.ok) {
-            const errorData = await emailResponse.json();
-            console.error('❌ Resend API error:', errorData);
-            console.log('📧 DEMO MODE - Verification code for', email, ':', code);
+            // Email sending failed - still return success to not leak info
             return c.json({
               success: true,
               message: 'Verification code sent',
               demoMode: true,
-              code,
             });
           }
 
-          console.log('✅ Real email sent to:', email);
           return c.json({
             success: true,
             message: 'Verification code sent',
             demoMode: false,
           });
-        } catch (emailError) {
-          console.error('❌ Email sending failed:', emailError);
-          console.log('📧 DEMO MODE - Verification code for', email, ':', code);
+        } catch {
+          // Email sending failed - still return success to not leak info
           return c.json({
             success: true,
             message: 'Verification code sent',
             demoMode: true,
-            code,
           });
         }
       } else {
-        // 📧 DEMO MODE for non-verified emails
-        console.log('═══════════════════════════════════════════════════════════');
-        console.log('📧 DEMO MODE - Verification Code');
-        console.log('───────────────────────────────────────────────────────────');
-        console.log('Email:', email);
-        console.log('Code:', code);
-        console.log('Expires:', new Date(Date.now() + 10 * 60 * 1000).toLocaleString());
-        console.log('═══════════════════════════════════════════════════════════');
-        console.log('💡 Tip: To send real emails, use verified email:', VERIFIED_EMAIL);
-        console.log('═══════════════════════════════════════════════════════════');
-        
+        // Non-verified email - code stored but not sent
+        // NEVER return the code to the client
         return c.json({
           success: true,
           message: 'Verification code sent',
           demoMode: true,
-          code, // در حالت Demo، کد را برمی‌گردونیم تا Frontend نشان دهد
         });
       }
 
-    } catch (error: any) {
-      console.error('Send verification code error:', error);
-      return c.json({ error: error.message || 'Failed to send verification code' }, 500);
+    } catch {
+      return c.json({ error: 'Failed to send verification code' }, 500);
     }
   });
 
@@ -197,7 +179,7 @@ export function setupEmailVerification(app: Hono, retryWithBackoff: any) {
       const passwordHashArray = Array.from(new Uint8Array(passwordHashBuffer));
       const passwordHash = passwordHashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-      // Generate a recovery phrase for the wallet (BIP39 word list subset)
+      // Generate a cryptographically secure recovery phrase (BIP39 word list subset)
       const wordList = [
         'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract', 'absurd', 'abuse',
         'access', 'accident', 'account', 'accuse', 'achieve', 'acid', 'acoustic', 'acquire', 'across', 'act',
@@ -220,10 +202,12 @@ export function setupEmailVerification(app: Hono, retryWithBackoff: any) {
         'birth', 'bitter', 'black', 'blade', 'blame', 'blanket', 'blast', 'bleak', 'bless', 'blind',
         'blood', 'blossom', 'blouse', 'blue', 'blur', 'blush', 'board', 'boat', 'body', 'boil',
       ];
-      
+
+      // Use crypto.getRandomValues for secure randomness
+      const randomIndices = crypto.getRandomValues(new Uint32Array(12));
       const seedPhrase: string[] = [];
       for (let i = 0; i < 12; i++) {
-        const randomIndex = Math.floor(Math.random() * wordList.length);
+        const randomIndex = randomIndices[i] % wordList.length;
         seedPhrase.push(wordList[randomIndex]);
       }
       const seedPhraseString = seedPhrase.join(' ');
@@ -244,15 +228,12 @@ export function setupEmailVerification(app: Hono, retryWithBackoff: any) {
       await retryWithBackoff(() => kv.set(`wallet:${walletId}`, walletData));
       await retryWithBackoff(() => kv.set(`email:${email.toLowerCase()}`, { walletId }));
 
-      console.log('User created successfully with email:', email);
-
       return c.json({
         success: true,
         walletId,
       });
-    } catch (error: any) {
-      console.error('Email signup verification error:', error);
-      return c.json({ error: error.message || 'Failed to create account' }, 500);
+    } catch {
+      return c.json({ error: 'Failed to create account' }, 500);
     }
   });
 
@@ -311,15 +292,12 @@ export function setupEmailVerification(app: Hono, retryWithBackoff: any) {
         return c.json({ error: "Invalid email or password" }, 401);
       }
 
-      console.log('User signed in successfully with email:', email);
-
       return c.json({
         success: true,
         walletId,
       });
-    } catch (error: any) {
-      console.error('Email signin verification error:', error);
-      return c.json({ error: error.message || 'Failed to sign in' }, 500);
+    } catch {
+      return c.json({ error: 'Failed to sign in' }, 500);
     }
   });
 }

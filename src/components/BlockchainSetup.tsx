@@ -3,15 +3,17 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Button } from './ui/button';
 import { ExternalLink, CheckCircle, XCircle, Network, Bug } from 'lucide-react';
 import { motion } from 'motion/react';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { APIKeysTest } from './APIKeysTest';
+import { areApiKeysConfigured } from '../utils/env';
+import { useWallet } from '../utils/WalletContext';
 
 interface BlockchainSetupProps {
   walletId: string;
 }
 
 export function BlockchainSetup({ walletId }: BlockchainSetupProps) {
+  const wallet = useWallet();
   const [apiStatus, setApiStatus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [solanaNetwork, setSolanaNetwork] = useState<string>('mainnet');
@@ -24,48 +26,28 @@ export function BlockchainSetup({ walletId }: BlockchainSetupProps) {
     loadSettings();
   }, []);
 
-  const loadSettings = async () => {
+  // Load network settings from localStorage (instant, no server call)
+  const loadSettings = () => {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet-settings/${walletId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setSolanaNetwork(data.solanaNetwork || 'mainnet');
-      }
+      const key = `suprik_solana_network_${walletId}`;
+      const stored = localStorage.getItem(key);
+      setSolanaNetwork(stored || 'mainnet');
     } catch (error) {
       console.error('Error loading settings:', error);
     }
   };
 
-  const handleNetworkChange = async (network: string) => {
+  // Save network setting to localStorage (instant, no server call)
+  const handleNetworkChange = (network: string) => {
     setSavingNetwork(true);
     setSolanaNetwork(network);
-    
-    try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet-settings`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ walletId, solanaNetwork: network }),
-        }
-      );
 
-      if (response.ok) {
-        console.log('Network setting saved:', network);
-        // Trigger a balance refresh
-        window.dispatchEvent(new Event('walletBalanceUpdated'));
-      }
+    try {
+      const key = `suprik_solana_network_${walletId}`;
+      localStorage.setItem(key, network);
+      console.log('Network setting saved:', network);
+      // Trigger a balance refresh
+      window.dispatchEvent(new Event('walletBalanceUpdated'));
     } catch (error) {
       console.error('Error saving network setting:', error);
     } finally {
@@ -73,26 +55,13 @@ export function BlockchainSetup({ walletId }: BlockchainSetupProps) {
     }
   };
 
-  const checkApiStatus = async () => {
+  // Check API key status from client-side env (no server call)
+  const checkApiStatus = () => {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/check-blockchain-transactions`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ walletId }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setApiStatus(data.apiKeysConfigured);
-        setAddresses(data.addresses);
-        console.log('Blockchain check response:', data);
-      }
+      const status = areApiKeysConfigured();
+      setApiStatus(status);
+      setAddresses(wallet.addresses || null);
+      console.log('API keys status (client-side):', status);
     } catch (error) {
       console.error('Error checking API status:', error);
     } finally {

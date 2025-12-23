@@ -36,8 +36,9 @@ import { Switch } from "../ui/switch";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import { TokenLogo } from "../TokenLogo";
-import { projectId, publicAnonKey } from "../../utils/supabase/info";
+import { getUserSettings } from "../../utils/userSettings";
 import { Search, type CoinGeckoToken, type WalletToken } from "./Search";
+import { TOKEN_REGISTRY } from "../../utils/tokenRegistry";
 import type { Token } from "./Home";
 import { BiometricConfirmDialog } from "../BiometricConfirmDialog";
 import { SwapSuccessDialog } from "../SwapSuccessDialog";
@@ -64,6 +65,57 @@ interface SwapProps {
   walletId: string;
   onSwapComplete?: () => void;
 }
+
+// Known Solana-native token IDs (CoinGecko IDs)
+const SOLANA_TOKEN_IDS = new Set([
+  'solana', 'bonk', 'jupiter-exchange-solana', 'jito-governance-token', 'pyth-network',
+  'dogwifcoin', 'raydium', 'serum', 'orca', 'mango-markets', 'marinade-staked-sol',
+  'msol', 'render-token', 'helium', 'helium-mobile', 'hivemapper', 'grass',
+  'tensor', 'parcl', 'jito-staked-sol', 'blazestake-staked-sol', 'samoyedcoin',
+  'bonfida', 'step-finance', 'cope', 'dust-protocol', 'stepn', 'green-satoshi-token',
+  'magic-eden', 'phantom', 'drift-protocol', 'marinade', 'lido-staked-sol',
+  'kin', 'star-atlas', 'star-atlas-dao', 'aurory', 'genopets', 'defi-land',
+  'popcat', 'cat-in-a-dogs-world', 'book-of-meme', 'slerf', 'wen-4',
+  'parabolic-ai', 'suprana', 'io-net', 'wormhole', 'nosana',
+  'usd-coin', 'tether', // USDC and USDT have Solana versions
+]);
+
+// Known Solana-native token symbols
+const SOLANA_TOKEN_SYMBOLS = new Set([
+  'sol', 'bonk', 'jup', 'jto', 'pyth', 'wif', 'ray', 'srm', 'orca', 'mngo',
+  'msol', 'rndr', 'hnt', 'mobile', 'honey', 'tnsr', 'prcl', 'jitosol', 'bsol',
+  'samo', 'fida', 'step', 'cope', 'dust', 'gmt', 'gst', 'me', 'drift',
+  'popcat', 'mew', 'bome', 'slerf', 'wen', 'pai', 'parai', 'io', 'w', 'nos',
+  'usdc', 'usdt', // Stablecoins on Solana
+]);
+
+// Helper to check if a token is Solana-native
+const isSolanaToken = (token: { id: string; symbol: string; name?: string; mint?: string }): boolean => {
+  const symbol = token.symbol.toLowerCase();
+  const id = token.id.toLowerCase();
+  const name = (token.name || '').toLowerCase();
+
+  // Check if it has a valid Solana mint address (base58, 32-44 chars)
+  if (token.mint && token.mint.length >= 32 && token.mint.length <= 44 && !token.mint.startsWith('0x')) {
+    // Additional check: known non-Solana tokens should not pass
+    const nonSolanaSymbols = ['btc', 'eth', 'bnb', 'xrp', 'ada', 'doge', 'dot', 'matic', 'ltc', 'link', 'avax', 'atom'];
+    if (!nonSolanaSymbols.includes(symbol)) {
+      return true;
+    }
+  }
+
+  // Check against known Solana token IDs and symbols
+  if (SOLANA_TOKEN_IDS.has(id) || SOLANA_TOKEN_SYMBOLS.has(symbol)) {
+    return true;
+  }
+
+  // Check for "solana" in name or ID
+  if (id.includes('solana') || name.includes('solana')) {
+    return true;
+  }
+
+  return false;
+};
 
 interface SwapToken {
   id: string;
@@ -168,36 +220,33 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     return () => clearInterval(interval);
   }, []); // FIXED: Empty deps to prevent re-creation of interval
 
-  const loadBiometricSettings = useCallback(async () => {
+  const loadBiometricSettings = useCallback(() => {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/user-settings/${walletId}`,
-        {
-          headers: { Authorization: `Bearer ${publicAnonKey}` },
-        }
-      );
+      // Load from localStorage (instant, no server call)
+      const settings = getUserSettings(walletId);
 
-      if (response.ok) {
-        const settings = await response.json();
-        setBiometricSettings(settings.biometric || null);
+      if (settings.biometricEnabled) {
+        setBiometricSettings({
+          enabled: true,
+          autoLockMinutes: settings.autoLockMinutes || 5,
+          requireForTransactions: true,
+        });
+      } else {
+        setBiometricSettings(null);
       }
     } catch (error) {
       console.error("[Swap] Error loading biometric settings:", error);
     }
   }, [walletId]);
 
-  const loadRecentSwaps = useCallback(async () => {
+  const loadRecentSwaps = useCallback(() => {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet/${walletId}/recent-swaps`,
-        {
-          headers: { Authorization: `Bearer ${publicAnonKey}` },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setRecentSwaps(data.swaps || []);
+      // Load from localStorage (instant, no server call)
+      const key = `suprik_recent_swaps_${walletId}`;
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        const swaps = JSON.parse(stored);
+        setRecentSwaps(swaps || []);
       }
     } catch (error) {
       console.error("[Swap] Error loading recent swaps:", error);
@@ -211,40 +260,12 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         if (isInitialLoad) {
           setLoading(true);
         }
-        console.log("Fetching coins for swap...");
-
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=1&per_page=500`,
-          {
-            headers: {
-              Authorization: `Bearer ${publicAnonKey}`,
-            },
-          }
-        );
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("Fetch error:", response.status, errorText);
-
-          // Try to use cached data if available
-          if (response.status === 429 || errorText.includes("429")) {
-            toast.error("Rate limit reached. Using cached data...");
-          }
-          throw new Error("Failed to fetch coins");
-        }
-
-        const coinGeckoData: CoinGeckoToken[] = await response.json();
-
-        // Handle error response
-        if (coinGeckoData && (coinGeckoData as any).error) {
-          console.error("API returned error:", (coinGeckoData as any).error);
-          throw new Error((coinGeckoData as any).error);
-        }
+        console.log("[Swap] Loading coins from TOKEN_REGISTRY (client-side)...");
 
         // STEP 1: Start with ALL wallet tokens that have balance
         // This ensures we never lose a token with balance
-        const walletTokensWithBalance = tokensRef.current.filter(t => t.amount > 0);
-        console.log('[Swap] Wallet tokens with balance:', walletTokensWithBalance.map(t => ({
+        const walletTokensWithBalance = tokensRef.current.filter((t: Token) => t.amount > 0);
+        console.log('[Swap] Wallet tokens with balance:', walletTokensWithBalance.map((t: Token) => ({
           symbol: t.symbol,
           name: t.name,
           mint: t.mint?.substring(0, 8) + '...',
@@ -252,11 +273,11 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         })));
 
         // STEP 2: Create a map of wallet tokens by mint address for fast lookup
-        const walletTokensByMint = new Map<string, typeof walletTokensWithBalance[0]>();
-        const walletTokensBySymbol = new Map<string, typeof walletTokensWithBalance[0]>();
-        const walletTokensByName = new Map<string, typeof walletTokensWithBalance[0]>();
+        const walletTokensByMint = new Map<string, Token>();
+        const walletTokensBySymbol = new Map<string, Token>();
+        const walletTokensByName = new Map<string, Token>();
 
-        walletTokensWithBalance.forEach(t => {
+        walletTokensWithBalance.forEach((t: Token) => {
           if (t.mint && t.mint.length > 20) { // Valid Solana mint address
             walletTokensByMint.set(t.mint, t);
           }
@@ -270,14 +291,14 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           }
         });
 
-        // STEP 3: Merge CoinGecko data with wallet tokens
-        const mergedCoins: SwapToken[] = coinGeckoData.map((coin) => {
-          const coinSymbolUpper = coin.symbol.toUpperCase();
-          const symbolAliases = SYMBOL_ALIASES[coinSymbolUpper] || [];
+        // STEP 3: Merge TOKEN_REGISTRY with wallet tokens
+        const mergedCoins: SwapToken[] = TOKEN_REGISTRY.map((registryToken) => {
+          const tokenSymbolUpper = registryToken.symbol.toUpperCase();
+          const symbolAliases = SYMBOL_ALIASES[tokenSymbolUpper] || [];
 
           // Try to find matching wallet token by multiple methods:
           // 1. First try symbol match (fastest)
-          let walletToken = walletTokensBySymbol.get(coinSymbolUpper);
+          let walletToken = walletTokensBySymbol.get(tokenSymbolUpper);
 
           // 2. Try symbol aliases
           if (!walletToken) {
@@ -287,42 +308,29 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             }
           }
 
-          // 3. Try name match (case-insensitive) - this is important for tokens like "Book of Meme"
+          // 3. Try name match (case-insensitive)
           if (!walletToken) {
-            walletToken = walletTokensByName.get(coin.name.toLowerCase());
-          }
-
-          // 4. Try partial name match for tokens like "Jupiter" matching "Jupiter Exchange"
-          if (!walletToken) {
-            walletToken = walletTokensWithBalance.find(
-              t => t.name.toLowerCase().includes(coin.name.toLowerCase()) ||
-                   coin.name.toLowerCase().includes(t.name.toLowerCase())
-            );
+            walletToken = walletTokensByName.get(registryToken.name.toLowerCase());
           }
 
           // Resolve mint address
           const resolvedMint = resolveMintAddress(
             walletToken?.mint,
-            coin.id,
-            coin.symbol.toUpperCase()
+            registryToken.id,
+            registryToken.symbol.toUpperCase()
           );
 
-          // If we found a matching wallet token, log it
-          if (walletToken && walletToken.amount > 0) {
-            console.log('[Swap] Matched CoinGecko', coin.symbol, 'to wallet token:', walletToken.symbol, walletToken.name);
-          }
-
           return {
-            id: coin.id,
-            symbol: coin.symbol.toUpperCase(),
-            name: coin.name,
-            logo: coin.symbol.charAt(0).toUpperCase(),
-            logoUrl: coin.image,
-            price: coin.current_price,
+            id: registryToken.id,
+            symbol: registryToken.symbol.toUpperCase(),
+            name: registryToken.name,
+            logo: registryToken.symbol.charAt(0).toUpperCase(),
+            logoUrl: registryToken.image,
+            price: walletToken?.price || 0,
             balance: walletToken?.amount || 0,
             hasBalance: walletToken ? walletToken.amount > 0 : false,
-            mint: resolvedMint || walletToken?.mint,
-            network: walletToken?.network || 'solana',
+            mint: resolvedMint || registryToken.mint || walletToken?.mint,
+            network: 'solana',
           };
         });
 
@@ -334,11 +342,10 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           }
         });
 
-        // STEP 4: Add ALL wallet tokens with balance that weren't matched to CoinGecko
-        // This is the critical fix - we iterate through ALL wallet tokens with balance
+        // STEP 4: Add ALL wallet tokens with balance that weren't matched to TOKEN_REGISTRY
         console.log('[Swap] Checking for unmatched wallet tokens...');
 
-        walletTokensWithBalance.forEach((walletToken) => {
+        walletTokensWithBalance.forEach((walletToken: Token) => {
           // Check if this wallet token was already matched by mint address
           const alreadyMatched = walletToken.mint && matchedWalletMints.has(walletToken.mint);
 
@@ -393,7 +400,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         });
 
         setAllCoins(mergedCoins);
-        console.log("Loaded coins for swap:", mergedCoins.length);
+        console.log("[Swap] Loaded coins:", mergedCoins.length);
 
         // Auto-select SOL for "from" and USDC for "to" - ONLY on initial load
         if (isInitialLoad && mergedCoins.length > 0) {
@@ -431,7 +438,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           }
         }
       } catch (error) {
-        console.error("Error fetching coins:", error);
+        console.error("[Swap] Error loading coins:", error);
         toast.error("Failed to load coins");
       } finally {
         if (isInitialLoad) {
@@ -794,6 +801,15 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           }
         );
 
+        // Only Solana network tokens are supported for swap (Jupiter only supports Solana)
+        // Check both the wallet token network AND our Solana token detection
+        const isFromSolana = matchedToken?.network === 'solana' || isSolanaToken({ id: token.id, symbol: token.symbol, name: token.name, mint: token.mint });
+        if (matchedToken && !isFromSolana) {
+          toast.error(`Swapping ${token.symbol} is coming soon! Only Solana network tokens are currently supported.`);
+          setShowFromTokenSearch(false);
+          return;
+        }
+
         if (matchedToken && matchedToken.hasBalance) {
           console.log("[Swap] Found matched from token:", matchedToken.symbol, "mint:", matchedToken.mint);
 
@@ -848,6 +864,19 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         }
 
         console.log("[Swap] Resolved mint for", token.symbol, ":", resolvedMint);
+
+        // Only Solana network tokens are supported for swap (Jupiter only supports Solana)
+        // Check if this is actually a Solana-native token, not just a wrapped version
+        if (!isSolanaToken({ id: token.id, symbol: token.symbol, name: token.name, mint: resolvedMint || undefined })) {
+          toast.error(`Swapping ${token.symbol} is coming soon! Only Solana network tokens are currently supported.`);
+          return;
+        }
+
+        // Also check if no mint could be resolved
+        if (!resolvedMint) {
+          toast.error(`Swapping ${token.symbol} is coming soon! Only Solana network tokens are currently supported.`);
+          return;
+        }
 
         // Find the token in allCoins (check symbol, aliases, and id)
         const tokenSymbolUpper = token.symbol.toUpperCase();
@@ -931,10 +960,6 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           }
         }
 
-        // Show warning if no mint could be resolved
-        if (!resolvedMint) {
-          toast.warning(`${token.symbol} may not be available for swap on Jupiter`);
-        }
       } else {
         setShowToTokenSearch(false);
       }
@@ -1130,8 +1155,6 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         if (activeAccount?.isImportedSeedPhrase) {
           // Check if this imported account has an encrypted mnemonic stored
           if (activeAccount?.encryptedMnemonic) {
-            console.log("[Swap] 🔐 Active account is imported, decrypting its mnemonic...");
-
             if (!wallet.password) {
               throw new Error("Wallet password not available. Please unlock the wallet again.");
             }
@@ -1142,11 +1165,9 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             }
 
             mnemonicToUse = decryptedMnemonic;
-            console.log("[Swap] ✅ Successfully decrypted imported account mnemonic");
           } else {
             // This is an old imported account without encrypted mnemonic
             // User needs to re-import it with the new system
-            console.error("[Swap] ❌ Imported account missing encrypted mnemonic - needs re-import");
             throw new Error("This imported account needs to be re-imported. Please delete it and import again using Settings > Add Account.");
           }
         }
@@ -1159,19 +1180,6 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
 
         // Get the account index for derivation
         const accountIndexToUse = activeAccount?.accountIndex ?? 0;
-
-        // Log for debugging
-        const solToken = tokens.find(t => t.symbol === 'SOL');
-        const solBalance = solToken?.amount || 0;
-        console.log("🔄 [Swap] SOL balance:", solBalance, "| Has dest token:", hasDestToken);
-        console.log("🔄 [Swap] Using imported mnemonic:", activeAccount?.isImportedSeedPhrase ? "Yes" : "No");
-        console.log("🔄 [Swap] Account index:", accountIndexToUse);
-
-        console.log("🔄 [Swap] CLIENT-SIDE: Executing Jupiter swap...");
-        console.log(
-          "🔄 [Swap] Network mode:",
-          network.isTestnet ? "TESTNET" : "MAINNET"
-        );
 
         // Execute swap directly on client using network mode
         const result = await executeJupiterSwap({
@@ -1355,37 +1363,31 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           return; // Exit early for testnet
         }
 
-        // MAINNET MODE: Update tokens in database
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/swap-tokens`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${publicAnonKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              walletId,
-              fromTokenId: fromTokenData.id,
-              fromTokenSymbol: fromTokenData.symbol,
-              fromAmount: fromAmountNum,
-              newFromBalance,
-              toTokenId: toTokenData.id,
-              toTokenSymbol: toTokenData.symbol,
-              toAmount: toAmountNum,
-              newToBalance,
-              exchangeRate,
-              feeAmount: feeAmount,
-              feeUSD: parseFloat(estimatedFeeUSD),
-              totalDeducted: totalDeducted,
-            }),
-          }
-        );
+        // MAINNET MODE: Save swap to localStorage history
+        try {
+          const swapRecord = {
+            id: `swap_${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            fromToken: fromTokenData.symbol,
+            toToken: toTokenData.symbol,
+            fromAmount: fromAmountNum,
+            toAmount: toAmountNum,
+            exchangeRate,
+            feeAmount,
+            feeUSD: parseFloat(estimatedFeeUSD),
+          };
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("[Swap] Backend error:", errorText);
-          throw new Error("Failed to swap tokens");
+          // Save to recent swaps in localStorage
+          const key = `suprik_recent_swaps_${walletId}`;
+          const existing = localStorage.getItem(key);
+          const swaps = existing ? JSON.parse(existing) : [];
+          swaps.unshift(swapRecord);
+          // Keep only last 20 swaps
+          localStorage.setItem(key, JSON.stringify(swaps.slice(0, 20)));
+
+          console.log("[Swap] Swap saved to localStorage:", swapRecord);
+        } catch (saveError) {
+          console.error("[Swap] Error saving swap history:", saveError);
         }
 
         // Update local state

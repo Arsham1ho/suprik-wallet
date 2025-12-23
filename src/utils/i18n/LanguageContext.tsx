@@ -1,6 +1,11 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { translations, Translations } from './translations';
-import { projectId, publicAnonKey } from '../supabase/info';
+import {
+  getUserSettings,
+  saveUserSettings,
+  getExchangeRates,
+  fetchExchangeRates,
+} from '../userSettings';
 
 interface CurrencyRates {
   [key: string]: number;
@@ -22,11 +27,11 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 const RTL_LANGUAGES = ['fa', 'ar'];
 
-export function LanguageProvider({ 
-  children, 
-  walletId 
-}: { 
-  children: ReactNode; 
+export function LanguageProvider({
+  children,
+  walletId
+}: {
+  children: ReactNode;
   walletId: string | null;
 }) {
   const [language, setLanguageState] = useState('en');
@@ -34,87 +39,35 @@ export function LanguageProvider({
   const [rates, setRates] = useState<CurrencyRates>({ USD: 1 });
   const [loading, setLoading] = useState(true);
 
-  // Load user settings from backend
+  // Load user settings from localStorage (client-side, instant)
   useEffect(() => {
-    if (!walletId) {
+    try {
+      console.log('[Language] Loading settings from localStorage (client-side)...');
+      const settings = getUserSettings(walletId || undefined);
+      setLanguageState(settings.language || 'en');
+      setCurrencyState(settings.currency || 'USD');
+      console.log('[Language] ✅ Settings loaded:', settings.language, settings.currency);
+    } catch (error) {
+      console.warn('[Language] Error loading settings, using defaults');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const loadSettings = async () => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/user-settings/${walletId}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${publicAnonKey}`,
-            },
-            signal: controller.signal,
-          }
-        );
-
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const data = await response.json();
-          setLanguageState(data.language || 'en');
-          setCurrencyState(data.currency || 'USD');
-        }
-      } catch (error: any) {
-        if (error.name === 'AbortError') {
-          console.warn('[Language] ⚠️ Settings request timeout, using defaults');
-        } else {
-          console.warn('[Language] ⚠️ Error loading settings:', error.message);
-        }
-        // Continue with default settings (English, USD)
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadSettings();
   }, [walletId]);
 
-  // Load exchange rates
+  // Load exchange rates (client-side with caching)
   useEffect(() => {
     const loadRates = async () => {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-        
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/exchange-rates`,
-          {
-            headers: {
-              'Authorization': `Bearer ${publicAnonKey}`,
-            },
-            signal: controller.signal,
-          }
-        );
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.rates) {
-            setRates(data.rates);
-            console.log('[Language] ✅ Exchange rates loaded', data.fallback ? '(fallback)' : '');
-          }
-        } else {
-          console.warn('[Language] ⚠️ Exchange rates fetch failed, using default USD');
-          // Keep default USD rate
-        }
-      } catch (error: any) {
-        // Silent fail - just log to console, don't show error to user
-        if (error.name === 'AbortError') {
-          console.warn('[Language] ⚠️ Exchange rates request timeout');
-        } else {
-          console.warn('[Language] ⚠️ Exchange rates unavailable:', error.message);
-        }
-        // App will continue with USD as default currency
+        // First load cached rates instantly
+        const cachedRates = getExchangeRates();
+        setRates(cachedRates);
+
+        // Then fetch fresh rates in background
+        const freshRates = await fetchExchangeRates();
+        setRates(freshRates);
+        console.log('[Language] ✅ Exchange rates loaded (client-side)');
+      } catch (error) {
+        console.warn('[Language] Exchange rates fetch failed, using cached/fallback');
       }
     };
 
@@ -124,62 +77,26 @@ export function LanguageProvider({
     return () => clearInterval(interval);
   }, []);
 
-  const setLanguage = async (lang: string) => {
+  const setLanguage = (lang: string) => {
     setLanguageState(lang);
-    
-    if (walletId) {
-      try {
-        await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/update-settings`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${publicAnonKey}`,
-            },
-            body: JSON.stringify({ 
-              walletId, 
-              settings: { language: lang, currency } 
-            }),
-          }
-        );
-      } catch (error) {
-        console.error('Error saving language:', error);
-      }
-    }
+    // Save to localStorage (instant, no server call)
+    saveUserSettings({ language: lang }, walletId || undefined);
+    console.log('[Language] Language saved:', lang);
   };
 
-  const setCurrency = async (curr: string) => {
+  const setCurrency = (curr: string) => {
     setCurrencyState(curr);
-    
-    if (walletId) {
-      try {
-        await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/update-settings`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${publicAnonKey}`,
-            },
-            body: JSON.stringify({ 
-              walletId, 
-              settings: { language, currency: curr } 
-            }),
-          }
-        );
-      } catch (error) {
-        console.error('Error saving currency:', error);
-      }
-    }
+    // Save to localStorage (instant, no server call)
+    saveUserSettings({ currency: curr }, walletId || undefined);
+    console.log('[Language] Currency saved:', curr);
   };
 
   const convertPrice = (amount: number, fromCurrency: string = 'USD'): number => {
     if (fromCurrency === currency) return amount;
-    
+
     const fromRate = rates[fromCurrency] || 1;
     const toRate = rates[currency] || 1;
-    
+
     // Convert to USD first, then to target currency
     const usdAmount = amount / fromRate;
     return usdAmount * toRate;
@@ -187,7 +104,7 @@ export function LanguageProvider({
 
   const formatPrice = (amount: number, symbol?: string): string => {
     const convertedAmount = convertPrice(amount);
-    
+
     const currencySymbols: Record<string, string> = {
       USD: '$',
       EUR: '€',
@@ -204,10 +121,10 @@ export function LanguageProvider({
     };
 
     const currencySymbol = symbol || currencySymbols[currency] || '$';
-    
+
     // Format number based on currency
     let formattedNumber: string;
-    
+
     if (['JPY', 'KRW'].includes(currency)) {
       // No decimals for JPY and KRW
       formattedNumber = Math.round(convertedAmount).toLocaleString();

@@ -1,7 +1,9 @@
-import { projectId, publicAnonKey } from './supabase/info';
 import { fetchAllBalances, fetchTokenPrices } from './blockchain';
 import { enhanceTokens } from './tokenEnhancer';
 import { getCustomTokens, type CustomToken } from './customTokens';
+import { dedupe } from './requestDeduplication';
+import { TOKEN_BY_MINT, TOKEN_BY_SYMBOL } from './tokenRegistry';
+import { fetchCoinGeckoPrices, SYMBOL_TO_COINGECKO } from './coingecko';
 
 export interface Token {
   id: number;
@@ -89,64 +91,45 @@ const VERIFIED_TOKEN_METADATA: Record<string, TokenMetadata> = {
 
 
 /**
- * Fetch token logos from CoinGecko (with caching)
+ * Fetch token logos - CLIENT-SIDE ONLY (Phantom-like architecture)
+ * Uses pre-cached TOKEN_REGISTRY - no server calls needed
  */
 async function fetchTokenLogos(symbols: string[]): Promise<{ [key: string]: string }> {
-  try {
+  // Use dedupe to prevent duplicate calls
+  return dedupe('token_logos', async () => {
     const logoMap: { [key: string]: string } = {};
-    
-    // Try to get from cache first
-    const cached = localStorage.getItem('token_logos_cache');
-    if (cached) {
-      try {
+
+    // Get logos from pre-cached token registry (instant, no API call)
+    for (const symbol of symbols) {
+      const registryToken = TOKEN_BY_SYMBOL.get(symbol.toUpperCase());
+      if (registryToken?.image) {
+        logoMap[symbol.toUpperCase()] = registryToken.image;
+      }
+    }
+    console.log(`[TokenLoader] 🚀 Got ${Object.keys(logoMap).length} logos from token registry (client-side)`);
+
+    // Also check localStorage cache for any additional logos
+    try {
+      const cached = localStorage.getItem('token_logos_cache');
+      if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed.timestamp && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
-          console.log('[TokenLoader] Using cached token logos');
-          return parsed.data;
-        }
-      } catch (e) {
-        console.error('Error parsing cache:', e);
-      }
-    }
-    
-    console.log('[TokenLoader] Fetching token logos from CoinGecko...');
-    
-    // Fetch first page of coins (top 500)
-    const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=1&per_page=500`,
-      {
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`
+          // Merge cached logos (registry takes priority)
+          return { ...parsed.data, ...logoMap };
         }
       }
-    );
-    
-    if (response.ok) {
-      const coins = await response.json();
-      
-      // Map symbols to logos
-      coins.forEach((coin: any) => {
-        const symbol = coin.symbol.toUpperCase();
-        if (coin.image) {
-          logoMap[symbol] = coin.image;
-        }
-      });
-      
-      // Cache the logos
-      localStorage.setItem('token_logos_cache', JSON.stringify({
-        data: logoMap,
-        timestamp: Date.now()
-      }));
-      
-      console.log('[TokenLoader] ✅ Token logos fetched and cached');
-      return logoMap;
+    } catch (e) {
+      // Ignore cache errors
     }
-    
-    return {};
-  } catch (error) {
-    console.error('[TokenLoader] Error fetching token logos:', error);
-    return {};
-  }
+
+    // Cache the registry logos for faster subsequent loads
+    localStorage.setItem('token_logos_cache', JSON.stringify({
+      data: logoMap,
+      timestamp: Date.now()
+    }));
+
+    return logoMap;
+  }, { cacheTTL: 60000 }); // Cache for 1 minute
 }
 
 /**
@@ -188,11 +171,48 @@ export async function loadAllTokens(
     ];
     const uniqueSymbols = Array.from(new Set(allSymbols.filter(s => s)));
     
-    // Fetch prices (with error handling)
+    // Fetch prices AND 24h changes from CoinGecko (primary source)
     let prices: Record<string, number> = {};
+    let changes24h: Record<string, number> = {};
+
     try {
-      prices = await fetchTokenPrices(uniqueSymbols);
-      console.log('[TokenLoader] ✅ Fetched prices for', Object.keys(prices).length, 'symbols');
+      // Build list of CoinGecko IDs for batch price fetch
+      const coinGeckoIds: string[] = [];
+      const symbolToId: Record<string, string> = {};
+
+      for (const symbol of uniqueSymbols) {
+        const cgId = SYMBOL_TO_COINGECKO[symbol.toUpperCase()];
+        if (cgId && !coinGeckoIds.includes(cgId)) {
+          coinGeckoIds.push(cgId);
+          symbolToId[symbol.toUpperCase()] = cgId;
+        }
+      }
+
+      if (coinGeckoIds.length > 0) {
+        console.log('[TokenLoader] 🔥 Fetching prices from CoinGecko for', coinGeckoIds.length, 'tokens...');
+        const cgPrices = await fetchCoinGeckoPrices(coinGeckoIds);
+
+        // Map CoinGecko data back to symbols
+        for (const [symbol, cgId] of Object.entries(symbolToId)) {
+          const priceData = cgPrices[cgId];
+          if (priceData) {
+            prices[symbol] = priceData.price;
+            changes24h[symbol] = priceData.change24h;
+          }
+        }
+
+        console.log('[TokenLoader] ✅ CoinGecko prices fetched:', Object.keys(prices).length, 'tokens');
+      }
+
+      // Fallback to fetchTokenPrices for any missing symbols
+      const missingSymbols = uniqueSymbols.filter(s => !prices[s.toUpperCase()]);
+      if (missingSymbols.length > 0) {
+        console.log('[TokenLoader] Fetching remaining', missingSymbols.length, 'prices via fallback...');
+        const fallbackPrices = await fetchTokenPrices(missingSymbols);
+        prices = { ...prices, ...fallbackPrices };
+      }
+
+      console.log('[TokenLoader] ✅ Total prices fetched:', Object.keys(prices).length, 'symbols');
     } catch (error) {
       console.warn('[TokenLoader] ⚠️ Using cached prices (API temporarily unavailable)');
       // Fallback prices
@@ -239,6 +259,7 @@ export async function loadAllTokens(
       const solAmount = Number(balances.solana.native) || 0;
       const solPrice = Number(prices['SOL']) || 0;
       const solValue = solAmount * solPrice;
+      const solChange = Number(changes24h['SOL']) || 0;
 
       tokens.push({
         id: tokens.length + 1,
@@ -248,7 +269,7 @@ export async function loadAllTokens(
         amount: solAmount,
         value: isNaN(solValue) ? 0 : solValue,
         price: isNaN(solPrice) ? 0 : solPrice,
-        change: 0,
+        change: isNaN(solChange) ? 0 : solChange,
         logo: '◎',
         logoUrl: 'https://cryptologos.cc/logos/solana-sol-logo.png',
         color: 'from-purple-500 to-purple-600',
@@ -272,10 +293,12 @@ export async function loadAllTokens(
         if (token.amount > 0 || !isTestnet) {
           // 🔍 Check for verified metadata FIRST (highest priority for unknown tokens)
           const verifiedMeta = token.mint ? VERIFIED_TOKEN_METADATA[token.mint] : null;
+          // Also check token registry (pre-cached data like Phantom)
+          const registryMeta = token.mint ? TOKEN_BY_MINT.get(token.mint) : null;
 
-          // Use verified metadata if available, otherwise fall back to blockchain data
-          let finalSymbol = verifiedMeta?.symbol || token.symbol || 'UNKNOWN';
-          let finalName = verifiedMeta?.name || token.name || finalSymbol || 'Unknown Token';
+          // Use verified metadata if available, then registry, then fall back to blockchain data
+          let finalSymbol = verifiedMeta?.symbol || registryMeta?.symbol || token.symbol || 'UNKNOWN';
+          let finalName = verifiedMeta?.name || registryMeta?.name || token.name || finalSymbol || 'Unknown Token';
 
           console.log(`[TokenLoader] ✅ Adding token #${idx + 1}:`, {
             symbol: finalSymbol,
@@ -295,6 +318,11 @@ export async function loadAllTokens(
 
           // Start with verified metadata logo (HIGHEST PRIORITY)
           let tokenLogoUrl = verifiedMeta?.logo || '';
+
+          // Then try token registry (pre-cached like Phantom)
+          if (!tokenLogoUrl && registryMeta?.image) {
+            tokenLogoUrl = registryMeta.image;
+          }
 
           // Then try verified logos by symbol
           if (!tokenLogoUrl) {
@@ -348,6 +376,9 @@ export async function loadAllTokens(
           const tokenAmount = Number(token.amount) || 0;
           const tokenValue = tokenAmount * tokenPrice;
 
+          // Get 24h change - priority: CoinGecko > Enhanced data (DexScreener)
+          const tokenChange = Number(changes24h[finalSymbol]) || Number(enhancedToken?.change24h) || 0;
+
           tokens.push({
             id: tokens.length + 1,
             mint: token.mint || finalSymbol.toLowerCase(),
@@ -356,7 +387,7 @@ export async function loadAllTokens(
             amount: tokenAmount,
             value: isNaN(tokenValue) ? 0 : tokenValue,
             price: isNaN(tokenPrice) ? 0 : tokenPrice,
-            change: Number(enhancedToken?.change24h) || 0,
+            change: isNaN(tokenChange) ? 0 : tokenChange,
             logo: finalSymbol.charAt(0) || '?',
             logoUrl: tokenLogoUrl,
             color: 'from-cyan-500 to-blue-600',
@@ -378,14 +409,14 @@ export async function loadAllTokens(
         amount: balances.bitcoin.native,
         value: balances.bitcoin.native * (prices['BTC'] || 0),
         price: prices['BTC'] || 0,
-        change: 0,
+        change: changes24h['BTC'] || 0,
         logo: '₿',
         logoUrl: 'https://cryptologos.cc/logos/bitcoin-btc-logo.png',
         color: 'from-orange-400 to-orange-500',
         network: 'bitcoin'
       });
     }
-    
+
     // ETH - show if has balance OR in mainnet mode
     if (balances.ethereum.native > 0 || !isTestnet) {
       tokens.push({
@@ -396,7 +427,7 @@ export async function loadAllTokens(
         amount: balances.ethereum.native,
         value: balances.ethereum.native * (prices['ETH'] || 0),
         price: prices['ETH'] || 0,
-        change: 0,
+        change: changes24h['ETH'] || 0,
         logo: 'Ξ',
         logoUrl: 'https://cryptologos.cc/logos/ethereum-eth-logo.png',
         color: 'from-slate-400 to-slate-500',
@@ -416,7 +447,7 @@ export async function loadAllTokens(
             amount: token.amount || 0,
             value: (token.amount || 0) * (prices[token.symbol] || 0),
             price: prices[token.symbol] || 0,
-            change: 0,
+            change: changes24h[token.symbol] || 0,
             logo: token.symbol?.charAt(0) || '?',
             logoUrl: logos[token.symbol] || '',
             color: 'from-blue-500 to-blue-600',
@@ -457,7 +488,7 @@ export async function loadAllTokens(
             amount: token.amount || 0,
             value: (token.amount || 0) * (prices[token.symbol] || 0),
             price: prices[token.symbol] || 0,
-            change: 0,
+            change: changes24h[token.symbol] || 0,
             logo: token.symbol?.charAt(0) || '?',
             logoUrl: logos[token.symbol] || '',
             color: 'from-blue-400 to-cyan-500',
@@ -478,7 +509,7 @@ export async function loadAllTokens(
         amount: balances.polygon.native,
         value: balances.polygon.native * (prices['MATIC'] || 0),
         price: prices['MATIC'] || 0,
-        change: 0,
+        change: changes24h['MATIC'] || 0,
         logo: '⬡',
         logoUrl: 'https://cryptologos.cc/logos/polygon-matic-logo.png',
         color: 'from-purple-400 to-purple-500',
@@ -498,7 +529,7 @@ export async function loadAllTokens(
             amount: token.amount || 0,
             value: (token.amount || 0) * (prices[token.symbol] || 0),
             price: prices[token.symbol] || 0,
-            change: 0,
+            change: changes24h[token.symbol] || 0,
             logo: token.symbol?.charAt(0) || '?',
             logoUrl: logos[token.symbol] || '',
             color: 'from-purple-400 to-pink-500',
@@ -530,7 +561,7 @@ export async function loadAllTokens(
             amount: 0,
             value: 0,
             price: prices[customToken.symbol] || 0,
-            change: 0,
+            change: changes24h[customToken.symbol] || 0,
             logo: customToken.symbol.charAt(0),
             logoUrl: customToken.image,
             color: 'from-purple-500 to-pink-500',

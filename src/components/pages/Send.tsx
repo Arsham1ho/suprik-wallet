@@ -6,7 +6,7 @@ import { Label } from '../ui/label';
 import { ChevronLeft, Send as SendIcon, Check, AlertCircle, Loader2, Search, X, Camera } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
+import { getUserSettings } from '../../utils/userSettings';
 import { PublicKey } from '@solana/web3.js';
 import { ethers } from 'ethers';
 import { BiometricConfirmDialog } from '../BiometricConfirmDialog';
@@ -20,11 +20,10 @@ import {
   sendEthereumTransaction,
   sendSPLTokenTransaction,
   sendERC20TokenTransaction,
-  estimateSolanaFee,
-  estimateEthereumFee
 } from '../../utils/transactions';
 import { AccountManager } from '../../utils/accountManager';
 import { decryptWithPassword } from '../../utils/wallet';
+import { TOKEN_REGISTRY } from '../../utils/tokenRegistry';
 import cosmicBackground from 'figma:asset/4c2d67025139ca6ca7ae0065c97386bd40e32baa.png';
 
 interface Token {
@@ -49,14 +48,6 @@ interface SendProps {
   onSendComplete?: () => void;
 }
 
-interface CoinGeckoToken {
-  id: string;
-  symbol: string;
-  name: string;
-  image: string;
-  current_price: number;
-  price_change_percentage_24h: number;
-}
 
 interface SendToken {
   id: string;
@@ -160,18 +151,19 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
     };
   }, []);
 
-  const loadBiometricSettings = async () => {
+  const loadBiometricSettings = () => {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/user-settings/${walletId}`,
-        {
-          headers: { 'Authorization': `Bearer ${publicAnonKey}` },
-        }
-      );
+      // Load from localStorage (instant, no server call)
+      const settings = getUserSettings(walletId);
 
-      if (response.ok) {
-        const settings = await response.json();
-        setBiometricSettings(settings.biometric || null);
+      if (settings.biometricEnabled) {
+        setBiometricSettings({
+          enabled: true,
+          autoLockMinutes: settings.autoLockMinutes || 5,
+          requireForTransactions: true,
+        });
+      } else {
+        setBiometricSettings(null);
       }
     } catch (error) {
       console.error('[Send] Error loading biometric settings:', error);
@@ -181,37 +173,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
   const fetchAllCoins = async () => {
     try {
       setLoading(true);
-      console.log('[Send] Fetching coins for send...');
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=1&per_page=100`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
-          }
-        }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Send] Fetch error:', response.status, errorText);
-        
-        // Fallback to user tokens only
-        if (response.status === 429 || errorText.includes('429')) {
-          toast.error('Rate limit reached. Showing your tokens only...');
-          setAllCoins(tokens.map(t => ({ ...t, id: t.symbol.toLowerCase(), hasBalance: true })));
-          return;
-        }
-        throw new Error('Failed to fetch coins');
-      }
-
-      const coinGeckoData: CoinGeckoToken[] = await response.json();
-      
-      // Handle error response
-      if (coinGeckoData && (coinGeckoData as any).error) {
-        console.error('[Send] API returned error:', (coinGeckoData as any).error);
-        throw new Error((coinGeckoData as any).error);
-      }
+      console.log('[Send] Loading coins from TOKEN_REGISTRY (client-side)...');
 
       // STEP 1: Get all wallet tokens with balance
       const walletTokensWithBalance = tokens.filter(t => t.amount > 0);
@@ -235,17 +197,16 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
         }
       });
 
-      // STEP 2: Merge CoinGecko data with wallet tokens
+      // STEP 2: Merge TOKEN_REGISTRY with wallet tokens
       const mergedCoins: SendToken[] = [];
       const seenSymbols = new Set<string>();
       const matchedWalletMints = new Set<string>();
 
-      coinGeckoData.forEach(coin => {
-        const symbolUpper = coin.symbol.toUpperCase();
+      TOKEN_REGISTRY.forEach(registryToken => {
+        const symbolUpper = registryToken.symbol.toUpperCase();
 
         // Skip duplicates - only add first occurrence of each symbol
         if (seenSymbols.has(symbolUpper)) {
-          console.log(`[Send] ⏭️ Skipping duplicate: ${symbolUpper}`);
           return;
         }
         seenSymbols.add(symbolUpper);
@@ -255,15 +216,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
 
         // Try name match
         if (!walletToken) {
-          walletToken = walletTokensByName.get(coin.name.toLowerCase());
-        }
-
-        // Try partial name match
-        if (!walletToken) {
-          walletToken = walletTokensWithBalance.find(t =>
-            t.name.toLowerCase().includes(coin.name.toLowerCase()) ||
-            coin.name.toLowerCase().includes(t.name.toLowerCase())
-          );
+          walletToken = walletTokensByName.get(registryToken.name.toLowerCase());
         }
 
         // Track matched wallet tokens
@@ -272,23 +225,23 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
         }
 
         mergedCoins.push({
-          id: coin.id,
-          mint: walletToken?.mint || '',
+          id: registryToken.id,
+          mint: walletToken?.mint || registryToken.mint || '',
           symbol: symbolUpper,
-          name: coin.name,
+          name: registryToken.name,
           amount: walletToken?.amount || 0,
           value: walletToken?.value || 0,
-          price: coin.current_price,
-          change: coin.price_change_percentage_24h,
+          price: walletToken?.price || 0,
+          change: walletToken?.change || 0,
           logo: symbolUpper.charAt(0),
           color: walletToken?.color || 'from-purple-600 to-purple-400',
-          logoUrl: coin.image,
-          network: walletToken?.network || 'solana',
+          logoUrl: registryToken.image,
+          network: 'solana',
           hasBalance: walletToken ? walletToken.amount > 0 : false
         });
       });
 
-      // STEP 3: Add wallet tokens that weren't matched to CoinGecko
+      // STEP 3: Add wallet tokens that weren't matched to TOKEN_REGISTRY
       walletTokensWithBalance.forEach(walletToken => {
         const alreadyMatched = walletToken.mint && matchedWalletMints.has(walletToken.mint);
 
@@ -342,12 +295,12 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
 
       setAllCoins(mergedCoins);
       console.log('[Send] Loaded coins:', mergedCoins.length);
-      
+
     } catch (error) {
-      console.error('[Send] Error fetching coins:', error);
+      console.error('[Send] Error loading coins:', error);
       // Fallback to user tokens only
       setAllCoins(tokens.map(t => ({ ...t, id: t.symbol.toLowerCase(), hasBalance: true })));
-      toast.error('Failed to load all coins. Showing your tokens only.');
+      toast.error('Failed to load coins. Showing your tokens only.');
     } finally {
       setLoading(false);
     }
@@ -513,9 +466,9 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
       return;
     }
 
-    // Check if network is supported
+    // Only Solana network tokens are supported for now - other networks are "Coming Soon"
     if (token.network !== 'solana') {
-      toast.error(`Sending ${token.symbol} is not yet supported. Only Solana network tokens are currently supported.`);
+      toast.error(`Sending ${token.symbol} is coming soon! Only Solana network tokens are currently supported.`);
       return;
     }
 
@@ -727,8 +680,6 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
       if (activeAccount?.isImportedSeedPhrase) {
         // Check if this imported account has an encrypted mnemonic stored
         if (activeAccount?.encryptedMnemonic) {
-          console.log('[Send] 🔐 Active account is imported, decrypting its mnemonic...');
-
           // We need the password to decrypt - get it from wallet context
           if (!wallet.password) {
             toast.error('Wallet password not available. Please unlock the wallet again.');
@@ -746,11 +697,9 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
           }
 
           mnemonicToUse = decryptedMnemonic;
-          console.log('[Send] ✅ Successfully decrypted imported account mnemonic');
         } else {
           // This is an old imported account without encrypted mnemonic
           // User needs to re-import it with the new system
-          console.error('[Send] ❌ Imported account missing encrypted mnemonic - needs re-import');
           toast.error('This imported account needs to be re-imported. Please delete it and import again using Settings > Add Account.');
           setSending(false);
           setTransactionStatus('idle');
@@ -762,20 +711,10 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
       // For imported accounts, use their stored accountIndex
       const accountIndexToUse = activeAccount?.accountIndex ?? 0;
 
-      console.log('[Send] 🚀 Starting CLIENT-SIDE transaction');
-      console.log('[Send] Token:', selectedToken!.symbol);
-      console.log('[Send] Network:', selectedToken!.network);
-      console.log('[Send] To:', address);
-      console.log('[Send] Amount:', parseFloat(amount));
-      console.log('[Send] Is Testnet:', network.isTestnet);
-      console.log('[Send] Using imported mnemonic:', activeAccount?.isImportedSeedPhrase ? 'Yes' : 'No');
-      console.log('[Send] Account index:', accountIndexToUse);
-
       let result;
 
       // Native token transfers
       if (selectedToken!.symbol === 'SOL') {
-        console.log('[Send] 💎 Sending native SOL');
         // Send SOL
         result = await sendSolanaTransaction({
           mnemonic: mnemonicToUse,
@@ -785,7 +724,6 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
           isTestnet: network.isTestnet, // Pass testnet mode
         });
       } else if (selectedToken!.symbol === 'ETH') {
-        console.log('[Send] 💎 Sending native ETH');
         // Send ETH
         result = await sendEthereumTransaction({
           mnemonic: mnemonicToUse,
@@ -797,8 +735,6 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
       }
       // SPL tokens
       else if (selectedToken!.network === 'solana') {
-        console.log('[Send] 🪙 Sending SPL token');
-        console.log('[Send] Token mint:', selectedToken!.mint);
 
         // Check if we have a valid mint address (needed for mainnet)
         if (!network.isTestnet && !selectedToken!.mint) {

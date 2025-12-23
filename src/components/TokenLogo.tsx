@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface Token {
   logoUrl?: string;
@@ -25,142 +24,268 @@ interface TokenLogoProps {
 // Parabolic AI token symbols
 const PARABOLIC_TOKENS = ['PARAI', 'PAI', 'PARAB'];
 
+// In-memory cache for Jupiter token logos (persists during session)
+const jupiterLogoCache: Record<string, string> = {};
+const failedLogos = new Set<string>(); // Track logos that failed to load
+
 // Token logo mapping - Direct CDN URLs for major tokens
 const TOKEN_LOGO_MAP: Record<string, string> = {
+  // Major coins
   'SOL': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
   'USDC': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png',
   'USDT': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png',
   'ETH': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png',
   'BTC': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/bitcoin/info/logo.png',
   'BNB': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/binance/info/logo.png',
-  'BONK': 'https://arweave.net/hQiPZOsRZXGXBJd_82PhVdlM_hACsT_q6wqwf5cSY7I',
-  'WIF': 'https://bafkreibk3covs5ltyqxa272uodhculbr6kea6betidfwy3ajsav2vjzyum.ipfs.nftstorage.link',
+  'MATIC': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/polygon/info/logo.png',
+
+  // Solana DeFi tokens
   'JUP': 'https://static.jup.ag/jup/icon.png',
   'RAY': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R/logo.png',
-  'MATIC': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/polygon/info/logo.png',
+  'JTO': 'https://assets.coingecko.com/coins/images/33228/large/jto.png',
+  'PYTH': 'https://assets.coingecko.com/coins/images/31924/large/pyth.png',
+  'RENDER': 'https://assets.coingecko.com/coins/images/11636/large/rndr.png',
+  'HNT': 'https://assets.coingecko.com/coins/images/4284/large/Helium_HNT.png',
+  'ORCA': 'https://assets.coingecko.com/coins/images/17547/large/Orca_Logo.png',
+  'MSOL': 'https://assets.coingecko.com/coins/images/17752/large/mSOL.png',
+  'JITOSOL': 'https://assets.coingecko.com/coins/images/28046/large/JitoSOL-200.png',
+
+  // Meme coins - Solana
+  'BONK': 'https://arweave.net/hQiPZOsRZXGXBJd_82PhVdlM_hACsT_q6wqwf5cSY7I',
+  'WIF': 'https://bafkreibk3covs5ltyqxa272uodhculbr6kea6betidfwy3ajsav2vjzyum.ipfs.nftstorage.link',
+  'POPCAT': 'https://assets.coingecko.com/coins/images/35824/large/popcat.jpg',
+  'MEW': 'https://assets.coingecko.com/coins/images/36436/large/mew.png',
+  'BOME': 'https://assets.coingecko.com/coins/images/36071/large/bome.jpg',
+  'W': 'https://assets.coingecko.com/coins/images/35087/large/wormhole_logo_full_color_rgb_2k.png',
+  'TRUMP': 'https://assets.coingecko.com/coins/images/53746/large/official_trump.jpg',
+  'FARTCOIN': 'https://assets.coingecko.com/coins/images/52517/large/Fartcoin.png',
+  'AI16Z': 'https://assets.coingecko.com/coins/images/52350/large/ai16z.jpg',
+  'PENGU': 'https://assets.coingecko.com/coins/images/52563/large/pudgy.jpg',
+  'PNUT': 'https://assets.coingecko.com/coins/images/51632/large/pnut.png',
+  'GOAT': 'https://assets.coingecko.com/coins/images/51418/large/goatseus_maximus.jpg',
+  'GIGA': 'https://assets.coingecko.com/coins/images/37620/large/Giga.png',
+  'MOODENG': 'https://assets.coingecko.com/coins/images/50305/large/moo_deng.png',
+  'CHILLGUY': 'https://assets.coingecko.com/coins/images/51761/large/chillguy.png',
+  'SPX': 'https://assets.coingecko.com/coins/images/31401/large/spx6900.jpg',
+  'GRASS': 'https://assets.coingecko.com/coins/images/40143/large/grass.jpg',
+  'BRETT': 'https://assets.coingecko.com/coins/images/35529/large/brett.jpg',
+
+  // Other L1/L2 tokens
+  'APT': 'https://assets.coingecko.com/coins/images/26455/large/aptos_round.png',
+  'SUI': 'https://assets.coingecko.com/coins/images/26375/large/sui-ocean-square.png',
+  'SEI': 'https://assets.coingecko.com/coins/images/28205/large/Sei_Logo_-_Transparent.png',
+  'TIA': 'https://assets.coingecko.com/coins/images/31967/large/tia.jpg',
+  'INJ': 'https://assets.coingecko.com/coins/images/12882/large/Secondary_Symbol.png',
+  'FTM': 'https://assets.coingecko.com/coins/images/4001/large/Fantom_round.png',
+  'AVAX': 'https://assets.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png',
+  'NEAR': 'https://assets.coingecko.com/coins/images/10365/large/near.jpg',
+  'ATOM': 'https://assets.coingecko.com/coins/images/1481/large/cosmos_hub.png',
+  'DOT': 'https://assets.coingecko.com/coins/images/12171/large/polkadot.png',
+  'LINK': 'https://assets.coingecko.com/coins/images/877/large/chainlink-new-logo.png',
+  'UNI': 'https://assets.coingecko.com/coins/images/12504/large/uni.jpg',
+  'AAVE': 'https://assets.coingecko.com/coins/images/12645/large/aave-token-round.png',
+  'ARB': 'https://assets.coingecko.com/coins/images/16547/large/arb.jpg',
+  'OP': 'https://assets.coingecko.com/coins/images/25244/large/Optimism.png',
+  'PEPE': 'https://assets.coingecko.com/coins/images/29850/large/pepe-token.jpeg',
+  'SHIB': 'https://assets.coingecko.com/coins/images/11939/large/shiba.png',
+  'DOGE': 'https://assets.coingecko.com/coins/images/5/large/dogecoin.png',
+  'XRP': 'https://assets.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png',
+  'ADA': 'https://assets.coingecko.com/coins/images/975/large/cardano.png',
+  'TRX': 'https://assets.coingecko.com/coins/images/1094/large/tron-logo.png',
+  'LTC': 'https://assets.coingecko.com/coins/images/2/large/litecoin.png',
+
   // Parabolic AI tokens
   'PAI': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
   'PARAB': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
   'PARAI': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
-  // Generic token placeholder - uses Solana token icon
-  'TOKEN': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
 };
 
-// Fallback logo sources - Multiple CDNs for maximum coverage
-const FALLBACK_SOURCES = {
-  // CryptoLogos.cc - High quality crypto logos
-  cryptoLogos: (symbol: string) => `https://cryptologos.cc/logos/${symbol.toLowerCase()}-${symbol.toLowerCase()}-logo.png`,
-  
-  // CoinGecko CDN - Large image (higher quality)
-  coinGeckoLarge: (id: string) => `https://assets.coingecko.com/coins/images/${id}/large/${id}.png`,
-  
-  // CoinGecko CDN - Small image (faster loading)
-  coinGeckoSmall: (id: string) => `https://assets.coingecko.com/coins/images/${id}/small/${id}.png`,
-  
-  // Alternative: Coin icon from common CDN
-  cryptoCompare: (symbol: string) => `https://www.cryptocompare.com/media/37746251/${symbol.toLowerCase()}.png`,
-  
-  // Trust Wallet Assets (very comprehensive)
-  trustWallet: (symbol: string) => `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/logo.png`,
-  
-  // Solana Token List (for SPL tokens)
-  solanaTokenList: (mint: string) => `https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/${mint}/logo.png`,
+// Generate a consistent color based on symbol for fallback
+const getSymbolColor = (symbol: string): string => {
+  const colors = [
+    'from-purple-500 to-pink-500',
+    'from-blue-500 to-cyan-500',
+    'from-green-500 to-emerald-500',
+    'from-orange-500 to-amber-500',
+    'from-red-500 to-rose-500',
+    'from-indigo-500 to-violet-500',
+    'from-teal-500 to-cyan-500',
+    'from-fuchsia-500 to-pink-500',
+  ];
+
+  // Create a simple hash from the symbol
+  let hash = 0;
+  for (let i = 0; i < symbol.length; i++) {
+    hash = symbol.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  return colors[Math.abs(hash) % colors.length];
 };
+
+// Fetch logo from Jupiter API for any Solana token
+async function fetchJupiterLogo(mint: string): Promise<string | null> {
+  // Check cache first
+  if (jupiterLogoCache[mint]) {
+    return jupiterLogoCache[mint];
+  }
+
+  // Don't retry if we already know it failed
+  if (failedLogos.has(mint)) {
+    return null;
+  }
+
+  try {
+    // Jupiter Token API - works for ANY Solana token
+    const response = await fetch(`https://token.jup.ag/strict`, {
+      headers: { 'Accept': 'application/json' }
+    });
+
+    if (response.ok) {
+      const tokens = await response.json();
+      // Cache all tokens for future use
+      tokens.forEach((token: any) => {
+        if (token.address && token.logoURI) {
+          jupiterLogoCache[token.address] = token.logoURI;
+        }
+      });
+
+      if (jupiterLogoCache[mint]) {
+        return jupiterLogoCache[mint];
+      }
+    }
+
+    // Try single token lookup as fallback
+    const singleResponse = await fetch(`https://token.jup.ag/all`);
+    if (singleResponse.ok) {
+      const allTokens = await singleResponse.json();
+      const token = allTokens.find((t: any) => t.address === mint);
+      if (token?.logoURI) {
+        jupiterLogoCache[mint] = token.logoURI;
+        return token.logoURI;
+      }
+    }
+  } catch (error) {
+    console.warn(`[TokenLogo] Jupiter API error for ${mint}:`, error);
+  }
+
+  failedLogos.add(mint);
+  return null;
+}
 
 export function TokenLogo({ logoUrl, logo, name, color, symbol, size = 'md', token, coinGeckoId, mint }: TokenLogoProps) {
   const [imageError, setImageError] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [dynamicLogoUrl, setDynamicLogoUrl] = useState<string | null>(null);
-  
+  const [jupiterLogo, setJupiterLogo] = useState<string | null>(null);
+  const [isLoadingJupiter, setIsLoadingJupiter] = useState(false);
+  const fetchedRef = useRef(false);
+
   // If token object is provided, use its properties
   const actualSymbol = symbol || token?.symbol;
   const providedLogoUrl = logoUrl || token?.logoUrl;
-  const actualCoinGeckoId = coinGeckoId || token?.coinGeckoId;
   const actualMint = mint || (token as any)?.mint;
-  
+
   const actualLogo = logo || token?.logo || (actualSymbol ? actualSymbol.charAt(0).toUpperCase() : '?');
   const actualName = name || token?.name || 'Token';
-  const actualColor = color || token?.color || 'from-purple-600 to-purple-500';
-  
+  const actualColor = color || token?.color || (actualSymbol ? getSymbolColor(actualSymbol) : 'from-purple-600 to-purple-500');
+
   // Build fallback image chain with multiple CDNs
   const imageSources: string[] = [];
-  
+
   // SPECIAL CASE: Parabolic AI tokens - Always use official logo first
   if (actualSymbol && PARABOLIC_TOKENS.includes(actualSymbol.toUpperCase())) {
     imageSources.push('https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png');
   }
-  
-  // 1. PRIMARY: Use provided logoUrl (from CoinGecko API - this is already the full URL)
-  if (providedLogoUrl) {
+
+  // 1. PRIMARY: Use provided logoUrl (from CoinGecko API or registry)
+  if (providedLogoUrl && providedLogoUrl.length > 0) {
     imageSources.push(providedLogoUrl);
   }
-  
-  // 2. SECONDARY: Check if token has a direct logo mapping
+
+  // 2. SECONDARY: Check if token has a direct logo mapping by symbol
   if (actualSymbol && TOKEN_LOGO_MAP[actualSymbol.toUpperCase()]) {
-    imageSources.push(TOKEN_LOGO_MAP[actualSymbol.toUpperCase()]);
-  }
-  
-  // 3. Solana Token List - For SPL tokens with mint address
-  if (actualMint && actualMint !== 'solana' && actualMint !== 'ethereum' && actualMint !== 'bitcoin') {
-    imageSources.push(FALLBACK_SOURCES.solanaTokenList(actualMint));
-  }
-  
-  // 4. CryptoLogos.cc - Very reliable for major coins
-  if (actualSymbol) {
-    const majorTokens = [
-      'BTC', 'ETH', 'SOL', 'USDC', 'USDT', 'BNB', 'XRP', 'ADA', 'DOGE', 
-      'MATIC', 'DOT', 'LINK', 'UNI', 'ATOM', 'LTC', 'AVAX', 'SHIB', 
-      'BCH', 'NEAR', 'FTM', 'ALGO', 'VET', 'ICP', 'FIL', 'APT', 'ARB',
-      'OP', 'MKR', 'AAVE', 'SNX', 'CRV', 'COMP', 'SUSHI', 'YFI',
-      'BONK', 'WIF', 'PEPE', 'FLOKI', 'SAND', 'MANA', 'AXS', 'GALA',
-      'TRX', 'DOGE', 'WBTC', 'WETH', 'WBT', 'HYPE', 'BCH'
-    ];
-    if (majorTokens.includes(actualSymbol.toUpperCase())) {
-      imageSources.push(FALLBACK_SOURCES.cryptoLogos(actualSymbol));
+    const mappedUrl = TOKEN_LOGO_MAP[actualSymbol.toUpperCase()];
+    if (!imageSources.includes(mappedUrl)) {
+      imageSources.push(mappedUrl);
     }
   }
-  
-  // 5. CryptoCompare - Another fallback
-  if (actualSymbol) {
-    imageSources.push(FALLBACK_SOURCES.cryptoCompare(actualSymbol));
+
+  // 3. Jupiter cached logo (fetched dynamically)
+  if (jupiterLogo && !imageSources.includes(jupiterLogo)) {
+    imageSources.push(jupiterLogo);
   }
-  
+
+  // 4. Solana Token List - For SPL tokens with mint address
+  if (actualMint && actualMint.length > 30 && !['solana', 'ethereum', 'bitcoin', 'polygon'].includes(actualMint)) {
+    const solanaUrl = `https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/${actualMint}/logo.png`;
+    if (!imageSources.includes(solanaUrl)) {
+      imageSources.push(solanaUrl);
+    }
+  }
+
+  // 5. CoinGecko by ID if available
+  if (coinGeckoId) {
+    imageSources.push(`https://assets.coingecko.com/coins/images/${coinGeckoId}/large/${coinGeckoId}.png`);
+  }
+
+  // 6. CryptoCompare as last resort
+  if (actualSymbol) {
+    imageSources.push(`https://www.cryptocompare.com/media/37746251/${actualSymbol.toLowerCase()}.png`);
+  }
+
   const sizeClasses = {
-    sm: 'w-8 h-8 text-base',
-    md: 'w-10 h-10 text-lg',
-    lg: 'w-16 h-16 text-2xl',
-    xl: 'w-24 h-24 text-4xl'
+    sm: 'w-8 h-8 text-sm',
+    md: 'w-10 h-10 text-base',
+    lg: 'w-16 h-16 text-xl',
+    xl: 'w-24 h-24 text-3xl'
   };
-  
-  const symbolUpper = actualSymbol?.toUpperCase();
-  
-  // Reset image error when logoUrl changes
+
+  // Fetch Jupiter logo for unknown tokens with mint address
+  useEffect(() => {
+    if (fetchedRef.current) return;
+
+    // Only fetch if we have a mint address and no good logo sources
+    const hasGoodSource = providedLogoUrl || (actualSymbol && TOKEN_LOGO_MAP[actualSymbol.toUpperCase()]);
+
+    if (actualMint && actualMint.length > 30 && !hasGoodSource && !jupiterLogoCache[actualMint]) {
+      fetchedRef.current = true;
+      setIsLoadingJupiter(true);
+
+      fetchJupiterLogo(actualMint).then(logo => {
+        if (logo) {
+          setJupiterLogo(logo);
+        }
+        setIsLoadingJupiter(false);
+      });
+    } else if (actualMint && jupiterLogoCache[actualMint]) {
+      setJupiterLogo(jupiterLogoCache[actualMint]);
+    }
+  }, [actualMint, providedLogoUrl, actualSymbol]);
+
+  // Reset image error when props change
   useEffect(() => {
     setImageError(false);
     setCurrentImageIndex(0);
-  }, [providedLogoUrl, actualSymbol]);
-  
+  }, [providedLogoUrl, actualSymbol, jupiterLogo]);
+
   // Handle image error - try next fallback
   const handleImageError = () => {
     if (currentImageIndex < imageSources.length - 1) {
-      console.log(`[TokenLogo] Image failed for ${actualSymbol} at URL: ${imageSources[currentImageIndex]}, trying fallback ${currentImageIndex + 1}`);
       setCurrentImageIndex(currentImageIndex + 1);
     } else {
-      console.log(`[TokenLogo] All images failed for ${actualSymbol}. Tried ${imageSources.length} sources:`, imageSources);
       setImageError(true);
     }
   };
-  
+
   // Render logo content
   let logoContent: React.ReactNode;
-  
+
   if (imageSources.length > 0 && !imageError && currentImageIndex < imageSources.length) {
     // Use image from sources with fallback chain
     const currentSource = imageSources[currentImageIndex];
-    
+
     logoContent = (
-      <img 
-        key={`${actualSymbol}-${currentImageIndex}`}
+      <img
+        key={`${actualSymbol}-${currentImageIndex}-${currentSource}`}
         src={currentSource}
         alt={actualName}
         className="w-full h-full object-cover"
@@ -169,27 +294,27 @@ export function TokenLogo({ logoUrl, logo, name, color, symbol, size = 'md', tok
       />
     );
   } else {
-    // Fallback to gradient with letter
-    // Special styling for Parabolic AI tokens
+    // Fallback to gradient with letter - now with consistent colors per symbol
     const isPARAI = actualSymbol && PARABOLIC_TOKENS.includes(actualSymbol.toUpperCase());
     const fallbackColor = isPARAI ? 'from-cyan-400 via-blue-500 to-purple-600' : actualColor;
-    
+
     logoContent = (
-      <div 
-        className={`w-full h-full bg-gradient-to-br ${fallbackColor} flex items-center justify-center text-white shadow-inner ${isPARAI ? 'shadow-lg shadow-cyan-500/30' : ''}`}
+      <div
+        className={`w-full h-full bg-gradient-to-br ${fallbackColor} flex items-center justify-center text-white font-bold ${isPARAI ? 'shadow-lg shadow-cyan-500/30' : ''}`}
       >
         {actualLogo}
       </div>
     );
   }
-  
+
   return (
-    <div className={`${sizeClasses[size]} rounded-full flex items-center justify-center overflow-hidden shadow-lg relative`}>
-      {logoContent}
-      {actualSymbol === 'BONK' && size === 'md' && (
-        <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-slate-900 rounded-full flex items-center justify-center border border-slate-800 z-10">
-          <span className="text-[8px]">📄</span>
+    <div className={`${sizeClasses[size]} rounded-full flex items-center justify-center overflow-hidden shadow-lg relative bg-slate-800`}>
+      {isLoadingJupiter && imageSources.length === 0 ? (
+        <div className={`w-full h-full bg-gradient-to-br ${actualColor} flex items-center justify-center text-white font-bold animate-pulse`}>
+          {actualLogo}
         </div>
+      ) : (
+        logoContent
       )}
     </div>
   );

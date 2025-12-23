@@ -100,7 +100,18 @@ export function Web3Setup({ onComplete }: { onComplete: () => void }) {
   };
 
   const seedWords = seedPhrase.split(' ');
-  const randomIndices = [2, 5, 8].sort(() => Math.random() - 0.5).slice(0, 3);
+  // Use crypto.getRandomValues for secure shuffling of verification indices
+  const getSecureRandomIndices = () => {
+    const indices = [2, 5, 8];
+    const randomValues = crypto.getRandomValues(new Uint32Array(indices.length));
+    // Fisher-Yates shuffle with secure random
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = randomValues[i] % (i + 1);
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    return indices.slice(0, 3);
+  };
+  const randomIndices = getSecureRandomIndices();
 
   const handleVerify = () => {
     const isCorrect = randomIndices.every(idx => 

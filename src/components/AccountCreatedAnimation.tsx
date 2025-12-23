@@ -24,7 +24,7 @@ export function AccountCreatedAnimation({ onComplete }: AccountCreatedAnimationP
 
   return (
     <div
-      className="text-white relative flex flex-col items-center justify-center px-6"
+      className="text-white relative flex flex-col items-center justify-start px-6"
       style={{
         width: '100%',
         height: '100%',
@@ -33,6 +33,7 @@ export function AccountCreatedAnimation({ onComplete }: AccountCreatedAnimationP
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
         backgroundColor: '#000000',
+        paddingTop: '180px',
         paddingBottom: 'max(32px, env(safe-area-inset-bottom))',
       }}
     >

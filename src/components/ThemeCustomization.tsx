@@ -1,9 +1,7 @@
-import { useState, useEffect } from 'react';
-import { Button } from './ui/button';
-import { Check, Image as ImageIcon } from 'lucide-react';
+import { useState } from 'react';
+import { Check, Image as ImageIcon, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { useLanguage } from '../utils/i18n/LanguageContext';
 import { useTheme } from '../utils/ThemeContext';
 import chartGrowthImg from 'figma:asset/cf0c640acfd7594fc19f2f68c33b585fb257787d.png';
@@ -12,6 +10,9 @@ import galaxyImg from 'figma:asset/5b4b9e5bc3dce63bd529dad0b6d15398841deffb.png'
 import atomImg from 'figma:asset/87f8b32663f196ec1a0eb5a25bdc487bcfefae9d.png';
 import techAtomImg from 'figma:asset/5aa70e98ce3aee3ece131f170f241d48a15c7bb9.png';
 import cosmicAtomImg from 'figma:asset/6dddf15e38d9de8af29c1069d4e32f01893e25c6.png';
+// Custom background images
+import purpleSmokeImg from '../assets/purple-smoke-bg.png';
+import neonAtomImg from '../assets/neon-atom-bg.png';
 
 interface ThemeCustomizationProps {
   walletId: string;
@@ -84,6 +85,11 @@ const themes: Theme[] = [
 
 const balanceBackgrounds: BalanceBackgroundImage[] = [
   {
+    id: 'none',
+    name: 'None',
+    url: ''
+  },
+  {
     id: 'cosmic-atom',
     name: 'Cosmic Atom',
     url: cosmicAtomImg
@@ -142,6 +148,56 @@ const balanceBackgrounds: BalanceBackgroundImage[] = [
     id: 'crypto-future',
     name: 'Crypto Future',
     url: 'https://t4.ftcdn.net/jpg/11/97/30/75/360_F_1197307541_NvhbbyeEs6zfVKuT6vtPnwpSIjbosTKW.jpg'
+  },
+  {
+    id: 'solana-purple',
+    name: 'Solana Purple',
+    url: 'https://images.unsplash.com/photo-1639762681485-074b7f938ba0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080'
+  },
+  {
+    id: 'blockchain-network',
+    name: 'Blockchain Network',
+    url: 'https://images.unsplash.com/photo-1639322537228-f710d846310a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080'
+  },
+  {
+    id: 'digital-grid',
+    name: 'Digital Grid',
+    url: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080'
+  },
+  {
+    id: 'abstract-purple',
+    name: 'Abstract Purple',
+    url: 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080'
+  },
+  {
+    id: 'neon-city',
+    name: 'Neon City',
+    url: 'https://images.unsplash.com/photo-1545486332-9e0999c535b2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080'
+  },
+  {
+    id: 'space-nebula',
+    name: 'Space Nebula',
+    url: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080'
+  },
+  {
+    id: 'aurora-sky',
+    name: 'Aurora Sky',
+    url: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080'
+  },
+  {
+    id: 'ocean-waves',
+    name: 'Ocean Waves',
+    url: 'https://images.unsplash.com/photo-1505118380757-91f5f5632de0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080'
+  },
+  {
+    id: 'purple-smoke',
+    name: 'Purple Smoke',
+    url: purpleSmokeImg
+  },
+  {
+    id: 'neon-atom',
+    name: 'Neon Atom',
+    url: neonAtomImg
   }
 ];
 
@@ -157,52 +213,27 @@ const themeBackgroundMapping: { [key: string]: string } = {
   'neon': 'nft-world'            // Neon → NFT World
 };
 
-export function ThemeCustomization({ walletId, onThemeChange }: ThemeCustomizationProps) {
+export function ThemeCustomization({ onThemeChange }: ThemeCustomizationProps) {
   const { t } = useLanguage();
-  const { theme: currentTheme, setTheme } = useTheme();
-  const [loading, setLoading] = useState(false);
+  const { setTheme } = useTheme();
   const [selectedBackground, setSelectedBackground] = useState<string>(() => {
     return localStorage.getItem('balanceBackground') || 'atom';
   });
 
-  const handleThemeSelect = async (themeId: string) => {
-    try {
-      setLoading(true);
-      
-      // Update theme in context immediately for instant feedback
-      setTheme(themeId);
+  // Theme selection is now client-side only (saved via ThemeContext to localStorage)
+  const handleThemeSelect = (themeId: string) => {
+    // Update theme in context (saves to localStorage automatically)
+    setTheme(themeId);
 
-      // Auto-update balance background based on theme
-      const newBackground = themeBackgroundMapping[themeId] || 'atom';
-      setSelectedBackground(newBackground);
-      localStorage.setItem('balanceBackground', newBackground);
+    // Auto-update balance background based on theme
+    const newBackground = themeBackgroundMapping[themeId] || 'atom';
+    setSelectedBackground(newBackground);
+    localStorage.setItem('balanceBackground', newBackground);
 
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet/${walletId}/theme`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ theme: themeId }),
-        }
-      );
+    toast.success(t.messages.success.settingsUpdated);
 
-      if (!response.ok) {
-        throw new Error('Failed to save theme');
-      }
-
-      toast.success(t.messages.success.settingsUpdated);
-      
-      if (onThemeChange) {
-        onThemeChange(themeId);
-      }
-    } catch (error) {
-      console.error('Error saving theme:', error);
-      toast.error(t.messages.error.saveFailed);
-    } finally {
-      setLoading(false);
+    if (onThemeChange) {
+      onThemeChange(themeId);
     }
   };
 
@@ -236,16 +267,27 @@ export function ThemeCustomization({ walletId, onThemeChange }: ThemeCustomizati
             >
               {/* Background Preview */}
               <div className="h-24 relative bg-gradient-to-br from-purple-600 to-blue-600">
-                <div 
-                  className="absolute inset-0 opacity-50"
-                  style={{
-                    backgroundImage: `url(${bg.url})`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center'
-                  }}
-                />
-                <div className="absolute inset-0 bg-black/40" />
-                
+                {bg.id === 'none' ? (
+                  // None option - show gradient only with X icon
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-full bg-slate-800/60 flex items-center justify-center">
+                      <X className="w-6 h-6 text-slate-400" />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      className="absolute inset-0 opacity-50"
+                      style={{
+                        backgroundImage: `url(${bg.url})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center'
+                      }}
+                    />
+                    <div className="absolute inset-0 bg-black/40" />
+                  </>
+                )}
+
                 {selectedBackground === bg.id && (
                   <motion.div
                     initial={{ scale: 0 }}

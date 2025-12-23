@@ -1,11 +1,29 @@
 import { motion } from 'motion/react';
 import { ChevronRight, Shield, Zap, Globe } from 'lucide-react';
+import { useMemo } from 'react';
 
 interface WelcomePageProps {
   onContinue: () => void;
 }
 
+// Pre-computed particle positions to avoid re-renders
+const PARTICLE_POSITIONS = [
+  { left: 15, top: 20, delay: 0.1 },
+  { left: 85, top: 15, delay: 0.3 },
+  { left: 25, top: 70, delay: 0.5 },
+  { left: 75, top: 80, delay: 0.2 },
+  { left: 10, top: 45, delay: 0.7 },
+  { left: 90, top: 55, delay: 0.4 },
+  { left: 50, top: 10, delay: 0.6 },
+  { left: 35, top: 90, delay: 0.8 },
+  { left: 65, top: 35, delay: 0.9 },
+  { left: 45, top: 60, delay: 0.15 },
+];
+
 export function WelcomePage({ onContinue }: WelcomePageProps) {
+  // Memoize particles to prevent re-renders
+  const particles = useMemo(() => PARTICLE_POSITIONS, []);
+
   return (
     <div
       className="bg-black text-white flex flex-col overflow-hidden relative select-none"
@@ -40,25 +58,25 @@ export function WelcomePage({ onContinue }: WelcomePageProps) {
           />
         </div>
 
-        {/* Particles - Same as WelcomeAnimation */}
+        {/* Particles - Using pre-computed positions to prevent re-renders */}
         <div className="absolute inset-0 pointer-events-none">
-          {[...Array(10)].map((_, i) => (
+          {particles.map((particle, i) => (
             <motion.div
               key={i}
               className="absolute w-1 h-1 bg-purple-400 rounded-full"
               style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
+                left: `${particle.left}%`,
+                top: `${particle.top}%`,
               }}
               initial={{ opacity: 0, scale: 0 }}
-              animate={{ 
+              animate={{
                 opacity: [0, 1, 0],
                 scale: [0, 1.5, 0],
                 y: [0, -50],
               }}
               transition={{
                 duration: 1.5,
-                delay: Math.random() * 1,
+                delay: particle.delay,
                 repeat: Infinity,
               }}
             />

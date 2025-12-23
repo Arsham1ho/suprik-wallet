@@ -21,13 +21,17 @@ import { WalletProvider, useWallet } from './utils/WalletContext';
 import { LanguageProvider } from './utils/i18n/LanguageContext';
 import { NetworkProvider } from './utils/NetworkContext';
 import { isWalletLocked, type BiometricSettings } from './utils/biometric';
-import { projectId, publicAnonKey } from './utils/supabase/info';
+import { getUserSettings } from './utils/userSettings';
 import { initPWAInstall, registerServiceWorker } from './utils/mobile/pwa';
 import { installPWAIconsToCache } from './utils/generatePWAIcons';
 import { SecureStorage, WalletStorage } from './utils/wallet';
 import { UnlockWallet } from './components/UnlockWallet';
 import { initializeEnvironment } from './utils/initEnv';
 import { AccountManager } from './utils/accountManager';
+import { preloadJupiterTokens } from './utils/jupiterTokens';
+
+// Preload Jupiter tokens in background for faster search
+preloadJupiterTokens();
 
 export default function App() {
   const [showWelcome, setShowWelcome] = useState(true);
@@ -50,9 +54,8 @@ export default function App() {
 
   // Initialize environment variables on mount
   useEffect(() => {
-    console.log('[App] 🔧 Initializing environment...');
-    initializeEnvironment().catch((error) => {
-      console.error('[App] ❌ Failed to initialize environment:', error);
+    initializeEnvironment().catch(() => {
+      // Environment initialization failed silently
     });
   }, []);
 
@@ -68,7 +71,6 @@ export default function App() {
                             searchParams.has('error');
       
       if (hasOAuthParams) {
-        console.log('[App] 🔐 Detected OAuth callback, processing...');
         setProcessingOAuth(true);
         setShowWelcome(false);
         setShowWelcomePage(false);
@@ -85,7 +87,6 @@ export default function App() {
           if (searchParams.has('error')) {
             const error = searchParams.get('error');
             const errorDescription = searchParams.get('error_description');
-            console.error('[App] ❌ OAuth error:', error, errorDescription);
             toast.error(`OAuth error: ${errorDescription || error}`);
             window.history.replaceState({}, document.title, window.location.pathname);
             setProcessingOAuth(false);
@@ -96,28 +97,18 @@ export default function App() {
           const { data: { session }, error } = await supabase.auth.getSession();
           
           if (error) {
-            console.error('[App] ❌ Error getting session:', error);
             throw error;
           }
           
           if (session && session.user) {
-            console.log('[App] ✅ OAuth session established:', session.user.email);
-            console.log('[App] 📋 User ID:', session.user.id);
-            console.log('[App] 🔑 Provider:', session.user.app_metadata.provider);
-            
             // Check if wallet already exists for this user
             const socialWalletKey = `social_wallet_${session.user.id}`;
             const existingWalletId = localStorage.getItem(socialWalletKey);
             
             if (existingWalletId && SecureStorage.hasWallet()) {
-              // User has existing wallet from social login
-              console.log('[App] 📱 Existing social wallet found:', existingWalletId);
-              
-              // Try to auto-unlock with stored OAuth password
+              // User has existing wallet from social login - try to auto-unlock
               const storedPassword = await WalletStorage.getOAuthPassword();
               if (storedPassword) {
-                console.log('[App] 🔓 Auto-unlocking OAuth wallet...');
-                // We'll set walletId and let the unlock screen or context handle it
                 WalletStorage.setWalletId(existingWalletId);
               }
               
@@ -125,18 +116,16 @@ export default function App() {
               handleAuthSuccess(session.access_token, existingWalletId, false);
             } else {
               // New social login - need to create wallet
-              console.log('[App] 🆕 Creating new wallet for social login');
-              
               // Import wallet utilities
               const { generateMnemonic } = await import('./utils/wallet');
               const mnemonic = await generateMnemonic();
-              const walletId = `wallet_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-              
-              console.log('[App] 💼 Wallet ID:', walletId);
-              
-              // Create a default password for OAuth users (derived from user ID)
-              // This is secure because the user ID is unique and stored securely by Supabase
-              const defaultPassword = `oauth_${session.user.id}_${session.user.email}`;
+              // Generate cryptographically secure wallet ID
+              const walletIdBytes = crypto.getRandomValues(new Uint8Array(16));
+              const walletId = `wallet_${Array.from(walletIdBytes, b => b.toString(16).padStart(2, '0')).join('')}`;
+
+              // Generate cryptographically secure random password for OAuth users
+              const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+              const defaultPassword = Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('');
               
               // Store the wallet with encryption using the default password
               await SecureStorage.storeMnemonic(mnemonic, defaultPassword);
@@ -163,12 +152,10 @@ export default function App() {
             // Clean up URL
             window.history.replaceState({}, document.title, window.location.pathname);
           } else {
-            console.log('[App] ⚠️ No session found after OAuth callback');
             toast.error('Authentication failed. Please try again.');
             window.history.replaceState({}, document.title, window.location.pathname);
           }
         } catch (error: any) {
-          console.error('[App] ❌ OAuth callback error:', error);
           toast.error(`Authentication error: ${error.message}`);
           // Clean up URL even on error
           window.history.replaceState({}, document.title, window.location.pathname);
@@ -183,17 +170,9 @@ export default function App() {
 
   // Initialize PWA on mount
   useEffect(() => {
-    console.log('[App] Initializing PWA...');
     initPWAInstall();
-    registerServiceWorker().then((registration) => {
-      if (registration) {
-        console.log('[App] ✓ Service Worker registered successfully');
-      } else {
-        console.log('[App] ℹ️ Service Worker not available (this is OK in development)');
-      }
-    }).catch((error) => {
+    registerServiceWorker().catch(() => {
       // Silently handle SW errors - app works fine without it
-      console.log('[App] ℹ️ PWA features unavailable (app will work normally)');
     });
   }, []);
 
@@ -225,12 +204,9 @@ export default function App() {
     const savedWalletId = WalletStorage.getWalletId();
     
     if (hasWallet && savedWalletId) {
-      console.log('[App] 🔐 Wallet found in localStorage, needs unlock');
-      
       // Check for wallet format migration
       SecureStorage.migrateIfNeeded().then(migrated => {
         if (!migrated) {
-          console.log('[App] ⚠️ Wallet migration needed - old format detected');
           toast.info('Please re-import your recovery phrase to update wallet format');
         }
       });
@@ -250,7 +226,6 @@ export default function App() {
       // Check legacy wallet_id for backward compatibility
       const legacyWalletId = localStorage.getItem('wallet_id');
       if (legacyWalletId) {
-        console.log('[App] ⚠️ Found legacy wallet, migrating...');
         setWalletId(legacyWalletId);
         setIsAuthenticated(true);
         checkBiometricLock(legacyWalletId);
@@ -280,7 +255,7 @@ export default function App() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [walletId, biometricSettings]);
 
-  const checkBiometricLock = async (wId: string, retryCount = 0) => {
+  const checkBiometricLock = async (wId: string) => {
     try {
       setCheckingLock(true);
       
@@ -289,58 +264,31 @@ export default function App() {
       const available = await isBiometricAvailable();
       
       if (!available) {
-        console.log('[App] Biometric not available on this device, skipping lock check');
         setIsLocked(false);
         setBiometricSettings(null);
         setCheckingLock(false);
         return;
       }
       
-      // Shorter timeout for faster fallback (5 seconds)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      // Fetch user settings to check if biometric is enabled
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/user-settings/${wId}`,
-        {
-          headers: { 'Authorization': `Bearer ${publicAnonKey}` },
-          signal: controller.signal,
-        }
-      );
+      // Load settings from localStorage (instant, no server call)
+      const settings = getUserSettings(wId);
 
-      clearTimeout(timeoutId);
+      // Build biometric settings object from localStorage data
+      const biometric: BiometricSettings | null = settings.biometricEnabled ? {
+        enabled: true,
+        autoLockMinutes: settings.autoLockMinutes || 5,
+        requireForTransactions: true,
+      } : null;
 
-      if (response.ok) {
-        const settings = await response.json();
-        const biometric = settings.biometric as BiometricSettings | undefined;
-        setBiometricSettings(biometric || null);
+      setBiometricSettings(biometric);
 
-        if (biometric?.enabled && biometric.autoLockMinutes > 0) {
-          const locked = isWalletLocked(wId, biometric.autoLockMinutes);
-          setIsLocked(locked);
-          console.log('[App] Wallet lock status:', locked);
-        } else {
-          setIsLocked(false);
-        }
+      if (biometric?.enabled && biometric.autoLockMinutes > 0) {
+        const locked = isWalletLocked(wId, biometric.autoLockMinutes);
+        setIsLocked(locked);
       } else {
-        // Non-ok response means settings don't exist or error - default to unlocked
         setIsLocked(false);
-        setBiometricSettings(null);
       }
-    } catch (error: any) {
-      // Suppress AbortError logs - they're expected from timeouts
-      if (error.name !== 'AbortError') {
-        console.error('[App] Error checking biometric lock:', error);
-      }
-      
-      // Only retry once for AbortError (timeout), don't retry for other errors
-      if (retryCount === 0 && error.name === 'AbortError') {
-        console.log('[App] Timeout on first attempt, retrying once...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return checkBiometricLock(wId, 1);
-      }
-      
+    } catch {
       // Default to unlocked - app should always be accessible
       setIsLocked(false);
       setBiometricSettings(null);
@@ -396,7 +344,6 @@ export default function App() {
   };
 
   const handleLockWallet = () => {
-    console.log('[App] 🔒 Locking wallet - returning to unlock screen');
     // Don't clear wallet data, just set to locked state
     setNeedsUnlock(true);
     setIsAuthenticated(false);
@@ -405,19 +352,15 @@ export default function App() {
   };
 
   const handleSwitchAccount = (newAccountId: string) => {
-    console.log('[App] 🔄 Switching account to:', newAccountId);
-    
     // Update active account in AccountManager
     AccountManager.setActiveAccount(newAccountId);
-    
+
     // Update walletId in localStorage and state
     localStorage.setItem('wallet_id', newAccountId);
     setWalletId(newAccountId);
-    
+
     // Trigger a wallet context refresh by dispatching event
     window.dispatchEvent(new CustomEvent('accountSwitched', { detail: { accountId: newAccountId } }));
-    
-    console.log('[App] ✅ Account switched successfully to:', newAccountId);
   };
 
   const handleWelcomeComplete = () => {
@@ -433,18 +376,8 @@ export default function App() {
   };
 
   const handleIntroVideoComplete = () => {
-    console.log('[App] ✅ Intro video completed - navigating to Create Account page');
-    console.log('[App] Current state:', { 
-      showIntroVideo, 
-      currentPage,
-      showWelcome,
-      showWelcomePage,
-      showAccountCreated,
-      showPageTransition 
-    });
     setShowIntroVideo(false);
     sessionStorage.setItem('hasSeenVideo', 'true');
-    console.log('[App] ✅ showIntroVideo set to false - should show Landing page now');
   };
 
   const handlePageTransitionComplete = () => {

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, LayoutGrid, QrCode, DollarSign, Share2, MoreHorizontal, ExternalLink, Send } from 'lucide-react';
 import { motion } from 'motion/react';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { TokenLogo } from '../TokenLogo';
 import { TokenReceiveDialog } from '../TokenReceiveDialog';
@@ -10,6 +9,7 @@ import { AnimalAvatar } from '../AnimalAvatar';
 import { toast } from 'sonner';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
+import { getCoinGeckoId, getTokenPrice, getTokenChart } from '../../utils/coingecko';
 import {
   Sheet,
   SheetContent,
@@ -104,6 +104,7 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
     return () => clearInterval(interval);
   }, [token.mint, selectedPeriod]);
 
+  // Fetch coin details from CoinGecko (primary) with DexScreener/Jupiter fallback
   const fetchCoinDetails = async (backgroundRefresh: boolean = false) => {
     try {
       // Don't show loading on background refresh
@@ -115,30 +116,121 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
           setLoading(true);
         }
       }
-      
-      console.log('[CoinDetail] Fetching coin details for:', token.mint, 'Symbol:', token.symbol, 'Period:', selectedPeriod);
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coin-details/${token.mint}?period=${selectedPeriod}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('[CoinDetail] Fetch error:', response.status, errorData);
-        throw new Error(errorData.error || 'Failed to fetch coin details');
+      console.log('[CoinDetail] Fetching coin details for:', token.mint, 'Symbol:', token.symbol);
+
+      // Start with token's existing price as fallback (from Search page or Home)
+      const fallbackPrice = token.price || 0;
+      const fallbackChange = token.change || 0;
+
+      let price = fallbackPrice;
+      let change24h = fallbackChange;
+      let marketCap = 0;
+      let chartData: Array<{ time: string; price: number }> = [];
+
+      // PRIMARY: Get CoinGecko ID (uses dynamic lookup with caching)
+      const coinGeckoId = await getCoinGeckoId(token.mint, token.name);
+      console.log(`[CoinDetail] CoinGecko ID for ${token.symbol}: ${coinGeckoId || 'not found'}`);
+
+      // PRIMARY: Use CoinGecko for price + 24h change
+      if (coinGeckoId) {
+        const priceData = await getTokenPrice(token.mint, token.name);
+        if (priceData && priceData.price > 0) {
+          price = priceData.price;
+          change24h = priceData.change24h;
+          marketCap = priceData.marketCap;
+          console.log(`[CoinDetail] ✅ CoinGecko: ${token.symbol} = $${price.toFixed(6)}, 24h: ${change24h.toFixed(2)}%`);
+        } else {
+          console.log(`[CoinDetail] CoinGecko returned no price, using fallback: $${fallbackPrice}`);
+        }
       }
 
-      const data = await response.json();
-      console.log(`[CoinDetail] ✅ Coin details received for ${token.symbol} (${selectedPeriod}):`, {
-        price: data.currentPrice,
-        change: data.change24h,
-        chartPoints: data.chartData?.length || 0
+      // FALLBACK: DexScreener for tokens not on CoinGecko
+      if (price === 0) {
+        try {
+          console.log(`[CoinDetail] Trying DexScreener for ${token.symbol}...`);
+          const dexResponse = await fetch(
+            `https://api.dexscreener.com/latest/dex/tokens/${token.mint}`,
+            { signal: AbortSignal.timeout(5000) }
+          );
+
+          if (dexResponse.ok) {
+            const dexData = await dexResponse.json();
+            const pair = dexData.pairs?.[0];
+            if (pair) {
+              price = parseFloat(pair.priceUsd) || price;
+              change24h = pair.priceChange?.h24 || change24h;
+              marketCap = pair.marketCap || marketCap;
+              console.log(`[CoinDetail] ✅ DexScreener: ${token.symbol} = $${price}, 24h: ${change24h}%`);
+            }
+          }
+        } catch (dexError) {
+          console.warn('[CoinDetail] DexScreener failed');
+        }
+      }
+
+      // LAST FALLBACK: Jupiter Price API
+      if (price === 0) {
+        try {
+          console.log(`[CoinDetail] Trying Jupiter for ${token.symbol}...`);
+          const jupResponse = await fetch(
+            `https://api.jup.ag/price/v2?ids=${token.mint}`,
+            { signal: AbortSignal.timeout(5000) }
+          );
+
+          if (jupResponse.ok) {
+            const jupData = await jupResponse.json();
+            const priceData = jupData.data?.[token.mint];
+            if (priceData?.price) {
+              price = parseFloat(priceData.price);
+              console.log(`[CoinDetail] ✅ Jupiter: ${token.symbol} = $${price}`);
+            }
+          }
+        } catch (jupError) {
+          console.warn('[CoinDetail] Jupiter API failed');
+        }
+      }
+
+      // Fetch chart data - CoinGecko primary, Jupiter fallback
+      chartData = await fetchChartData(token.mint, selectedPeriod, price, change24h);
+
+      // If we have chart data but no price change, calculate it from the chart
+      if (chartData.length > 1 && (change24h === 0 || Math.abs(change24h) < 0.001)) {
+        const firstPrice = chartData[0].price;
+        const lastPrice = chartData[chartData.length - 1].price;
+        if (firstPrice > 0) {
+          change24h = ((lastPrice - firstPrice) / firstPrice) * 100;
+          // Also update price from chart if needed
+          if (price === 0 || Math.abs(price - lastPrice) / lastPrice > 0.1) {
+            price = lastPrice;
+          }
+          console.log(`[CoinDetail] 📊 Calculated change from chart: ${change24h.toFixed(2)}%`);
+        }
+      }
+
+      const details: CoinDetails = {
+        mint: token.mint,
+        symbol: token.symbol,
+        name: token.name,
+        currentPrice: price,
+        change24h: change24h,
+        changeAmount: price * change24h / 100,
+        marketCap: marketCap,
+        totalSupply: 0,
+        circulatingSupply: 0,
+        description: `${token.name} (${token.symbol}) on Solana.`,
+        website: '',
+        twitter: '',
+        chartData: chartData,
+      };
+
+      console.log(`[CoinDetail] ✅ Coin details loaded for ${token.symbol}:`, {
+        price: details.currentPrice,
+        change: details.change24h,
+        chartPoints: details.chartData?.length || 0
       });
-      setCoinDetails(data);
+
+      setCoinDetails(details);
     } catch (error: any) {
       console.error('Error fetching coin details:', error);
       // Use fallback data from token props
@@ -168,26 +260,145 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
     }
   };
 
-  // Generate fallback chart data when API fails
+  // Fetch historical chart data - CoinGecko primary, Jupiter fallback
+  const fetchChartData = async (
+    mint: string,
+    period: TimePeriod,
+    currentPrice: number,
+    change24h: number
+  ): Promise<Array<{ time: string; price: number }>> => {
+    try {
+      // Map period to days for CoinGecko API
+      const periodToDays: Record<TimePeriod, number> = {
+        '1H': 1,      // CoinGecko minimum is 1 day, will filter to 1H
+        '1D': 1,
+        '1W': 7,
+        '1M': 30,
+        'YTD': Math.ceil((Date.now() - new Date(new Date().getFullYear(), 0, 1).getTime()) / (1000 * 60 * 60 * 24)),
+      };
+
+      const days = periodToDays[period];
+
+      // PRIMARY: Get CoinGecko chart using the utility (handles dynamic ID lookup)
+      const chartData = await getTokenChart(mint, days, token.name);
+
+      if (chartData.length > 0) {
+        // For 1H period, filter to last hour only
+        if (period === '1H') {
+          const oneHourAgo = Date.now() - 3600000;
+          const filtered = chartData.filter(p => new Date(p.time).getTime() >= oneHourAgo);
+          if (filtered.length > 0) {
+            console.log(`[CoinDetail] ✅ CoinGecko chart (1H filtered): ${filtered.length} points`);
+            return filtered;
+          }
+        }
+        console.log(`[CoinDetail] ✅ CoinGecko chart: ${chartData.length} points`);
+        return chartData;
+      }
+
+      // FALLBACK: Jupiter Price History for tokens not on CoinGecko
+      try {
+        const periodConfig: Record<TimePeriod, { interval: string; seconds: number }> = {
+          '1H': { interval: '1m', seconds: 3600 },
+          '1D': { interval: '15m', seconds: 86400 },
+          '1W': { interval: '1H', seconds: 604800 },
+          '1M': { interval: '4H', seconds: 2592000 },
+          'YTD': { interval: '1D', seconds: Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 1).getTime()) / 1000) },
+        };
+
+        const config = periodConfig[period];
+        const endTime = Math.floor(Date.now() / 1000);
+        const startTime = endTime - config.seconds;
+
+        const jupiterHistoryUrl = `https://api.jup.ag/price/v2/history?id=${mint}&type=${config.interval}&time_from=${startTime}&time_to=${endTime}`;
+        console.log(`[CoinDetail] Trying Jupiter history for ${token.symbol}`);
+
+        const response = await fetch(jupiterHistoryUrl, {
+          signal: AbortSignal.timeout(8000),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+            const jupChartData = data.data.map((item: { unixTime: number; value: number }) => ({
+              time: new Date(item.unixTime * 1000).toISOString(),
+              price: item.value,
+            }));
+            console.log(`[CoinDetail] ✅ Jupiter history: ${jupChartData.length} points`);
+            return jupChartData;
+          }
+        }
+      } catch (jupErr) {
+        console.warn('[CoinDetail] Jupiter history failed:', jupErr);
+      }
+
+      // LAST FALLBACK: Synthetic data
+      console.log('[CoinDetail] Using synthetic chart data');
+      return generateFallbackChartData(currentPrice, change24h);
+    } catch (error) {
+      console.error('[CoinDetail] Chart data fetch failed:', error);
+      return generateFallbackChartData(currentPrice, change24h);
+    }
+  };
+
+  // Generate fallback chart data when API fails - creates realistic-looking variation
   const generateFallbackChartData = (currentPrice: number, change24h: number) => {
     const data = [];
     const now = Date.now();
-    const intervalMs = 3600000; // 1 hour
-    const dataPoints = 24;
-    
-    const startPrice = currentPrice / (1 + change24h / 100);
-    
+
+    // Determine data points and interval based on selected period
+    const periodSettings: Record<TimePeriod, { points: number; intervalMs: number }> = {
+      '1H': { points: 60, intervalMs: 60000 },        // 1 point per minute
+      '1D': { points: 48, intervalMs: 1800000 },      // 1 point per 30 min
+      '1W': { points: 42, intervalMs: 14400000 },     // 1 point per 4 hours
+      '1M': { points: 30, intervalMs: 86400000 },     // 1 point per day
+      'YTD': { points: 52, intervalMs: 604800000 },   // 1 point per week
+    };
+
+    const settings = periodSettings[selectedPeriod] || periodSettings['1D'];
+    const { points: dataPoints, intervalMs } = settings;
+
+    // Calculate start price from change
+    const effectiveChange = change24h || 0;
+    const startPrice = currentPrice / (1 + effectiveChange / 100);
+    const priceRange = currentPrice - startPrice;
+
+    // Add natural-looking variation (±2% volatility)
+    const volatility = currentPrice * 0.02;
+
+    // Use a seeded random based on mint to get consistent charts for same token
+    let seed = token.mint.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const seededRandom = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+
     for (let i = 0; i < dataPoints; i++) {
       const timestamp = new Date(now - (dataPoints - 1 - i) * intervalMs);
       const progress = i / (dataPoints - 1);
-      const price = startPrice + (currentPrice - startPrice) * progress;
-      
+
+      // Base price following the trend
+      let price = startPrice + priceRange * progress;
+
+      // Add realistic variation (sine wave + noise)
+      const sineWave = Math.sin(progress * Math.PI * 4) * volatility * 0.3;
+      const noise = (seededRandom() - 0.5) * volatility * 0.5;
+      price = price + sineWave + noise;
+
+      // Ensure price stays positive
+      price = Math.max(price, currentPrice * 0.001);
+
       data.push({
         time: timestamp.toISOString(),
         price: price,
       });
     }
-    
+
+    // Ensure the last point matches current price
+    if (data.length > 0) {
+      data[data.length - 1].price = currentPrice;
+    }
+
     return data;
   };
 
@@ -411,9 +622,17 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
   };
 
   const stripHtml = (html: string) => {
-    const tmp = document.createElement('DIV');
-    tmp.innerHTML = html;
-    return tmp.textContent || tmp.innerText || '';
+    // Safely strip HTML tags using regex instead of innerHTML to prevent XSS
+    // This removes all HTML tags while preserving text content
+    return html
+      .replace(/<[^>]*>/g, '') // Remove HTML tags
+      .replace(/&nbsp;/g, ' ') // Replace &nbsp; with space
+      .replace(/&amp;/g, '&')  // Decode &amp;
+      .replace(/&lt;/g, '<')   // Decode &lt;
+      .replace(/&gt;/g, '>')   // Decode &gt;
+      .replace(/&quot;/g, '"') // Decode &quot;
+      .replace(/&#39;/g, "'")  // Decode &#39;
+      .trim();
   };
 
   const truncateDescription = (text: string, maxLength: number = 200) => {

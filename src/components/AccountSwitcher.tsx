@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, Plus, ChevronRight, Copy, Key, FileText, Sparkles } from 'lucide-react';
@@ -40,6 +40,21 @@ export function AccountSwitcher({
 }: AccountSwitcherProps) {
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   const [showAddOptions, setShowAddOptions] = useState(false);
+  // Track if initial animation has played to prevent re-animations
+  const hasAnimatedRef = useRef(false);
+
+  // Reset animation state when dialog opens
+  useEffect(() => {
+    if (open) {
+      // Allow animation on first open, then disable
+      setTimeout(() => {
+        hasAnimatedRef.current = true;
+      }, 500);
+    } else {
+      // Reset when dialog closes so next open animates
+      hasAnimatedRef.current = false;
+    }
+  }, [open]);
 
   // Reset showAddOptions when dialog closes
   const handleOpenChange = (newOpen: boolean) => {
@@ -86,10 +101,10 @@ export function AccountSwitcher({
               return (
                 <motion.div
                   key={account.id}
-                  initial={{ opacity: 0, x: -20 }}
+                  initial={hasAnimatedRef.current ? false : { opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
-                  transition={{ delay: idx * 0.05 }}
+                  transition={hasAnimatedRef.current ? { duration: 0 } : { delay: idx * 0.05 }}
                   onClick={() => {
                     if (!isActive) {
                       onSwitchAccount(account.id);

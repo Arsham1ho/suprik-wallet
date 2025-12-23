@@ -78,6 +78,15 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
     });
   }, []);
 
+  // Security: Clear sensitive data from state after use
+  const clearSensitiveState = () => {
+    setWords(Array(12).fill(''));
+    setPrivateKey('');
+    setPassword('');
+    setConfirmPassword('');
+    setMnemonic('');
+  };
+
   // Get password strength
   const passwordStrength = getPasswordStrength(password);
   const strengthColors = {
@@ -104,8 +113,6 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
         const balanceData = await fetchSolanaBalance(addresses.solana, 'mainnet');
         const balance = balanceData.native;
 
-        console.log(`[SignIn] Account ${i}: ${addresses.solana.slice(0, 8)}... Balance: ${balance} SOL`);
-
         if (balance > 0 || balanceData.tokens.length > 0) {
           accounts.push({
             index: i,
@@ -127,12 +134,10 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
           }
           // Stop scanning after 3 empty accounts in a row (after index 0)
           if (emptyInRow >= MAX_EMPTY_IN_ROW && i > 0) {
-            console.log(`[SignIn] Stopping scan after ${MAX_EMPTY_IN_ROW} empty accounts`);
             break;
           }
         }
       } catch (err) {
-        console.error(`[SignIn] Error scanning account ${i}:`, err);
         // On error, still include the first account
         if (i === 0) {
           const addresses = await deriveAddresses(mnemonicStr, 0);
@@ -266,9 +271,6 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
         localStorage.setItem('saturn_username', defaultUsername);
       }
 
-      console.log('[SignIn] ✅ Wallet imported from private key');
-      console.log('[SignIn] Public Key:', publicKey);
-
       // Unlock wallet
       const unlocked = await wallet.unlock(password);
       if (!unlocked) {
@@ -277,7 +279,6 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
 
       // Register biometric if user opted in
       if (enableBiometric && biometricAvailable) {
-        console.log('[SignIn] 🔐 Registering biometric for private key import...');
         const biometricResult = await registerBiometric(walletId);
 
         if (biometricResult.success) {
@@ -288,10 +289,8 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
             requireForTransactions: false,
           };
           localStorage.setItem('biometric_settings', JSON.stringify(biometricSettings));
-          console.log('[SignIn] ✅ Biometric registered successfully');
           toast.success(`Wallet imported with ${biometricName} enabled!`);
         } else if (!biometricResult.cancelled) {
-          console.warn('[SignIn] ⚠️ Biometric registration failed:', biometricResult.error);
           toast.success('Wallet imported successfully!');
         } else {
           toast.success('Wallet imported successfully!');
@@ -300,9 +299,10 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
         toast.success('Wallet imported successfully!');
       }
 
+      // Security: Clear sensitive data from state before navigation
+      clearSensitiveState();
       onSuccess(walletId, walletId);
     } catch (error: any) {
-      console.error('[SignIn] Private key import error:', error);
       toast.error(error.message || 'Failed to import wallet');
     } finally {
       setLoading(false);
@@ -371,7 +371,6 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
         setStep('password');
       }
     } catch (err) {
-      console.error('[SignIn] Scan error:', err);
       setLoading(false);
       toast.error('Failed to scan accounts. Proceeding with default account.');
       // Fallback to password step
@@ -409,11 +408,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
       if (!existingUsername) {
         const defaultUsername = `@user${walletId.substring(0, 6)}`;
         localStorage.setItem('saturn_username', defaultUsername);
-        console.log('[SignIn] Generated default username:', defaultUsername);
       }
-
-      console.log('[SignIn] ✅ Wallet restored locally (client-side only)');
-      console.log('[SignIn] Wallet ID:', walletId);
 
       // Create accounts for all selected derivation paths
       const accounts: any[] = [];
@@ -449,7 +444,6 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
           createdAt: Date.now(),
         });
 
-        console.log(`[SignIn] Created account ${selectedIndex}: ${address.slice(0, 8)}...`);
       }
 
       // Save all accounts
@@ -461,22 +455,16 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
         localStorage.setItem('saturn_imported_pubkey', accounts[0].addresses.solana);
       }
 
-      console.log(`[SignIn] ✅ Imported ${accounts.length} account(s)`);
-
-      // ⚡ IMPORTANT: Unlock the wallet immediately after import
+      // Unlock the wallet immediately after import
       // This ensures addresses are derived and ready when user lands on Home
-      console.log('[SignIn] 🔓 Auto-unlocking wallet...');
       const unlocked = await wallet.unlock(password);
 
       if (!unlocked) {
         throw new Error('Failed to unlock wallet after import');
       }
 
-      console.log('[SignIn] ✅ Wallet unlocked and addresses derived');
-
       // Register biometric if user opted in
       if (enableBiometric && biometricAvailable) {
-        console.log('[SignIn] 🔐 Registering biometric...');
         const biometricResult = await registerBiometric(walletId);
 
         if (biometricResult.success) {
@@ -487,10 +475,8 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
             requireForTransactions: false,
           };
           localStorage.setItem('biometric_settings', JSON.stringify(biometricSettings));
-          console.log('[SignIn] ✅ Biometric registered successfully');
           toast.success(`Wallet imported with ${biometricName} enabled!`);
         } else if (!biometricResult.cancelled) {
-          console.warn('[SignIn] ⚠️ Biometric registration failed:', biometricResult.error);
           toast.success('Welcome back!');
         } else {
           toast.success('Welcome back!');
@@ -502,9 +488,10 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
           : 'Welcome back!');
       }
 
+      // Security: Clear sensitive data from state before navigation
+      clearSensitiveState();
       onSuccess(walletId, walletId);
     } catch (error: any) {
-      console.error('[SignIn] Error:', error);
       toast.error(error.message || 'Failed to import wallet');
     } finally {
       setLoading(false);

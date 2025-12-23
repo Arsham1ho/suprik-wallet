@@ -759,7 +759,10 @@ export async function executeJupiterSwap(params: {
 
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      const mockSignature = `suprik_${mode.toLowerCase()}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      // Use crypto.getRandomValues for unpredictable mock signature
+      const randomBytes = crypto.getRandomValues(new Uint8Array(8));
+      const randomHex = Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('');
+      const mockSignature = `suprik_${mode.toLowerCase()}_${Date.now()}_${randomHex}`;
 
       console.log(`[Jupiter] ${mode} swap completed!`);
       console.log('[Jupiter] Mock Signature:', mockSignature);
@@ -844,10 +847,11 @@ export async function executeJupiterSwap(params: {
       dynamicComputeUnitLimit: true,
       prioritizationFeeLamports: 'auto',
       // Enable dynamic slippage for volatile tokens
-      // minBps: minimum slippage (100 = 1%), maxBps: maximum slippage (1500 = 15%)
+      // minBps: minimum slippage (50 = 0.5%), maxBps: maximum slippage (3000 = 30%)
+      // Increased maxBps to handle very volatile meme coins and low liquidity tokens
       dynamicSlippage: {
-        minBps: 100,  // 1% minimum
-        maxBps: 1500, // 15% maximum - good for meme coins
+        minBps: 50,   // 0.5% minimum (for stablecoins)
+        maxBps: 3000, // 30% maximum (for very volatile meme coins)
       },
     };
 
@@ -862,7 +866,7 @@ export async function executeJupiterSwap(params: {
     }
 
     console.log('[Jupiter] Requesting swap transaction...');
-    console.log('[Jupiter] Dynamic slippage enabled: 1% - 15%');
+    console.log('[Jupiter] Dynamic slippage enabled: 0.5% - 30%');
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
@@ -999,7 +1003,7 @@ export async function executeJupiterSwap(params: {
 
     // Check for Jupiter slippage error (0x1788 = 6024 = SlippageToleranceExceeded)
     if (fullErrorStr.includes('0x1788') || fullErrorStr.includes('6024')) {
-      userMessage = 'Price moved too much during swap. This token is very volatile - please try again immediately (prices change fast).';
+      userMessage = 'Price moved too much during swap (>30%). This token has low liquidity or is extremely volatile. Try a smaller amount or wait for market to stabilize.';
     }
     // Check for empty wallet (no prior credit - wallet has never received SOL)
     else if (fullErrorStr.includes('no record of a prior credit') || fullErrorStr.includes('AccountNotFound')) {

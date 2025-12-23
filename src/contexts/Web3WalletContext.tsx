@@ -204,10 +204,6 @@ export function Web3WalletProvider({ children }: Web3WalletProviderProps) {
       // Retrieve encrypted wallet
       const encrypted = retrieveWallet(walletId);
       if (!encrypted) {
-        console.error('[Web3Wallet] ❌ Wallet not found for ID:', walletId);
-        console.error('[Web3Wallet] 💡 Available wallet keys:', 
-          Object.keys(localStorage).filter(k => k.startsWith('saturn_wallet_'))
-        );
         throw new Error('Wallet not found. Please check your wallet ID or re-import your recovery phrase.');
       }
       
@@ -329,8 +325,8 @@ export function Web3WalletProvider({ children }: Web3WalletProviderProps) {
     try {
       const bal = await getBalance(currentAccount.publicKey);
       setBalance(bal);
-    } catch (err) {
-      console.error('Failed to refresh balance:', err);
+    } catch {
+      // Balance refresh failed silently - will retry on next interval
     }
   };
 

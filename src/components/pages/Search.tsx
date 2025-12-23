@@ -6,8 +6,10 @@ import { Button } from '../ui/button';
 import { TokenLogo } from '../TokenLogo';
 import { toast } from 'sonner';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { addCustomToken, removeCustomToken, isTokenAdded, getCustomTokens } from '../../utils/customTokens';
+import { TOKEN_REGISTRY, searchTokens as searchTokenRegistry } from '../../utils/tokenRegistry';
+import { getJupiterTokens, searchJupiterTokens, jupiterToCoinGeckoFormat } from '../../utils/jupiterTokens';
+import { fetchTopTokens } from '../../utils/coingecko';
 import cosmicBg from 'figma:asset/d1566f8943179b67e87faa45cecace8e6cc289ed.png';
 
 // Wallet token interface for tokens with balance
@@ -48,15 +50,40 @@ export interface CoinGeckoToken {
   mint?: string; // Solana mint address
 }
 
+// Helper function to check if a token is Solana-native (for "Coming Soon" badge)
+const isSolanaToken = (coin: CoinGeckoToken): boolean => {
+  const symbol = coin.symbol.toLowerCase();
+  const id = coin.id.toLowerCase();
+  const name = coin.name.toLowerCase();
+
+  // Check if it has a Solana mint address
+  if (coin.mint && coin.mint.length > 30) {
+    return true;
+  }
+
+  // Check against known Solana token IDs and symbols
+  if (
+    SOLANA_TOKEN_IDS.has(id) ||
+    SOLANA_TOKEN_SYMBOLS.has(symbol) ||
+    id.includes('solana') ||
+    name.includes('solana')
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
 // Memoized Coin Item Component for better performance
-const CoinItem = memo(({ 
-  coin, 
-  onSelectToken, 
-  isAdded, 
-  isAdding, 
-  onAdd, 
-  onRemove, 
-  onClick 
+const CoinItem = memo(({
+  coin,
+  onSelectToken,
+  isAdded,
+  isAdding,
+  onAdd,
+  onRemove,
+  onClick,
+  showComingSoon = false
 }: {
   coin: CoinGeckoToken;
   onSelectToken?: (token: CoinGeckoToken) => void;
@@ -65,6 +92,7 @@ const CoinItem = memo(({
   onAdd: (e: React.MouseEvent, coin: CoinGeckoToken) => void;
   onRemove: (e: React.MouseEvent, coin: CoinGeckoToken) => void;
   onClick: (coin: CoinGeckoToken) => void;
+  showComingSoon?: boolean;
 }) => {
   const priceChange = coin.price_change_percentage_24h || 0;
   
@@ -99,7 +127,14 @@ const CoinItem = memo(({
 
         {/* Token Info */}
         <div className="flex-1 text-left min-w-0">
-          <div className="text-white text-sm truncate">{coin.name}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-white text-sm truncate">{coin.name}</span>
+            {showComingSoon && (
+              <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap flex-shrink-0">
+                Coming Soon
+              </span>
+            )}
+          </div>
           <div className="text-slate-400 text-xs uppercase">
             {coin.symbol}
           </div>
@@ -264,11 +299,15 @@ const detectBlockchain = (coin: CoinGeckoToken): string[] => {
   return blockchains;
 };
 
+// Constants for pagination
+const INITIAL_TOKENS_COUNT = 50; // Show first 50 tokens initially for fast load
+const LOAD_MORE_COUNT = 100; // Load 100 more tokens each time
+
 export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, walletTokens, showOnlyWalletTokens }: SearchProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [coins, setCoins] = useState<CoinGeckoToken[]>([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
+  const [displayCount, setDisplayCount] = useState(INITIAL_TOKENS_COUNT); // How many tokens to display (starts at 50)
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [addingCoin, setAddingCoin] = useState<string | null>(null);
@@ -276,6 +315,8 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
   const [walletTokenSymbols, setWalletTokenSymbols] = useState<Set<string>>(new Set());
   const [blockchainFilter, setBlockchainFilter] = useState<'all' | 'solana' | 'ethereum' | 'polygon' | 'bsc'>('all');
   const [featuredTokensData, setFeaturedTokensData] = useState<CoinGeckoToken[]>([]);
+  const [searchResults, setSearchResults] = useState<CoinGeckoToken[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   // Fetch real-time data for featured tokens
   useEffect(() => {
@@ -384,8 +425,28 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
     fetchFeaturedTokens();
   }, []);
 
-  // Load from localStorage cache on mount
+  // Load from TOKEN_REGISTRY instantly, then check localStorage cache
   useEffect(() => {
+    // INSTANT LOAD: Use pre-cached token registry (like Phantom)
+    // This gives users instant access to top tokens without waiting for API
+    const registryCoins: CoinGeckoToken[] = TOKEN_REGISTRY.map((token, index) => ({
+      id: token.id,
+      symbol: token.symbol.toUpperCase(),
+      name: token.name,
+      image: token.image,
+      current_price: 0, // Prices will be fetched later
+      market_cap: 0,
+      market_cap_rank: index + 1,
+      price_change_percentage_24h: 0,
+      total_volume: 0,
+      mint: token.mint,
+    }));
+
+    console.log(`[Search] 🚀 Instant load: ${registryCoins.length} pre-cached tokens from registry`);
+    setCoins(registryCoins);
+    setLoading(false); // Show tokens immediately
+
+    // Then check localStorage for more tokens
     try {
       const cachedData = localStorage.getItem('coingecko_coins_cache');
       if (cachedData) {
@@ -393,8 +454,14 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
         const now = Date.now();
         // Use cache if less than 10 minutes old
         if (parsed.timestamp && now - parsed.timestamp < 10 * 60 * 1000) {
-          console.log('Using localStorage cache for coins');
-          setCoins(parsed.data || []);
+          console.log('[Search] Using localStorage cache for additional coins');
+          // Merge with registry, avoiding duplicates
+          const existingIds = new Set(registryCoins.map(c => c.id));
+          const newCoins = (parsed.data || []).filter((c: CoinGeckoToken) => !existingIds.has(c.id));
+          if (newCoins.length > 0) {
+            setCoins(prev => [...prev, ...newCoins]);
+            console.log(`[Search] Added ${newCoins.length} additional coins from cache`);
+          }
         }
       }
     } catch (e) {
@@ -403,9 +470,75 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
   }, []);
 
   useEffect(() => {
-    fetchCoins(1);
+    fetchCoins();
     fetchWalletTokens();
   }, [walletId]);
+
+  // Search CoinGecko API when user types a query
+  useEffect(() => {
+    if (!searchQuery || searchQuery.length < 2 || showOnlyWalletTokens) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    const searchTimer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        console.log(`[Search] Searching for: "${searchQuery}"`);
+
+        // 1. Search TOKEN_REGISTRY first (instant)
+        const registryResults = searchTokenRegistry(searchQuery);
+        console.log(`[Search] Found ${registryResults.length} results from TOKEN_REGISTRY`);
+
+        // Convert registry results to CoinGeckoToken format
+        const registryCoins: CoinGeckoToken[] = registryResults.slice(0, 30).map((token, index) => ({
+          id: token.id,
+          symbol: token.symbol.toUpperCase(),
+          name: token.name,
+          image: token.image,
+          current_price: 0,
+          market_cap: 0,
+          market_cap_rank: index + 1,
+          price_change_percentage_24h: 0,
+          total_volume: 0,
+          mint: token.mint,
+        }));
+
+        // 2. Also search Jupiter tokens for more results
+        const jupiterTokens = await getJupiterTokens();
+        const jupiterResults = searchJupiterTokens(searchQuery, jupiterTokens);
+        console.log(`[Search] Found ${jupiterResults.length} results from Jupiter`);
+
+        // Convert Jupiter results
+        const jupiterCoins: CoinGeckoToken[] = jupiterResults.slice(0, 50).map((token, index) =>
+          jupiterToCoinGeckoFormat(token, registryCoins.length + index)
+        );
+
+        // Merge results, avoiding duplicates
+        const existingMints = new Set(registryCoins.map(c => c.mint).filter(Boolean));
+        const existingSymbols = new Set(registryCoins.map(c => c.symbol.toUpperCase()));
+
+        const uniqueJupiterCoins = jupiterCoins.filter(jc => {
+          if (jc.mint && existingMints.has(jc.mint)) return false;
+          if (existingSymbols.has(jc.symbol.toUpperCase())) return false;
+          return true;
+        });
+
+        const combinedResults = [...registryCoins, ...uniqueJupiterCoins];
+        console.log(`[Search] Total search results: ${combinedResults.length}`);
+
+        setSearchResults(combinedResults);
+      } catch (error) {
+        console.error('[Search] Error searching:', error);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(searchTimer);
+  }, [searchQuery, showOnlyWalletTokens]);
 
   const fetchWalletTokens = async () => {
     try {
@@ -423,150 +556,131 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
     }
   };
 
-  const fetchCoins = async (pageNum: number) => {
+  const fetchCoins = async () => {
     try {
-      if (pageNum === 1) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
-      }
+      setLoading(true);
 
-      console.log(`Fetching coins page ${pageNum}...`);
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=${pageNum}&per_page=500`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
-          }
+      console.log(`[Search] Loading tokens from TOKEN_REGISTRY + Jupiter API...`);
+
+      // 1. First load from TOKEN_REGISTRY (instant)
+      const registryCoins: CoinGeckoToken[] = TOKEN_REGISTRY.map((token, index) => ({
+        id: token.id,
+        symbol: token.symbol.toUpperCase(),
+        name: token.name,
+        image: token.image,
+        current_price: 0,
+        market_cap: 0,
+        market_cap_rank: index + 1,
+        price_change_percentage_24h: 0,
+        total_volume: 0,
+        mint: token.mint,
+      }));
+
+      console.log(`[Search] Loaded ${registryCoins.length} tokens from TOKEN_REGISTRY`);
+
+      // Show registry tokens immediately
+      setCoins(registryCoins);
+      setLoading(false);
+
+      // Track all tokens for merging
+      let allCoins = [...registryCoins];
+      const existingMints = new Set(registryCoins.map(c => c.mint).filter(Boolean));
+      const existingSymbols = new Set(registryCoins.map(c => c.symbol.toUpperCase()));
+      const existingIds = new Set(registryCoins.map(c => c.id));
+
+      // 2. Fetch Jupiter tokens (1000+ Solana tokens)
+      try {
+        const jupiterTokens = await getJupiterTokens();
+        console.log(`[Search] Fetched ${jupiterTokens.length} tokens from Jupiter API`);
+
+        if (jupiterTokens.length > 0) {
+          const jupiterCoins: CoinGeckoToken[] = jupiterTokens.map((token, index) =>
+            jupiterToCoinGeckoFormat(token, allCoins.length + index)
+          );
+
+          const newJupiterCoins = jupiterCoins.filter(jc => {
+            if (jc.mint && existingMints.has(jc.mint)) return false;
+            if (existingSymbols.has(jc.symbol.toUpperCase())) return false;
+            return true;
+          });
+
+          // Add to tracking sets
+          newJupiterCoins.forEach(jc => {
+            if (jc.mint) existingMints.add(jc.mint);
+            existingSymbols.add(jc.symbol.toUpperCase());
+            existingIds.add(jc.id);
+          });
+
+          allCoins = [...allCoins, ...newJupiterCoins];
+          console.log(`[Search] Added ${newJupiterCoins.length} unique Jupiter tokens`);
         }
-      );
+      } catch (jupiterError) {
+        console.warn('[Search] Jupiter fetch failed:', jupiterError);
+      }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Fetch error:', response.status, errorText);
-        
-        // If rate limited, show a friendly message but don't throw
-        if (response.status === 429 || errorText.includes('429')) {
-          toast.error('Rate limit reached. Using cached data...');
-          // Stop loading more
-          setHasMore(false);
-          return;
+      // 3. Fetch CoinGecko top tokens (multi-chain coverage with prices)
+      try {
+        const cgTopTokens = await fetchTopTokens(1, 250);
+        console.log(`[Search] Fetched ${cgTopTokens.length} tokens from CoinGecko`);
+
+        if (cgTopTokens.length > 0) {
+          const newCgCoins: CoinGeckoToken[] = cgTopTokens
+            .filter(cg => {
+              // Skip if we already have this token
+              if (existingIds.has(cg.id)) return false;
+              if (existingSymbols.has(cg.symbol.toUpperCase())) return false;
+              return true;
+            })
+            .map(cg => ({
+              id: cg.id,
+              symbol: cg.symbol.toUpperCase(),
+              name: cg.name,
+              image: cg.image,
+              current_price: cg.current_price,
+              market_cap: cg.market_cap,
+              market_cap_rank: cg.market_cap_rank,
+              price_change_percentage_24h: cg.price_change_percentage_24h,
+              total_volume: cg.total_volume,
+            }));
+
+          allCoins = [...allCoins, ...newCgCoins];
+          console.log(`[Search] Added ${newCgCoins.length} unique CoinGecko tokens`);
         }
-        
-        throw new Error('Failed to fetch coins');
+      } catch (cgError) {
+        console.warn('[Search] CoinGecko fetch failed:', cgError);
       }
 
-      const data = await response.json();
-      
-      // Handle error response
-      if (data.error) {
-        console.error('API returned error:', data.error);
-        if (data.error.includes('429')) {
-          toast.error('Rate limit reached. Please wait a moment...');
-          setHasMore(false);
-          return;
-        }
-        throw new Error(data.error);
-      }
-      
-      console.log(`Fetched ${data.length} coins from page ${pageNum}`);
-
-      // Check if we've reached the end of CoinGecko data
-      if (data.length === 0) {
-        console.log('⚠️ No more coins available from CoinGecko');
-        setHasMore(false);
-        if (pageNum > 1) {
-          toast.success('All available tokens loaded!');
-        }
-        return;
-      }
-
-      if (pageNum === 1) {
-        // Deduplicate data by id
-        const seenIds = new Set<string>();
-        const uniqueData = data.filter((coin: CoinGeckoToken) => {
-          if (seenIds.has(coin.id)) return false;
-          seenIds.add(coin.id);
-          return true;
-        });
-        setCoins(uniqueData);
-        // Cache the first page in localStorage
-        try {
-          localStorage.setItem('coingecko_coins_cache', JSON.stringify({
-            data: uniqueData,
-            timestamp: Date.now()
-          }));
-        } catch (e) {
-          console.error('Error caching data:', e);
-        }
-      } else {
-        // Deduplicate when appending new pages
-        setCoins(prev => {
-          const existingIds = new Set(prev.map(c => c.id));
-          const newCoins = data.filter((coin: CoinGeckoToken) => !existingIds.has(coin.id));
-          return [...prev, ...newCoins];
-        });
-      }
-
-      // Stop loading more if we got less than 500 coins (last page)
-      if (data.length < 500) {
-        console.log(`⚠️ Received ${data.length} coins (less than 500) - this is the last page`);
-        setHasMore(false);
-        toast.success('All available tokens loaded!');
-      } else {
-        setHasMore(true);
-      }
-      
-      setPage(pageNum);
+      // Update state with all tokens
+      setCoins(allCoins);
+      setHasMore(allCoins.length > INITIAL_TOKENS_COUNT);
+      console.log(`[Search] ✅ Total tokens available: ${allCoins.length}`);
     } catch (error) {
-      console.error('Error fetching coins:', error);
-      
-      // Stop loading more on error
-      setHasMore(false);
-      
-      // If page 1 fails and we have no coins, try to use localStorage cache even if expired
-      if (pageNum === 1 && coins.length === 0) {
-        try {
-          const cachedData = localStorage.getItem('coingecko_coins_cache');
-          if (cachedData) {
-            const parsed = JSON.parse(cachedData);
-            if (parsed.data && parsed.data.length > 0) {
-              console.log('Using expired cache as fallback');
-              setCoins(parsed.data);
-              toast.error('Using cached data. Please try again later.');
-            }
-          }
-        } catch (e) {
-          console.error('Error reading fallback cache:', e);
-        }
-      } else if (pageNum > 1) {
-        toast.error('Unable to load more tokens. Showing what we have.');
-      }
+      console.error('[Search] Error loading coins:', error);
+      // Fallback to registry tokens if outer try fails
+      setHasMore(true);
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
   };
 
-  const loadMore = useCallback(async () => {
+  const loadMore = useCallback(() => {
     if (!loadingMore && hasMore) {
-      // Add a small delay to avoid rapid consecutive requests
-      await new Promise(resolve => setTimeout(resolve, 500));
-      fetchCoins(page + 1);
+      setLoadingMore(true);
+      // Simulate loading delay for smooth UX
+      setTimeout(() => {
+        setDisplayCount(prev => {
+          const newCount = prev + LOAD_MORE_COUNT;
+          // Check if we've loaded all tokens
+          if (newCount >= coins.length) {
+            setHasMore(false);
+          }
+          return Math.min(newCount, coins.length);
+        });
+        setLoadingMore(false);
+      }, 300);
     }
-  }, [loadingMore, hasMore, page]);
-
-  // Auto-load remaining pages after initial load (no "Load More" button needed)
-  useEffect(() => {
-    if (!loading && hasMore && !loadingMore && coins.length > 0 && !showOnlyWalletTokens) {
-      // Small delay to avoid rate limiting
-      const timer = setTimeout(() => {
-        loadMore();
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [loading, hasMore, loadingMore, coins.length, showOnlyWalletTokens, loadMore]);
+  }, [loadingMore, hasMore, coins.length]);
 
   const filteredCoins = useMemo(() => {
     // If showOnlyWalletTokens is true and we have wallet tokens, only show those
@@ -660,17 +774,37 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
       allCoins = [...inWallet, ...notInWallet];
     }
 
-    // Apply search filter
-    if (!searchQuery) return allCoins;
-    const query = searchQuery.toLowerCase();
-    const filtered = allCoins.filter(coin =>
-      coin.name.toLowerCase().includes(query) ||
-      coin.symbol.toLowerCase().includes(query)
-    );
+    // Apply search filter - if searching, show all results (no pagination limit)
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
 
-    console.log(`[Search] Query: "${searchQuery}", Filtered: ${filtered.length} results`);
-    return filtered;
-  }, [coins, searchQuery, featuredTokensData, blockchainFilter, walletTokens, showOnlyWalletTokens]);
+      // First filter from loaded coins
+      const localFiltered = allCoins.filter(coin =>
+        coin.name.toLowerCase().includes(query) ||
+        coin.symbol.toLowerCase().includes(query)
+      );
+
+      // Merge with API search results (if any)
+      if (searchResults.length > 0) {
+        const existingIds = new Set(localFiltered.map(c => c.id));
+        const newFromSearch = searchResults.filter(c => !existingIds.has(c.id));
+
+        // Combine: local results first (they have prices), then API search results
+        const combined = [...localFiltered, ...newFromSearch];
+        console.log(`[Search] Query: "${searchQuery}", Local: ${localFiltered.length}, API: ${newFromSearch.length}, Total: ${combined.length}`);
+        return combined;
+      }
+
+      console.log(`[Search] Query: "${searchQuery}", Filtered: ${localFiltered.length} results`);
+      return localFiltered;
+    }
+
+    // No search query - apply pagination (limit to displayCount)
+    // First 1000 tokens load automatically, then user can load more
+    const paginatedCoins = allCoins.slice(0, displayCount);
+    console.log(`[Search] Showing ${paginatedCoins.length} of ${allCoins.length} tokens (displayCount: ${displayCount})`);
+    return paginatedCoins;
+  }, [coins, searchQuery, featuredTokensData, blockchainFilter, walletTokens, showOnlyWalletTokens, searchResults, displayCount]);
 
   // Mark coins that are already in wallet
   useEffect(() => {
@@ -914,16 +1048,24 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
         )}
 
         {/* Quick stats */}
-        {searchQuery && filteredCoins.length > 0 && (
+        {searchQuery && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             className="mt-3 text-center"
           >
-            <span className="text-xs text-slate-400">
-              Found <span className="text-purple-400 font-semibold">{filteredCoins.length}</span> {filteredCoins.length === 1 ? 'result' : 'results'}
-            </span>
+            {isSearching ? (
+              <span className="text-xs text-slate-400 flex items-center justify-center gap-2">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Searching all tokens...
+              </span>
+            ) : (
+              <span className="text-xs text-slate-400">
+                Found <span className="text-purple-400 font-semibold">{filteredCoins.length}</span> {filteredCoins.length === 1 ? 'result' : 'results'}
+                {searchResults.length > 0 && <span className="text-slate-500"> (including API search)</span>}
+              </span>
+            )}
           </motion.div>
         )}
       </motion.div>
@@ -1023,6 +1165,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
                         onAdd={handleAddCoin}
                         onRemove={handleRemoveCoin}
                         onClick={handleTokenClick}
+                        showComingSoon={!!onSelectToken && !isSolanaToken(coin)}
                       />
                     ));
                   }
@@ -1046,6 +1189,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
                               onAdd={handleAddCoin}
                               onRemove={handleRemoveCoin}
                               onClick={handleTokenClick}
+                              showComingSoon={!!onSelectToken && !isSolanaToken(coin)}
                             />
                           ))}
                         </div>
@@ -1066,6 +1210,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
                                 onAdd={handleAddCoin}
                                 onRemove={handleRemoveCoin}
                                 onClick={handleTokenClick}
+                                showComingSoon={!!onSelectToken && !isSolanaToken(coin)}
                               />
                             ))}
                           </div>
@@ -1085,21 +1230,37 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
                       onAdd={handleAddCoin}
                       onRemove={handleRemoveCoin}
                       onClick={handleTokenClick}
+                      showComingSoon={!!onSelectToken && !isSolanaToken(coin)}
                     />
                   ));
                 })()}
               </AnimatePresence>
             </motion.div>
 
-            {/* Loading indicator when auto-loading more tokens */}
-            {!searchQuery && hasMore && !showOnlyWalletTokens && loadingMore && (
+            {/* Load More Button */}
+            {!searchQuery && hasMore && !showOnlyWalletTokens && (
               <motion.div
-                className="mt-6 flex justify-center items-center gap-2 text-slate-400"
+                className="mt-6 flex flex-col items-center gap-2"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
               >
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span className="text-sm">Loading more tokens...</span>
+                <p className="text-xs text-slate-500">
+                  Showing {displayCount.toLocaleString()} of {coins.length.toLocaleString()} tokens
+                </p>
+                <Button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-xl"
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Loading...
+                    </>
+                  ) : (
+                    `Load More Tokens (+${Math.min(LOAD_MORE_COUNT, coins.length - displayCount).toLocaleString()})`
+                  )}
+                </Button>
               </motion.div>
             )}
           </>

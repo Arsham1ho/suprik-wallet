@@ -7,8 +7,31 @@ import { UserPlus, Edit2, Trash2, Copy, Check, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { useLanguage } from '../utils/i18n/LanguageContext';
+
+// Storage key for contacts
+const CONTACTS_STORAGE_KEY = 'suprik_contacts';
+
+// Get contacts from localStorage
+function getStoredContacts(walletId: string): Contact[] {
+  try {
+    const key = `${CONTACTS_STORAGE_KEY}_${walletId}`;
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+// Save contacts to localStorage
+function saveStoredContacts(walletId: string, contacts: Contact[]): void {
+  try {
+    const key = `${CONTACTS_STORAGE_KEY}_${walletId}`;
+    localStorage.setItem(key, JSON.stringify(contacts));
+  } catch (e) {
+    console.warn('[AddressBook] Failed to save contacts:', e);
+  }
+}
 
 interface Contact {
   id: string;
@@ -37,69 +60,67 @@ export function AddressBook({ walletId, onSelectContact }: AddressBookProps) {
   const [network, setNetwork] = useState('solana');
 
   useEffect(() => {
-    fetchContacts();
+    loadContacts();
   }, [walletId]);
 
-  const fetchContacts = async () => {
+  // Load contacts from localStorage (instant, no server call)
+  const loadContacts = () => {
     try {
       setLoading(true);
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet/${walletId}/contacts`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch contacts');
-      }
-
-      const data = await response.json();
-      setContacts(data || []);
+      const storedContacts = getStoredContacts(walletId);
+      setContacts(storedContacts);
+      console.log('[AddressBook] Loaded contacts from localStorage:', storedContacts.length);
     } catch (error) {
-      console.error('Error fetching contacts:', error);
+      console.error('Error loading contacts:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSaveContact = async () => {
+  const handleSaveContact = () => {
     if (!name.trim() || !address.trim()) {
       toast.error('Please fill all fields');
       return;
     }
 
     try {
-      const endpoint = editingContact
-        ? `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet/${walletId}/contacts/${editingContact.id}`
-        : `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet/${walletId}/contacts`;
+      let updatedContacts: Contact[];
 
-      const response = await fetch(endpoint, {
-        method: editingContact ? 'PUT' : 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`,
-        },
-        body: JSON.stringify({ name, address, network }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save contact');
+      if (editingContact) {
+        // Update existing contact
+        updatedContacts = contacts.map(c =>
+          c.id === editingContact.id
+            ? { ...c, name: name.trim(), address: address.trim(), network }
+            : c
+        );
+      } else {
+        // Add new contact - use crypto.getRandomValues for secure ID
+        const randomBytes = crypto.getRandomValues(new Uint8Array(8));
+        const randomId = Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('');
+        const newContact: Contact = {
+          id: `contact_${Date.now()}_${randomId}`,
+          name: name.trim(),
+          address: address.trim(),
+          network,
+          createdAt: new Date().toISOString(),
+        };
+        updatedContacts = [...contacts, newContact];
       }
 
+      // Save to localStorage
+      saveStoredContacts(walletId, updatedContacts);
+      setContacts(updatedContacts);
+
       toast.success(editingContact ? 'Contact updated' : 'Contact added');
-      
+
       // Reset form
       setName('');
       setAddress('');
       setNetwork('solana');
       setShowAddDialog(false);
       setEditingContact(null);
-      
-      // Refresh contacts
-      fetchContacts();
+
+      console.log('[AddressBook] Contact saved (client-side)');
     } catch (error) {
       console.error('Error saving contact:', error);
       toast.error(t.messages.error.saveFailed);
@@ -114,24 +135,14 @@ export function AddressBook({ walletId, onSelectContact }: AddressBookProps) {
     setShowAddDialog(true);
   };
 
-  const handleDeleteContact = async (contactId: string) => {
+  const handleDeleteContact = (contactId: string) => {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet/${walletId}/contacts/${contactId}`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to delete contact');
-      }
+      const updatedContacts = contacts.filter(c => c.id !== contactId);
+      saveStoredContacts(walletId, updatedContacts);
+      setContacts(updatedContacts);
 
       toast.success('Contact deleted');
-      fetchContacts();
+      console.log('[AddressBook] Contact deleted (client-side)');
     } catch (error) {
       console.error('Error deleting contact:', error);
       toast.error('Failed to delete contact');

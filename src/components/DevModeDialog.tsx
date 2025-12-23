@@ -38,7 +38,7 @@ export function DevModeDialog({ open, onOpenChange, walletId, onTransactionAdded
 
     try {
       setLoading(true);
-      console.log('Simulating receive:', { walletId, tokenSymbol: selectedToken, amount });
+      // Simulating receive in dev mode
 
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/dev-receive`,

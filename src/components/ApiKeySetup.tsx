@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Card } from './ui/card';
 import { Eye, EyeOff, Check, X, AlertCircle, ExternalLink } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
-import { areApiKeysConfigured } from '../utils/env';
+import { areApiKeysConfigured, saveEncryptedApiKey, getEncryptedApiKey, removeApiKey } from '../utils/env';
 
 export function ApiKeySetup() {
   const [heliusKey, setHeliusKey] = useState('');
@@ -15,15 +14,18 @@ export function ApiKeySetup() {
   const [apiStatus, setApiStatus] = useState({ helius: false, alchemy: false, allConfigured: false });
 
   useEffect(() => {
-    // Load existing keys from localStorage
-    const existingHelius = localStorage.getItem('HELIUS_API_KEY') || '';
-    const existingAlchemy = localStorage.getItem('ALCHEMY_API_KEY') || '';
-    
-    setHeliusKey(existingHelius);
-    setAlchemyKey(existingAlchemy);
-    
-    // Check status
-    checkApiStatus();
+    // Load existing keys from encrypted storage
+    const loadKeys = async () => {
+      const existingHelius = await getEncryptedApiKey('helius') || '';
+      const existingAlchemy = await getEncryptedApiKey('alchemy') || '';
+
+      setHeliusKey(existingHelius);
+      setAlchemyKey(existingAlchemy);
+
+      // Check status
+      checkApiStatus();
+    };
+    loadKeys();
   }, []);
 
   const checkApiStatus = () => {
@@ -31,37 +33,37 @@ export function ApiKeySetup() {
     setApiStatus(status);
   };
 
-  const saveHeliusKey = () => {
+  const saveHeliusKey = async () => {
     if (!heliusKey.trim()) {
       toast.error('Please enter a valid Helius API key');
       return;
     }
 
-    localStorage.setItem('HELIUS_API_KEY', heliusKey.trim());
-    toast.success('Helius API key saved! Refresh to use real Solana data.');
+    await saveEncryptedApiKey('helius', heliusKey.trim());
+    toast.success('Helius API key saved securely! Refresh to use real Solana data.');
     checkApiStatus();
   };
 
-  const saveAlchemyKey = () => {
+  const saveAlchemyKey = async () => {
     if (!alchemyKey.trim()) {
       toast.error('Please enter a valid Alchemy API key');
       return;
     }
 
-    localStorage.setItem('ALCHEMY_API_KEY', alchemyKey.trim());
-    toast.success('Alchemy API key saved! Refresh to use real Ethereum data.');
+    await saveEncryptedApiKey('alchemy', alchemyKey.trim());
+    toast.success('Alchemy API key saved securely! Refresh to use real Ethereum data.');
     checkApiStatus();
   };
 
   const removeHeliusKey = () => {
-    localStorage.removeItem('HELIUS_API_KEY');
+    removeApiKey('helius');
     setHeliusKey('');
     toast.success('Helius API key removed');
     checkApiStatus();
   };
 
   const removeAlchemyKey = () => {
-    localStorage.removeItem('ALCHEMY_API_KEY');
+    removeApiKey('alchemy');
     setAlchemyKey('');
     toast.success('Alchemy API key removed');
     checkApiStatus();

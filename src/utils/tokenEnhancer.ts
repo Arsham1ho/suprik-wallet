@@ -1,8 +1,9 @@
 /**
  * Token Enhancer - Enhance tokens with real prices and logos from multiple sources
+ *
+ * CLIENT-SIDE ONLY - Uses DexScreener and Jupiter API directly (Phantom-like architecture)
+ * No server proxy required.
  */
-
-import { projectId, publicAnonKey } from './supabase/info';
 
 interface EnhancedTokenData {
   price: number;
@@ -22,14 +23,14 @@ const KNOWN_LOGOS: Record<string, string> = {
   'PARAI': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
 };
 
-// Map mint addresses to CoinGecko IDs for fetching real prices
-const MINT_TO_COINGECKO: Record<string, string> = {
-  'HrkKngiUavecwte1ZMrdt4H5Qet3cecNUzMoEAgjTAX8': 'parabolic-ai', // Real Parabolic AI Solana mint
-  'Cmgx4FoMTNyxWeMKso3BTWmScGgFwrryTQbMKrxNAKNh': 'parabolic-ai', // Alternate Parabolic mint
-  'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263': 'bonk',
-  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': 'usd-coin',
-  'So11111111111111111111111111111111111111112': 'solana',
-};
+// Known Solana token mints for reference
+const KNOWN_MINTS = {
+  SOL: 'So11111111111111111111111111111111111111112',
+  USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+  USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+  BONK: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+  PAI: 'HrkKngiUavecwte1ZMrdt4H5Qet3cecNUzMoEAgjTAX8',
+} as const;
 
 // Stablecoins with known fixed prices - DON'T fetch from DexScreener (returns wrong prices)
 const STABLECOIN_PRICES: Record<string, number> = {
@@ -121,31 +122,24 @@ export async function enhanceToken(
     }
   }
   
-  // If price is still 0, try to get from backend
-  if (price === 0) {
+  // If price is still 0, try Jupiter Price API v3 (client-side, like Phantom)
+  if (price === 0 && mint.length > 32) {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/token-prices`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`
-          },
-          body: JSON.stringify({ symbols: [symbol] })
-        }
-      );
-      
+      const response = await fetch(`https://api.jup.ag/price/v3?ids=${mint}`);
+
       if (response.ok) {
         const data = await response.json();
-        price = data.prices?.[symbol] || 0;
-        console.log(`[TokenEnhancer] ✅ Backend: ${symbol} = $${price}`);
+        const priceData = data.data?.[mint];
+        if (priceData?.price) {
+          price = parseFloat(priceData.price);
+          console.log(`[TokenEnhancer] ✅ Jupiter API: ${symbol} = $${price}`);
+        }
       }
     } catch (error) {
-      console.error(`[TokenEnhancer] ⚠️  Backend failed for ${symbol}:`, error);
+      console.error(`[TokenEnhancer] ⚠️ Jupiter API failed for ${symbol}:`, error);
     }
   }
-  
+
   return { price, logoUrl, change24h, name: tokenName, symbol: tokenSymbol };
 }
 

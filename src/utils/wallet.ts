@@ -7,16 +7,59 @@ if (typeof window !== 'undefined') {
   window.Buffer = Buffer;
 }
 
-// DEBUG: Test wordlist
-console.log('[Wallet] Wordlist check:', {
-  type: typeof englishWordlist,
-  isArray: Array.isArray(englishWordlist),
-  length: englishWordlist.length,
-  firstWord: englishWordlist[0],
-  lastWord: englishWordlist[englishWordlist.length - 1],
-  expected: 2048,
-  isValid: englishWordlist.length === 2048
-});
+/**
+ * Securely clear sensitive data from memory
+ * Overwrites the data with random bytes before releasing
+ * This helps prevent memory dump attacks
+ */
+export function secureClear(data: Uint8Array | string | null | undefined): void {
+  if (!data) return;
+
+  if (data instanceof Uint8Array) {
+    // Overwrite with random bytes
+    crypto.getRandomValues(data);
+    // Then zero out
+    data.fill(0);
+  } else if (typeof data === 'string') {
+    // Strings are immutable in JS, but we can try to minimize exposure
+    // by creating a new reference (the old one will be garbage collected)
+    // This is a best-effort approach since JS doesn't allow direct memory manipulation
+    // For truly sensitive data, always use Uint8Array instead of strings
+  }
+}
+
+/**
+ * Create a secure string wrapper that can be cleared
+ * Use this for sensitive data that needs to be cleared from memory
+ */
+export class SecureString {
+  private data: Uint8Array;
+  private cleared = false;
+
+  constructor(value: string) {
+    const encoder = new TextEncoder();
+    this.data = encoder.encode(value);
+  }
+
+  toString(): string {
+    if (this.cleared) {
+      throw new Error('SecureString has been cleared');
+    }
+    const decoder = new TextDecoder();
+    return decoder.decode(this.data);
+  }
+
+  clear(): void {
+    if (!this.cleared) {
+      secureClear(this.data);
+      this.cleared = true;
+    }
+  }
+
+  isCleared(): boolean {
+    return this.cleared;
+  }
+}
 
 /**
  * Secure storage for encrypted mnemonic
@@ -30,7 +73,6 @@ export class SecureStorage {
    */
   static async storeMnemonic(mnemonic: string, password: string): Promise<void> {
     try {
-      console.log('[SecureStorage] 🔐 Encrypting mnemonic with Web Crypto API...');
       
       const encoder = new TextEncoder();
       const data = encoder.encode(mnemonic);
@@ -53,7 +95,7 @@ export class SecureStorage {
         {
           name: 'PBKDF2',
           salt: salt,
-          iterations: 100000,
+          iterations: 600000, // OWASP 2023 recommended minimum
           hash: 'SHA-256'
         },
         keyMaterial,
@@ -61,7 +103,7 @@ export class SecureStorage {
         false,
         ['encrypt', 'decrypt']
       );
-      
+
       // Encrypt the mnemonic
       const encryptedData = await crypto.subtle.encrypt(
         { name: 'AES-GCM', iv: iv },
@@ -84,10 +126,7 @@ export class SecureStorage {
       };
       
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(encryptedWallet));
-      
-      console.log('[SecureStorage] ✅ Mnemonic encrypted and stored successfully');
     } catch (error) {
-      console.error('[SecureStorage] ❌ Encryption failed:', error);
       throw new Error('Failed to encrypt mnemonic');
     }
   }
@@ -97,25 +136,17 @@ export class SecureStorage {
    */
   static async retrieveMnemonic(password: string): Promise<string | null> {
     try {
-      console.log('[SecureStorage] 🔓 Attempting to decrypt mnemonic with Web Crypto API...');
-      
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (!stored) {
-        console.error('[SecureStorage] ❌ No encrypted wallet found in storage');
         return null;
       }
-
-      console.log('[SecureStorage] 📦 Encrypted data found');
 
       // Parse stored wallet data
       const encryptedWallet = JSON.parse(stored);
-      
+
       if (!encryptedWallet.encrypted || !encryptedWallet.salt || !encryptedWallet.iv) {
-        console.error('[SecureStorage] ❌ Invalid wallet data format');
         return null;
       }
-      
-      console.log('[SecureStorage] 🔐 Decrypting with stored salt and IV...');
       
       const encoder = new TextEncoder();
       const decoder = new TextDecoder();
@@ -145,7 +176,7 @@ export class SecureStorage {
         {
           name: 'PBKDF2',
           salt: salt,
-          iterations: 100000,
+          iterations: 600000, // OWASP 2023 recommended minimum
           hash: 'SHA-256'
         },
         keyMaterial,
@@ -153,34 +184,28 @@ export class SecureStorage {
         false,
         ['encrypt', 'decrypt']
       );
-      
+
       // Decrypt
       const decryptedData = await crypto.subtle.decrypt(
         { name: 'AES-GCM', iv: iv },
         key,
         encryptedArray
       );
-      
-      const mnemonic = decoder.decode(decryptedData);
-      
+
+      // Convert to Uint8Array so we can clear it after use
+      const decryptedArray = new Uint8Array(decryptedData);
+      const mnemonic = decoder.decode(decryptedArray);
+
+      // Clear the decrypted buffer from memory
+      secureClear(decryptedArray);
+
       if (!mnemonic) {
-        console.error('[SecureStorage] ❌ Decryption failed - wrong password or corrupted data');
         return null;
       }
-      
-      console.log('[SecureStorage] ✅ Mnemonic decrypted successfully');
+
       return mnemonic;
-    } catch (error: any) {
-      console.error('[SecureStorage] ❌ Failed to decrypt mnemonic:', error.message);
-      console.error('[SecureStorage] ❌ Error details:', error);
-      console.error('[SecureStorage] This usually means:', {
-        possibleCauses: [
-          '1. Wrong password entered',
-          '2. Corrupted storage data',
-          '3. Data format mismatch'
-        ]
-      });
-      
+    } catch {
+      // Decryption failed - likely wrong password or corrupted data
       return null;
     }
   }
@@ -206,32 +231,21 @@ export class SecureStorage {
     try {
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (!stored) return false;
-      
+
       // Try to parse as JSON first
       try {
         const parsed = JSON.parse(stored);
         if (parsed.encrypted && parsed.salt && parsed.iv) {
-          // Check version
-          if (parsed.version === 2) {
-            console.log('[SecureStorage] ✅ Wallet in Web Crypto API format (v2)');
-            return true;
-          } else {
-            console.log('[SecureStorage] ⚠️ Old encryption format detected (v1)');
-            console.log('[SecureStorage] ℹ️ Please re-import your recovery phrase for better security');
-            // Old format still works but recommend migration
-            return true;
-          }
+          // Version 2 is current, older versions still work
+          return true;
         }
       } catch {
-        // Not JSON, definitely old format
-        console.log('[SecureStorage] ⚠️ Very old wallet format detected, needs migration');
-        console.log('[SecureStorage] ℹ️ Please re-import your recovery phrase');
+        // Not JSON, definitely old format - needs re-import
         return false;
       }
-      
+
       return false;
-    } catch (error) {
-      console.error('[SecureStorage] ❌ Migration check failed:', error);
+    } catch {
       return false;
     }
   }
@@ -245,120 +259,209 @@ export class WalletStorage {
   private static WALLET_ID_KEY = 'saturn_wallet_id';
   private static CURRENT_ACCOUNT_KEY = 'saturn_current_account';
   private static OAUTH_PASSWORD_KEY = 'saturn_oauth_password'; // Encrypted OAuth password
-  
+  private static DEVICE_SECRET_KEY = 'saturn_device_secret'; // Random device-specific secret
+  private static PBKDF2_ITERATIONS = 600000; // OWASP 2023 recommended minimum
+
   static setWalletId(walletId: string): void {
     localStorage.setItem(this.WALLET_ID_KEY, walletId);
   }
-  
+
   static getWalletId(): string | null {
     return localStorage.getItem(this.WALLET_ID_KEY);
   }
-  
+
   static setCurrentAccount(accountIndex: number): void {
     localStorage.setItem(this.CURRENT_ACCOUNT_KEY, accountIndex.toString());
   }
-  
+
   static getCurrentAccount(): number {
     const stored = localStorage.getItem(this.CURRENT_ACCOUNT_KEY);
     return stored ? parseInt(stored, 10) : 0;
   }
-  
+
   /**
-   * Store OAuth password (encrypted with browser fingerprint)
-   * This allows seamless OAuth re-authentication
+   * Get or create a device-specific random secret
+   * This secret is unique per device/browser and cannot be predicted
+   */
+  private static getOrCreateDeviceSecret(): string {
+    let secret = localStorage.getItem(this.DEVICE_SECRET_KEY);
+    if (!secret) {
+      // Generate a cryptographically secure random secret (32 bytes = 256 bits)
+      const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+      secret = btoa(String.fromCharCode(...randomBytes));
+      localStorage.setItem(this.DEVICE_SECRET_KEY, secret);
+    }
+    return secret;
+  }
+
+  /**
+   * Store OAuth password with proper encryption
+   * Uses: Device-specific random secret + PBKDF2 key derivation + AES-256-GCM
+   * This allows seamless OAuth re-authentication on the same device
    */
   static async setOAuthPassword(password: string): Promise<void> {
     try {
-      // Use browser fingerprint as encryption key (device-specific)
-      const fingerprint = navigator.userAgent + window.screen.width + window.screen.height;
       const encoder = new TextEncoder();
       const data = encoder.encode(password);
-      
-      // Generate key from fingerprint
-      const fingerprintBuffer = encoder.encode(fingerprint);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', fingerprintBuffer);
-      const key = await crypto.subtle.importKey(
+
+      // Get device-specific random secret (not predictable like browser fingerprint)
+      const deviceSecret = this.getOrCreateDeviceSecret();
+
+      // Generate random salt for PBKDF2
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+
+      // Derive key using PBKDF2 (same security as seed phrase encryption)
+      const secretBuffer = encoder.encode(deviceSecret);
+      const keyMaterial = await crypto.subtle.importKey(
         'raw',
-        hashBuffer,
+        secretBuffer,
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits', 'deriveKey']
+      );
+
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: salt,
+          iterations: this.PBKDF2_ITERATIONS,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
         { name: 'AES-GCM', length: 256 },
         false,
         ['encrypt', 'decrypt']
       );
-      
-      // Encrypt password
+
+      // Encrypt password with AES-256-GCM
       const iv = crypto.getRandomValues(new Uint8Array(12));
       const encryptedData = await crypto.subtle.encrypt(
         { name: 'AES-GCM', iv },
         key,
         data
       );
-      
-      // Store encrypted data + IV
-      const combined = new Uint8Array(iv.length + encryptedData.byteLength);
-      combined.set(iv, 0);
-      combined.set(new Uint8Array(encryptedData), iv.length);
-      const base64 = btoa(String.fromCharCode(...combined));
-      
-      localStorage.setItem(this.OAUTH_PASSWORD_KEY, base64);
-    } catch (error) {
-      console.error('[WalletStorage] Failed to store OAuth password:', error);
+
+      // Store as JSON with salt, IV, and encrypted data
+      const encryptedBase64 = btoa(String.fromCharCode(...new Uint8Array(encryptedData)));
+      const saltBase64 = btoa(String.fromCharCode(...salt));
+      const ivBase64 = btoa(String.fromCharCode(...iv));
+
+      const stored = JSON.stringify({
+        encrypted: encryptedBase64,
+        salt: saltBase64,
+        iv: ivBase64,
+        version: 2 // Mark as secure version
+      });
+
+      localStorage.setItem(this.OAUTH_PASSWORD_KEY, stored);
+    } catch {
+      // Silently fail - OAuth password storage is a convenience feature
     }
   }
-  
+
   /**
    * Retrieve OAuth password (if available and on same device)
+   * Will fail if device secret doesn't exist (different device)
    */
   static async getOAuthPassword(): Promise<string | null> {
     try {
       const stored = localStorage.getItem(this.OAUTH_PASSWORD_KEY);
       if (!stored) return null;
-      
-      // Use browser fingerprint as decryption key
-      const fingerprint = navigator.userAgent + window.screen.width + window.screen.height;
+
+      // Get device secret - if it doesn't exist, we can't decrypt
+      const deviceSecret = localStorage.getItem(this.DEVICE_SECRET_KEY);
+      if (!deviceSecret) {
+        // Different device or secret was cleared
+        this.clearOAuthPassword();
+        return null;
+      }
+
       const encoder = new TextEncoder();
-      
-      // Generate key from fingerprint
-      const fingerprintBuffer = encoder.encode(fingerprint);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', fingerprintBuffer);
-      const key = await crypto.subtle.importKey(
+      const decoder = new TextDecoder();
+
+      // Parse stored data
+      let parsedData;
+      try {
+        parsedData = JSON.parse(stored);
+      } catch {
+        // Old format - clear and return null
+        this.clearOAuthPassword();
+        return null;
+      }
+
+      // Check version - old version needs migration
+      if (!parsedData.version || parsedData.version < 2) {
+        this.clearOAuthPassword();
+        return null;
+      }
+
+      const { encrypted, salt, iv } = parsedData;
+
+      // Decode from base64
+      const encryptedArray = new Uint8Array(
+        atob(encrypted).split('').map(c => c.charCodeAt(0))
+      );
+      const saltArray = new Uint8Array(
+        atob(salt).split('').map(c => c.charCodeAt(0))
+      );
+      const ivArray = new Uint8Array(
+        atob(iv).split('').map(c => c.charCodeAt(0))
+      );
+
+      // Derive key using PBKDF2
+      const secretBuffer = encoder.encode(deviceSecret);
+      const keyMaterial = await crypto.subtle.importKey(
         'raw',
-        hashBuffer,
+        secretBuffer,
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits', 'deriveKey']
+      );
+
+      const key = await crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: saltArray,
+          iterations: this.PBKDF2_ITERATIONS,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
         { name: 'AES-GCM', length: 256 },
         false,
         ['encrypt', 'decrypt']
       );
-      
-      // Decode stored data
-      const combined = new Uint8Array(
-        atob(stored).split('').map(c => c.charCodeAt(0))
-      );
-      
-      // Extract IV and encrypted data
-      const iv = combined.slice(0, 12);
-      const encryptedData = combined.slice(12);
-      
+
       // Decrypt
       const decryptedData = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
+        { name: 'AES-GCM', iv: ivArray },
         key,
-        encryptedData
+        encryptedArray
       );
-      
-      const decoder = new TextDecoder();
-      return decoder.decode(decryptedData);
-    } catch (error) {
-      console.error('[WalletStorage] Failed to retrieve OAuth password:', error);
+
+      // Convert to Uint8Array so we can clear it after use
+      const decryptedArray = new Uint8Array(decryptedData);
+      const result = decoder.decode(decryptedArray);
+
+      // Clear the decrypted buffer from memory
+      secureClear(decryptedArray);
+
+      return result;
+    } catch {
+      // Decryption failed - clear invalid data
+      this.clearOAuthPassword();
       return null;
     }
   }
-  
+
   static clearOAuthPassword(): void {
     localStorage.removeItem(this.OAUTH_PASSWORD_KEY);
+    // Note: We don't clear DEVICE_SECRET_KEY as it may be used by other features
   }
-  
+
   static clear(): void {
     localStorage.removeItem(this.WALLET_ID_KEY);
     localStorage.removeItem(this.CURRENT_ACCOUNT_KEY);
+    localStorage.removeItem(this.DEVICE_SECRET_KEY); // Clear device secret on full clear
     this.clearOAuthPassword();
     SecureStorage.deleteWallet();
   }
@@ -407,9 +510,6 @@ export async function deriveAddresses(
     // Path: m/44'/501'/accountIndex'/0'
     const solanaPath = `m/44'/501'/${accountIndex}'/0'`;
 
-    console.log('[deriveAddresses] Deriving Solana with path:', solanaPath);
-    console.log('[deriveAddresses] Seed length:', seed.length);
-
     const solanaHdKey = HDKey.fromMasterSeed(seed);
     const solanaDerived = solanaHdKey.derive(solanaPath);
 
@@ -417,13 +517,9 @@ export async function deriveAddresses(
       throw new Error('Failed to derive Solana private key');
     }
 
-    console.log('[deriveAddresses] Derived private key length:', solanaDerived.privateKey.length);
-
     // The derived private key is a 32-byte Ed25519 seed
     const solanaKeypair = nacl.sign.keyPair.fromSeed(solanaDerived.privateKey);
     const solanaAddress = bs58.encode(solanaKeypair.publicKey);
-
-    console.log('[deriveAddresses] Solana address:', solanaAddress);
     
     // Derive Ethereum address (BIP44: m/44'/60'/0'/0/accountIndex)
     const ethPath = `m/44'/60'/0'/0/${accountIndex}`;
@@ -524,10 +620,9 @@ export async function deriveAddresses(
         const fullData = [...combined, ...checksum];
         
         bitcoinAddress = hrp + '1' + fullData.map(d => CHARSET[d]).join('');
-      } catch (error) {
-        console.warn('[deriveAddresses] Bitcoin address generation failed:', error);
-        // Fallback to a deterministic but invalid address for demo
-        bitcoinAddress = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh'; // Example valid format
+      } catch {
+        // Bitcoin address generation failed, use placeholder
+        bitcoinAddress = '';
       }
     }
     
@@ -548,11 +643,11 @@ export async function deriveAddresses(
         suiAddress = '0x' + Array.from(hash)
           .map(b => b.toString(16).padStart(2, '0'))
           .join('');
-      } catch (error) {
-        console.warn('[deriveAddresses] Sui address generation failed:', error);
+      } catch {
+        // Sui address generation failed, use placeholder
       }
     }
-    
+
     return {
       solana: solanaAddress,
       ethereum: ethereumAddress,
@@ -562,7 +657,6 @@ export async function deriveAddresses(
       sui: suiAddress,
     };
   } catch (error) {
-    console.error('[deriveAddresses] Failed to derive addresses:', error);
     throw error;
   }
 }
@@ -571,42 +665,21 @@ export async function deriveAddresses(
  * Generate a random 12-word mnemonic
  */
 export async function generateMnemonic(): Promise<string> {
-  try {
-    console.log('[generateMnemonic] Starting mnemonic generation...');
-    console.log('[generateMnemonic] Wordlist length:', englishWordlist.length);
-    console.log('[generateMnemonic] Wordlist type:', typeof englishWordlist);
-    console.log('[generateMnemonic] Is array:', Array.isArray(englishWordlist));
-    
-    // Validate wordlist before use
-    if (!Array.isArray(englishWordlist)) {
-      throw new Error('Wordlist is not an array');
-    }
-    
-    if (englishWordlist.length !== 2048) {
-      throw new Error(`Wordlist has ${englishWordlist.length} words, expected 2048`);
-    }
-    
-    // Check that all elements are strings
-    const allStrings = englishWordlist.every(word => typeof word === 'string');
-    if (!allStrings) {
-      throw new Error('Wordlist contains non-string elements');
-    }
-    
-    console.log('[generateMnemonic] ✅ Wordlist validation passed');
-    
-    // Generate 128 bits of entropy (12 words)
-    const entropy = crypto.getRandomValues(new Uint8Array(16));
-    console.log('[generateMnemonic] Generated entropy:', entropy.length, 'bytes');
-    
-    // Use inline wordlist
-    const mnemonic = bip39.entropyToMnemonic(entropy, englishWordlist);
-    
-    console.log('[generateMnemonic] ✅ Generated 12-word mnemonic');
-    return mnemonic;
-  } catch (error) {
-    console.error('[generateMnemonic] ❌ Error:', error);
-    throw error;
+  // Validate wordlist before use
+  if (!Array.isArray(englishWordlist) || englishWordlist.length !== 2048) {
+    throw new Error('Invalid wordlist');
   }
+
+  // Generate 128 bits of entropy (12 words)
+  const entropy = crypto.getRandomValues(new Uint8Array(16));
+
+  // Generate mnemonic from entropy
+  const mnemonic = bip39.entropyToMnemonic(entropy, englishWordlist);
+
+  // Clear entropy from memory
+  secureClear(entropy);
+
+  return mnemonic;
 }
 
 /**
@@ -614,12 +687,8 @@ export async function generateMnemonic(): Promise<string> {
  */
 export async function validateMnemonic(mnemonic: string): Promise<boolean> {
   try {
-    // Use inline wordlist (no import needed)
-    const isValid = bip39.validateMnemonic(mnemonic, englishWordlist);
-    console.log('[validateMnemonic]', isValid ? '✅ Valid' : '❌ Invalid');
-    return isValid;
-  } catch (error) {
-    console.error('[validateMnemonic] ❌ Error:', error);
+    return bip39.validateMnemonic(mnemonic, englishWordlist);
+  } catch {
     return false;
   }
 }
@@ -663,7 +732,7 @@ export async function encryptWithPassword(data: string, password: string): Promi
     {
       name: 'PBKDF2',
       salt: salt,
-      iterations: 100000,
+      iterations: 600000, // OWASP 2023 recommended minimum
       hash: 'SHA-256'
     },
     keyMaterial,
@@ -728,7 +797,7 @@ export async function decryptWithPassword(encryptedJson: string, password: strin
       {
         name: 'PBKDF2',
         salt: saltArray,
-        iterations: 100000,
+        iterations: 600000, // OWASP 2023 recommended minimum
         hash: 'SHA-256'
       },
       keyMaterial,
@@ -744,9 +813,16 @@ export async function decryptWithPassword(encryptedJson: string, password: strin
       encryptedArray
     );
 
-    return decoder.decode(decryptedData);
-  } catch (error) {
-    console.error('[decryptWithPassword] Failed to decrypt:', error);
+    // Convert to Uint8Array so we can clear it after use
+    const decryptedArray = new Uint8Array(decryptedData);
+    const result = decoder.decode(decryptedArray);
+
+    // Clear the decrypted buffer from memory
+    secureClear(decryptedArray);
+
+    return result;
+  } catch {
+    // Decryption failed - likely wrong password
     return null;
   }
 }

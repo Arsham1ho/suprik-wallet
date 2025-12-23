@@ -32,7 +32,10 @@ export async function executeRaydiumSwapSimple(params: {
       console.log('[Raydium] ✅ TESTNET MODE: Simulating swap...');
       await new Promise(resolve => setTimeout(resolve, 2500));
       
-      const mockSignature = `raydium_testnet_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      // Use crypto.getRandomValues for unpredictable mock signature
+      const randomBytes = crypto.getRandomValues(new Uint8Array(8));
+      const randomHex = Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('');
+      const mockSignature = `raydium_testnet_${Date.now()}_${randomHex}`;
       console.log('[Raydium] ✅ Testnet swap simulated!');
       
       return {

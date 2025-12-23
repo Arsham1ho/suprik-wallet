@@ -1,5 +1,27 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { projectId, publicAnonKey } from './supabase/info';
+
+// Theme storage key
+const THEME_STORAGE_KEY = 'suprik_theme';
+
+// Get theme from localStorage
+export function getStoredTheme(walletId?: string): string {
+  try {
+    const key = walletId ? `${THEME_STORAGE_KEY}_${walletId}` : THEME_STORAGE_KEY;
+    return localStorage.getItem(key) || 'classic';
+  } catch {
+    return 'classic';
+  }
+}
+
+// Save theme to localStorage
+export function saveStoredTheme(theme: string, walletId?: string): void {
+  try {
+    const key = walletId ? `${THEME_STORAGE_KEY}_${walletId}` : THEME_STORAGE_KEY;
+    localStorage.setItem(key, theme);
+  } catch (e) {
+    console.warn('[Theme] Failed to save theme:', e);
+  }
+}
 
 interface ThemeColors {
   primary: string;
@@ -92,53 +114,17 @@ export function ThemeProvider({ children, walletId }: { children: ReactNode; wal
   const [theme, setThemeState] = useState('classic');
 
   useEffect(() => {
-    if (walletId) {
-      loadTheme();
-    } else {
-      // Apply default theme when not logged in
-      applyThemeToDocument('classic');
-    }
+    // Load theme from localStorage (instant, no server call)
+    const savedTheme = getStoredTheme(walletId);
+    setThemeState(savedTheme);
+    applyThemeToDocument(savedTheme);
   }, [walletId]);
-
-  const loadTheme = async () => {
-    if (!walletId) return;
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet/${walletId}/theme`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          signal: controller.signal,
-        }
-      );
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json();
-        const savedTheme = data.theme || 'classic';
-        setThemeState(savedTheme);
-        applyThemeToDocument(savedTheme);
-      }
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.warn('[Theme] ⚠️ Theme request timeout, using default');
-      } else {
-        console.warn('[Theme] ⚠️ Error loading theme:', error.message);
-      }
-      // Continue with default 'classic' theme
-      applyThemeToDocument('classic');
-    }
-  };
 
   const setTheme = (newTheme: string) => {
     setThemeState(newTheme);
     applyThemeToDocument(newTheme);
+    // Save to localStorage (client-side persistence)
+    saveStoredTheme(newTheme, walletId);
   };
 
   const applyThemeToDocument = (themeId: string) => {

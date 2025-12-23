@@ -3,11 +3,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Search, TrendingUp, TrendingDown, Plus, Loader2, Minus, X } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { useLanguage } from '../utils/i18n/LanguageContext';
 import { TokenLogo } from './TokenLogo';
+import { TOKEN_REGISTRY, searchTokens, type TokenMetadata } from '../utils/tokenRegistry';
+import { addCustomToken, removeCustomToken, isTokenAdded } from '../utils/customTokens';
 
 interface AddTokenDialogProps {
   open: boolean;
@@ -15,7 +16,7 @@ interface AddTokenDialogProps {
   onTokenAdded?: () => void;
 }
 
-interface CoinGeckoToken {
+interface DisplayToken {
   id: string;
   symbol: string;
   name: string;
@@ -24,177 +25,131 @@ interface CoinGeckoToken {
   market_cap: number;
   market_cap_rank: number;
   price_change_percentage_24h: number;
-  total_volume: number;
+  mint?: string;
 }
 
 export function AddTokenDialog({ open, onOpenChange, onTokenAdded }: AddTokenDialogProps) {
-  const { formatPrice, convertPrice } = useLanguage();
+  const { formatPrice } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
-  const [coins, setCoins] = useState<CoinGeckoToken[]>([]);
-  const [filteredCoins, setFilteredCoins] = useState<CoinGeckoToken[]>([]);
+  const [coins, setCoins] = useState<DisplayToken[]>([]);
+  const [filteredCoins, setFilteredCoins] = useState<DisplayToken[]>([]);
   const [loading, setLoading] = useState(true);
   const [addingCoin, setAddingCoin] = useState<string | null>(null);
   const [addedCoins, setAddedCoins] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (open) {
-      fetchCoins();
+      loadTokens();
     }
   }, [open]);
 
   useEffect(() => {
     if (searchQuery.trim()) {
-      const filtered = coins.filter(coin =>
-        coin.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        coin.symbol.toLowerCase().includes(searchQuery.toLowerCase())
-      ).slice(0, 50); // Limit to 50 results for performance
+      // Use searchTokens from registry for efficient search
+      const registryResults = searchTokens(searchQuery);
+      const filtered = registryResults.map(tokenToDisplayToken).slice(0, 100);
       setFilteredCoins(filtered);
     } else {
-      setFilteredCoins(coins.slice(0, 50)); // Show top 50 by default
+      setFilteredCoins(coins.slice(0, 100));
     }
   }, [searchQuery, coins]);
 
-  const fetchCoins = async () => {
+  // Convert TokenMetadata to DisplayToken format
+  const tokenToDisplayToken = (token: TokenMetadata): DisplayToken => ({
+    id: token.id,
+    symbol: token.symbol,
+    name: token.name,
+    image: token.image,
+    current_price: 0, // Will be fetched dynamically when needed
+    market_cap: 0,
+    market_cap_rank: TOKEN_REGISTRY.indexOf(token) + 1,
+    price_change_percentage_24h: 0,
+    mint: token.mint,
+  });
+
+  const loadTokens = async () => {
     try {
       setLoading(true);
-      console.log('Fetching CoinGecko coins...');
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=1&per_page=250`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
-          }
-        }
-      );
+      console.log('[AddTokenDialog] Loading tokens from TOKEN_REGISTRY (client-side)...');
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Fetch error:', response.status, errorText);
-        
-        if (response.status === 429 || errorText.includes('429')) {
-          toast.error('Rate limit reached. Please try again in a moment...');
-        } else {
-          toast.error('Failed to load coins');
-        }
-        throw new Error('Failed to fetch coins');
-      }
+      // Convert TOKEN_REGISTRY to DisplayToken format
+      const displayTokens = TOKEN_REGISTRY.map(tokenToDisplayToken);
 
-      const data = await response.json();
-      
-      // Handle error response
-      if (data.error) {
-        console.error('API returned error:', data.error);
-        if (data.error.includes('429')) {
-          toast.error('Rate limit reached. Please try again later...');
-        } else {
-          toast.error('Failed to load coins');
+      // Load which tokens are already added (check by id)
+      const addedSet = new Set<string>();
+      displayTokens.forEach(token => {
+        if (isTokenAdded(token.id)) {
+          addedSet.add(token.id);
         }
-        return;
-      }
-      
-      console.log(`Fetched ${data.length} coins`);
-      setCoins(data);
-      setFilteredCoins(data.slice(0, 50));
+      });
+      setAddedCoins(addedSet);
+
+      console.log(`[AddTokenDialog] Loaded ${displayTokens.length} tokens from registry`);
+      setCoins(displayTokens);
+      setFilteredCoins(displayTokens.slice(0, 50));
     } catch (error) {
-      console.error('Error fetching coins:', error);
-      // Error already shown in toast above
+      console.error('[AddTokenDialog] Error loading tokens:', error);
+      toast.error('Failed to load tokens');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddCoin = async (coin: CoinGeckoToken) => {
+  const handleAddCoin = async (coin: DisplayToken) => {
     try {
       setAddingCoin(coin.id);
-      
-      console.log('Adding coin to wallet:', coin.symbol);
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/add-coin-to-wallet`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            coinId: coin.id,
-            symbol: coin.symbol.toUpperCase(),
-            name: coin.name,
-            image: coin.image
-          })
-        }
-      );
+      console.log('[AddTokenDialog] Adding coin to wallet (client-side):', coin.symbol);
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to add coin');
-      }
+      // Add to local custom tokens storage
+      addCustomToken({
+        id: coin.id,
+        symbol: coin.symbol.toUpperCase(),
+        name: coin.name,
+        image: coin.image,
+        mint: coin.mint || coin.id,
+        network: 'solana',
+      });
 
-      const data = await response.json();
-      console.log('Coin added:', data);
-      
       // Mark as added
       setAddedCoins(prev => new Set([...prev, coin.id]));
-      
+
       toast.success(`${coin.symbol.toUpperCase()} added to your wallet!`);
-      
+
       // Notify parent to refresh
       if (onTokenAdded) {
         onTokenAdded();
       }
     } catch (error: any) {
-      console.error('Error adding coin:', error);
+      console.error('[AddTokenDialog] Error adding coin:', error);
       toast.error(error.message || 'Failed to add coin to wallet');
     } finally {
       setAddingCoin(null);
     }
   };
 
-  const handleRemoveCoin = async (coin: CoinGeckoToken) => {
+  const handleRemoveCoin = async (coin: DisplayToken) => {
     try {
       setAddingCoin(coin.id);
-      
-      console.log('Removing coin from wallet:', coin.symbol);
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/remove-coin-from-wallet`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            symbol: coin.symbol.toUpperCase()
-          })
-        }
-      );
+      console.log('[AddTokenDialog] Removing coin from wallet (client-side):', coin.symbol);
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to remove coin');
-      }
+      // Remove from local custom tokens storage (uses id)
+      removeCustomToken(coin.id);
 
-      const data = await response.json();
-      console.log('Coin removed:', data);
-      
       // Mark as removed
       setAddedCoins(prev => {
         const newSet = new Set(prev);
         newSet.delete(coin.id);
         return newSet;
       });
-      
+
       toast.success(`${coin.symbol.toUpperCase()} removed from your wallet!`);
-      
+
       // Notify parent to refresh
       if (onTokenAdded) {
         onTokenAdded();
       }
     } catch (error: any) {
-      console.error('Error removing coin:', error);
+      console.error('[AddTokenDialog] Error removing coin:', error);
       toast.error(error.message || 'Failed to remove coin from wallet');
     } finally {
       setAddingCoin(null);
@@ -205,7 +160,8 @@ export function AddTokenDialog({ open, onOpenChange, onTokenAdded }: AddTokenDia
     if (marketCap >= 1e12) return `$${(marketCap / 1e12).toFixed(2)}T`;
     if (marketCap >= 1e9) return `$${(marketCap / 1e9).toFixed(2)}B`;
     if (marketCap >= 1e6) return `$${(marketCap / 1e6).toFixed(2)}M`;
-    return `$${marketCap.toLocaleString()}`;
+    if (marketCap > 0) return `$${marketCap.toLocaleString()}`;
+    return '-';
   };
 
   return (
@@ -273,7 +229,7 @@ export function AddTokenDialog({ open, onOpenChange, onTokenAdded }: AddTokenDia
                     key={coin.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.02 }}
+                    transition={{ delay: Math.min(index * 0.02, 0.5) }}
                     className="flex items-center gap-3 p-3 rounded-xl bg-slate-900/30 border border-slate-800/50 hover:border-slate-700/50 transition-all"
                   >
                     {/* Coin Icon */}
@@ -298,15 +254,23 @@ export function AddTokenDialog({ open, onOpenChange, onTokenAdded }: AddTokenDia
                         <span className="text-xs text-slate-400 uppercase">{coin.symbol}</span>
                       </div>
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="text-slate-300">{formatPrice(coin.current_price)}</span>
-                        <span className={`flex items-center gap-0.5 ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                          {isPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                          {Math.abs(coin.price_change_percentage_24h).toFixed(2)}%
-                        </span>
+                        {coin.current_price > 0 ? (
+                          <>
+                            <span className="text-slate-300">{formatPrice(coin.current_price)}</span>
+                            <span className={`flex items-center gap-0.5 ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                              {isPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                              {Math.abs(coin.price_change_percentage_24h).toFixed(2)}%
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-slate-500">Price loads on add</span>
+                        )}
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        MCap: {formatMarketCap(coin.market_cap)}
-                      </p>
+                      {coin.market_cap > 0 && (
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          MCap: {formatMarketCap(coin.market_cap)}
+                        </p>
+                      )}
                     </div>
 
                     {/* Add/Remove Button */}
@@ -340,7 +304,7 @@ export function AddTokenDialog({ open, onOpenChange, onTokenAdded }: AddTokenDia
           <div className="px-4 pb-4">
             <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/30">
               <p className="text-xs text-purple-200">
-                💡 Tokens are added with 0 balance. Send funds to see them in your wallet.
+                Tokens are added with 0 balance. Send funds to see them in your wallet.
               </p>
             </div>
           </div>

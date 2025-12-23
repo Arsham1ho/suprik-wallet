@@ -24,22 +24,18 @@ export async function isBiometricAvailable(): Promise<boolean> {
   try {
     // Check if WebAuthn is supported
     if (!window.PublicKeyCredential) {
-      console.log('[Biometric] WebAuthn not supported');
       return false;
     }
 
     // Check if we're in a context that supports WebAuthn (not iframe, has proper permissions)
     if (window.self !== window.top) {
-      console.log('[Biometric] Cannot use WebAuthn in iframe context');
       return false;
     }
 
     // Check if platform authenticator (biometric) is available
     const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-    console.log('[Biometric] Platform authenticator available:', available);
     return available;
-  } catch (error) {
-    console.error('[Biometric] Error checking availability:', error);
+  } catch {
     return false;
   }
 }
@@ -51,13 +47,11 @@ export async function registerBiometric(walletId: string): Promise<BiometricAuth
   try {
     // Validate walletId - must be a non-empty string
     if (!walletId || typeof walletId !== 'string' || walletId.trim() === '') {
-      console.error('[Biometric] Invalid walletId:', walletId);
       return { success: false, error: 'Invalid wallet ID. Please ensure you are logged in.' };
     }
 
     // Use a sanitized version of walletId
     const sanitizedWalletId = walletId.trim();
-    console.log('[Biometric] Registering credential for wallet:', sanitizedWalletId);
 
     // Generate a random challenge
     const challenge = new Uint8Array(32);
@@ -107,11 +101,8 @@ export async function registerBiometric(walletId: string): Promise<BiometricAuth
     
     localStorage.setItem(`biometric_credential_${sanitizedWalletId}`, credentialId);
 
-    console.log('[Biometric] ✓ Registration successful');
     return { success: true };
   } catch (error: any) {
-    console.error('[Biometric] Registration error:', error);
-    
     if (error.name === 'NotAllowedError') {
       return { success: false, cancelled: true, error: 'Authentication cancelled' };
     }
@@ -123,21 +114,18 @@ export async function registerBiometric(walletId: string): Promise<BiometricAuth
 /**
  * Authenticate using biometric
  */
-export async function authenticateBiometric(walletId: string, reason?: string): Promise<BiometricAuthResult> {
+export async function authenticateBiometric(walletId: string, _reason?: string): Promise<BiometricAuthResult> {
   try {
     // Validate walletId - must be a non-empty string
     if (!walletId || typeof walletId !== 'string' || walletId.trim() === '') {
-      console.error('[Biometric] Invalid walletId for authentication:', walletId);
       return { success: false, error: 'Invalid wallet ID. Please ensure you are logged in.' };
     }
 
     const sanitizedWalletId = walletId.trim();
-    console.log('[Biometric] Authenticating for wallet:', sanitizedWalletId, 'Reason:', reason);
 
     // Check if credential exists
     const credentialId = localStorage.getItem(`biometric_credential_${sanitizedWalletId}`);
     if (!credentialId) {
-      console.log('[Biometric] No credential found, need to register first');
       // Try to register if no credential exists
       return await registerBiometric(sanitizedWalletId);
     }
@@ -175,11 +163,8 @@ export async function authenticateBiometric(walletId: string, reason?: string): 
     // Update last auth time
     localStorage.setItem(`biometric_last_auth_${sanitizedWalletId}`, Date.now().toString());
 
-    console.log('[Biometric] ✓ Authentication successful');
     return { success: true };
   } catch (error: any) {
-    console.error('[Biometric] Authentication error:', error);
-    
     if (error.name === 'NotAllowedError') {
       return { success: false, cancelled: true, error: 'Authentication cancelled' };
     }
@@ -198,15 +183,7 @@ export function isWalletLocked(walletId: string, autoLockMinutes: number): boole
   if (!lastAuthTime) return true;
 
   const minutesSinceAuth = (Date.now() - parseInt(lastAuthTime)) / 1000 / 60;
-  const isLocked = minutesSinceAuth >= autoLockMinutes;
-  
-  console.log('[Biometric] Checking lock status:', {
-    minutesSinceAuth: minutesSinceAuth.toFixed(2),
-    autoLockMinutes,
-    isLocked
-  });
-  
-  return isLocked;
+  return minutesSinceAuth >= autoLockMinutes;
 }
 
 /**
@@ -215,7 +192,6 @@ export function isWalletLocked(walletId: string, autoLockMinutes: number): boole
 export function removeBiometric(walletId: string): void {
   localStorage.removeItem(`biometric_credential_${walletId}`);
   localStorage.removeItem(`biometric_last_auth_${walletId}`);
-  console.log('[Biometric] Credential removed for wallet:', walletId);
 }
 
 /**

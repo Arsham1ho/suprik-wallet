@@ -11,6 +11,7 @@ import {
   isBiometricAvailable,
   type BiometricSettings,
 } from "../utils/biometric";
+import { getUserSettings } from "../utils/userSettings";
 
 interface UnlockWalletProps {
   walletId: string;
@@ -50,37 +51,29 @@ export function UnlockWallet({
         return;
       }
 
-      // Fetch user's biometric settings from server (don't block on this)
+      // Load user's biometric settings from localStorage (instant, no server call)
       try {
-        const { projectId, publicAnonKey } = await import(
-          "../utils/supabase/info"
-        );
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/user-settings/${walletId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${publicAnonKey}`,
-            },
-          }
-        );
+        const settings = getUserSettings(walletId);
 
-        if (response.ok) {
-          const settings = await response.json();
-          const biometric = settings.biometric as BiometricSettings | undefined;
-          setBiometricSettings(biometric || null);
+        // Build biometric settings from localStorage
+        const biometric: BiometricSettings | null = settings.biometricEnabled ? {
+          enabled: true,
+          autoLockMinutes: settings.autoLockMinutes || 5,
+          requireForTransactions: true,
+        } : null;
 
-          // If user has enabled fingerprint auth, switch to fingerprint mode
-          // But only if we're not already showing password form (user might have started typing)
-          if (biometric?.enabled) {
-            console.log(
-              "[UnlockWallet] Fingerprint authentication enabled by user"
-            );
-            setUseFingerprintAuth(true);
-          }
+        setBiometricSettings(biometric);
+
+        // If user has enabled fingerprint auth, switch to fingerprint mode
+        if (biometric?.enabled) {
+          console.log(
+            "[UnlockWallet] Fingerprint authentication enabled by user"
+          );
+          setUseFingerprintAuth(true);
         }
       } catch (error) {
         console.error(
-          "[UnlockWallet] Error fetching biometric settings:",
+          "[UnlockWallet] Error loading biometric settings:",
           error
         );
       }

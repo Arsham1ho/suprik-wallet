@@ -1,16 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RefreshCw, Grid2X2, Send as SendIcon, Plus, Search, DollarSign, QrCode, ChevronDown, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useWallet } from '../../utils/WalletContext';
-import { fetchAllBalances, fetchTokenPrices } from '../../utils/blockchain';
 import { loadAllTokens } from '../../utils/tokenLoader';
 import { useNetwork } from '../../utils/NetworkContext';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
 import { useTheme } from '../../utils/ThemeContext';
 import { Wrench } from 'lucide-react';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { SendReceiveDialog } from '../SendReceiveDialog';
 import { AddTokenDialog } from '../AddTokenDialog';
 import { CoinDetail } from './CoinDetail';
@@ -24,6 +22,7 @@ import { deriveAddresses } from '../../utils/wallet';
 // import { usePullToRefresh } from '../../utils/mobile/usePullToRefresh';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { getCustomTokens, removeDuplicateParabolic, type CustomToken } from '../../utils/customTokens';
+import { TOKEN_REGISTRY, TOKEN_BY_SYMBOL } from '../../utils/tokenRegistry';
 import balanceBackgroundImg from '../../assets/balance-bg.png';
 import dollarBgImage from 'figma:asset/03e3917f15913824a7f09aea55d83b590255a690.png';
 import chartGrowthImg from 'figma:asset/cf0c640acfd7594fc19f2f68c33b585fb257787d.png';
@@ -32,6 +31,9 @@ import galaxyImg from 'figma:asset/5b4b9e5bc3dce63bd529dad0b6d15398841deffb.png'
 import atomImg from 'figma:asset/87f8b32663f196ec1a0eb5a25bdc487bcfefae9d.png';
 import techAtomImg from 'figma:asset/5aa70e98ce3aee3ece131f170f241d48a15c7bb9.png';
 import cosmicAtomImg from 'figma:asset/6dddf15e38d9de8af29c1069d4e32f01893e25c6.png';
+// Custom background images
+import purpleSmokeImg from '../../assets/purple-smoke-bg.png';
+import neonAtomImg from '../../assets/neon-atom-bg.png';
 
 interface HomeProps {
   onNavigate: (page: 'swap' | 'send' | 'receive' | 'search') => void;
@@ -40,6 +42,7 @@ interface HomeProps {
 }
 
 const balanceBackgrounds: { [key: string]: string } = {
+  'none': '', // No background image
   'cosmic-atom': cosmicAtomImg,
   'tech-atom': techAtomImg,
   'atom': atomImg,
@@ -51,7 +54,18 @@ const balanceBackgrounds: { [key: string]: string } = {
   'bitcoin-stack': 'https://cdn.theatlantic.com/thumbor/1QQCcjt02QXBNLgdiLtZL-i1yHU=/0x144:3500x2113/960x540/media/img/mt/2017/11/RTX3KA07/original.jpg',
   'nft-world': 'https://png.pngtree.com/thumb_back/fh260/background/20230704/pngtree-3d-render-of-crypto-currency-and-nft-composition-image_3828737.jpg',
   'multi-coins': 'https://media.istockphoto.com/id/1034363382/photo/coins-of-various-cryptocurrencies.jpg?s=612x612&w=0&k=20&c=-ia1tKJeGeoJ7bWN8i6Udzq92MZ9T9vi--OFT6fVsiA=',
-  'crypto-future': 'https://t4.ftcdn.net/jpg/11/97/30/75/360_F_1197307541_NvhbbyeEs6zfVKuT6vtPnwpSIjbosTKW.jpg'
+  'crypto-future': 'https://t4.ftcdn.net/jpg/11/97/30/75/360_F_1197307541_NvhbbyeEs6zfVKuT6vtPnwpSIjbosTKW.jpg',
+  // New backgrounds
+  'solana-purple': 'https://images.unsplash.com/photo-1639762681485-074b7f938ba0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080',
+  'blockchain-network': 'https://images.unsplash.com/photo-1639322537228-f710d846310a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080',
+  'digital-grid': 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080',
+  'abstract-purple': 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080',
+  'neon-city': 'https://images.unsplash.com/photo-1545486332-9e0999c535b2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080',
+  'space-nebula': 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080',
+  'aurora-sky': 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080',
+  'ocean-waves': 'https://images.unsplash.com/photo-1505118380757-91f5f5632de0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080',
+  'purple-smoke': purpleSmokeImg,
+  'neon-atom': neonAtomImg
 };
 
 export interface Token {
@@ -181,6 +195,8 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
   const [sendBtnTapped, setSendBtnTapped] = useState(false);
   const [swapBtnTapped, setSwapBtnTapped] = useState(false);
   const [buyBtnTapped, setBuyBtnTapped] = useState(false);
+  // Track if initial animation has played to prevent re-animations on data refresh
+  const [hasAnimated, setHasAnimated] = useState(false);
 
   // Ref to track wallet state for interval callback (avoids recreating interval)
   const walletStateRef = useRef({ isUnlocked: wallet.isUnlocked, addresses: wallet.addresses });
@@ -215,11 +231,23 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
     }
   }, []);
 
+  // Track previous addresses to avoid unnecessary re-renders
+  const prevAddressesRef = useRef<string | null>(null);
+
   // Load accounts from AccountManager
   useEffect(() => {
+    // Create a stable key from addresses to compare
+    const addressKey = wallet.addresses?.solana || null;
+
+    // Skip if addresses haven't actually changed
+    if (addressKey === prevAddressesRef.current) {
+      return;
+    }
+    prevAddressesRef.current = addressKey;
+
     const loadAccounts = () => {
       const storedAccounts = AccountManager.getAccounts();
-      
+
       // If no accounts exist, initialize first account
       if (storedAccounts.length === 0 && wallet.addresses) {
         const firstAccount = AccountManager.initializeFirstAccount(
@@ -238,7 +266,7 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
     };
 
     loadAccounts();
-  }, [wallet.addresses, walletId]);
+  }, [wallet.addresses?.solana, walletId]);
 
   // Listen for background changes
   useEffect(() => {
@@ -325,7 +353,7 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
   };
 
   // Handle switch account
-  const handleSwitchAccount = async (accountId: string) => {
+  const handleSwitchAccount = useCallback(async (accountId: string) => {
     try {
       console.log('[Home] 🔄 Switching to account:', accountId);
 
@@ -382,10 +410,10 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
       console.error('[Home] Error switching account:', error);
       toast.error('Failed to switch account');
     }
-  };
+  }, [wallet]);
 
   // Handle create new account
-  const handleCreateAccount = async () => {
+  const handleCreateAccount = useCallback(async () => {
     try {
       if (!wallet.mnemonic || !wallet.isUnlocked) {
         toast.error('Please unlock your wallet first');
@@ -419,7 +447,7 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
       console.error('[Home] Error creating account:', error);
       toast.error('Failed to create account');
     }
-  };
+  }, [wallet.mnemonic, wallet.isUnlocked, walletId]);
 
   // Debug function to show all token sources
   const debugTokens = () => {
@@ -545,13 +573,21 @@ Check console for full details!
         console.log('[Home] ⚡ Using cached balances on mount for instant display');
         setTokens(cachedTokens);
         setLoading(false);
+        // Mark animations as complete after a short delay
+        setTimeout(() => setHasAnimated(true), 1000);
         // Refresh in background
         loadBlockchainBalances(true);
       } else {
-        loadBlockchainBalances();
+        loadBlockchainBalances().then(() => {
+          // Mark animations as complete after initial load
+          setTimeout(() => setHasAnimated(true), 1000);
+        });
       }
     } else {
-      loadBlockchainBalances();
+      loadBlockchainBalances().then(() => {
+        // Mark animations as complete after initial load
+        setTimeout(() => setHasAnimated(true), 1000);
+      });
     }
 
     // 🧹 Cleanup duplicate tokens on mount (server-side)
@@ -565,15 +601,16 @@ Check console for full details!
 
   // Auto-refresh interval - separated to prevent memory leaks
   useEffect(() => {
-    // 🚀 OPTIMIZATION: Auto-refresh every 10 seconds (like Phantom) - prices are cached for 60s
+    // 🚀 OPTIMIZATION: Auto-refresh every 30 seconds to reduce re-renders
     const priceInterval = setInterval(() => {
       // Use ref to get current wallet state without recreating interval
       if (walletStateRef.current.isUnlocked && walletStateRef.current.addresses) {
-        console.log('[Home] ⚡ Auto-refreshing balances (fast mode)...');
-        setLastPriceUpdate(new Date());
+        console.log('[Home] ⚡ Auto-refreshing balances...');
+        // Don't update lastPriceUpdate here - it causes unnecessary re-renders
+        // The time will update when loadBlockchainBalances completes
         loadBlockchainBalances(true);
       }
-    }, 10000); // 10 seconds - faster than before!
+    }, 30000); // 30 seconds - reduced to prevent UI flickering
 
     return () => {
       clearInterval(priceInterval);
@@ -691,34 +728,21 @@ Check console for full details!
     }
   };
 
-  // Cleanup duplicate tokens (silent background task)
-  const cleanupDuplicateTokens = async () => {
+  // Cleanup duplicate tokens (client-side, using localStorage)
+  const cleanupDuplicateTokens = () => {
     try {
-      console.log('[Home] 🧹 Starting duplicate token cleanup...');
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/cleanup-duplicate-tokens`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ walletId }),
-        }
-      );
+      console.log('[Home] 🧹 Starting duplicate token cleanup (client-side)...');
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.removed > 0) {
-          console.log('[Home] ✅ Cleaned up', data.removed, 'duplicate tokens:', data.duplicates);
-          toast.success(`Removed ${data.removed} duplicate token(s)`, { duration: 3000 });
-          // Refresh balances to reflect cleanup
-          await fetchWalletBalances();
-        } else {
-          console.log('[Home] ✅ No duplicates found');
-        }
+      // Use the client-side cleanup function
+      const removed = removeDuplicateParabolic();
+
+      if (removed) {
+        console.log('[Home] ✅ Cleaned up duplicate PARAI token');
+        toast.success('Removed duplicate token', { duration: 3000 });
+        // Refresh balances to reflect cleanup
+        loadBlockchainBalances(true);
       } else {
-        console.error('[Home] Cleanup error:', await response.text());
+        console.log('[Home] ✅ No duplicates found');
       }
     } catch (error) {
       console.error('[Home] Error during cleanup:', error);
@@ -745,40 +769,24 @@ Check console for full details!
         }
       }
       
-      console.log('[Home] Fetching token logos from CoinGecko...');
-      
-      // Fetch first page of coins (top 100)
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=1&per_page=100`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
-          }
+      console.log('[Home] Loading token logos from TOKEN_REGISTRY (client-side)...');
+
+      // Get logos from TOKEN_REGISTRY (instant, no API call)
+      TOKEN_REGISTRY.forEach((token) => {
+        const symbol = token.symbol.toUpperCase();
+        if (token.image) {
+          logoMap[symbol] = token.image;
         }
-      );
-      
-      if (response.ok) {
-        const coins = await response.json();
-        
-        // Map symbols to logos
-        coins.forEach((coin: any) => {
-          const symbol = coin.symbol.toUpperCase();
-          if (coin.image) {
-            logoMap[symbol] = coin.image;
-          }
-        });
-        
-        // Cache the logos
-        localStorage.setItem('token_logos_cache', JSON.stringify({
-          data: logoMap,
-          timestamp: Date.now()
-        }));
-        
-        console.log('[Home] ✅ Token logos fetched and cached');
-        return logoMap;
-      }
-      
-      return {};
+      });
+
+      // Cache the logos
+      localStorage.setItem('token_logos_cache', JSON.stringify({
+        data: logoMap,
+        timestamp: Date.now()
+      }));
+
+      console.log('[Home] ✅ Token logos loaded from registry');
+      return logoMap;
     } catch (error) {
       console.error('[Home] Error fetching token logos:', error);
       return {};
@@ -876,249 +884,73 @@ Check console for full details!
         setLoading(false);
       }
     } else {
-      // Fallback to server (legacy mode)
-      console.log('[Home] ⚠️ Wallet not unlocked, using server balances');
-      // fetchTokenPrices(); // REMOVED - causes error
-      fetchWalletBalances();
-    }
-  };
-
-  const fetchWalletBalances = async () => {
-    try {
-      console.log('[Home] Fetching wallet balances for wallet:', walletId);
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet-tokens/${walletId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('[Home] Wallet balances received:', Object.keys(data.tokens || {}).length, 'tokens');
-        console.log('[Home] Token balances:', data.tokens);
-        
-        // Deduplicate tokens by mint address (not by symbol)
-        // Create a map: mint -> token data
-        const tokensByMint = new Map<string, TokenData>();
-        
-        // First, add default tokens
-        defaultSolanaTokens.forEach(token => {
-          tokensByMint.set(token.mint, token);
-        });
-        
-        // Then, merge with stored tokens (stored tokens override if mint matches)
-        Object.entries(data.tokens || {}).forEach(([symbol, storedToken]: [string, any]) => {
-          const mint = storedToken.mint || symbol.toLowerCase();
-          
-          // Check if we already have this mint
-          const existingToken = tokensByMint.get(mint);
-          
-          if (existingToken) {
-            // Update existing token with stored data
-            tokensByMint.set(mint, {
-              ...existingToken,
-              amount: storedToken.amount !== undefined ? storedToken.amount : existingToken.amount,
-              name: storedToken.name || existingToken.name,
-              symbol: storedToken.symbol || existingToken.symbol,
-              logo: storedToken.logo || existingToken.logo,
-              logoUrl: storedToken.logoUrl || existingToken.logoUrl,
-            });
-          } else {
-            // New token - add it
-            tokensByMint.set(mint, {
-              mint: mint,
-              name: storedToken.name || symbol,
-              symbol: storedToken.symbol || symbol,
-              amount: storedToken.amount || 0,
-              logo: storedToken.logo || symbol.charAt(0),
-              logoUrl: storedToken.logoUrl || '',
-              color: storedToken.color || 'from-purple-500 to-purple-600',
-              network: storedToken.network || 'solana',
-            });
-          }
-        });
-        
-        // Convert map to array
-        const updatedTokenList = Array.from(tokensByMint.values());
-        
-        console.log('[Home] ✅ Deduplicated tokens:', updatedTokenList.length, 'unique tokens by mint');
-        
-        // Now fetch prices with updated amounts (this is a refresh, not initial load)
-        await fetchTokenPricesWithBalances(updatedTokenList, true);
-      } else {
-        // For fresh wallets, show 0 balances
-        const zeroBalanceList = defaultSolanaTokens.map(token => ({ ...token, amount: 0 }));
-        await fetchTokenPricesWithBalances(zeroBalanceList, true);
-      }
-    } catch (error) {
-      console.error('Error fetching wallet balances:', error);
-      // Fallback to showing demo data with default tokens
-      const symbols = ['SOL', 'ETH', 'BTC', 'USDC', 'USDT'];
-      const prices = await fetchTokenPrices(symbols);
-      console.log('[Home] Using fallback prices:', prices);
+      // Wallet not unlocked - show empty state with default tokens
+      console.log('[Home] ⚠️ Wallet not unlocked, showing default tokens');
+      // Show default tokens with zero balances
+      const defaultTokenList: Token[] = defaultSolanaTokens.map((t, idx) => ({
+        id: idx + 1,
+        mint: t.mint,
+        symbol: t.symbol,
+        name: t.name,
+        amount: 0,
+        value: 0,
+        price: 0,
+        change: 0,
+        logo: t.symbol.charAt(0),
+        color: 'from-purple-600 to-purple-400',
+        logoUrl: t.logoUrl,
+        network: 'solana' as const,
+      }));
+      setTokens(defaultTokenList);
       setLoading(false);
     }
   };
 
-  const fetchTokenPricesWithBalances = async (balances: TokenData[], isRefresh: boolean = false) => {
-    try {
-      console.log('Fetching token prices from backend...', isRefresh ? '(refresh)' : '(initial load)');
-      
-      // Extract unique symbols from balances
-      const symbols = Array.from(new Set(balances.map(t => t.symbol)));
-      
-      // Use blockchain utility to fetch prices
-      const pricesMap = await fetchTokenPrices(symbols);
-      
-      console.log('Token prices received:', pricesMap);
-      
-      // Map the price data to our token list with real balances
-      const tokensWithPrices = balances.map((token, index) => {
-        // Try to preserve existing price data if API fails for this token
-        const existingToken = tokens.find(t => t.mint === token.mint);
-        const price = pricesMap[token.symbol] || existingToken?.price || 0;
-        const change24h = existingToken?.change || 0;
-        const value = token.amount * price;
-        
-        // Use the logoUrl from token
-        const imageUrl = existingToken?.logoUrl || token.logoUrl || '';
-        
-        return {
-          id: index + 1,
-          mint: token.mint,
-          name: token.name,
-          symbol: token.symbol,
-          amount: token.amount,
-          value: value,
-          price: price,
-          change: change24h,
-          logo: token.logo,
-          logoUrl: imageUrl,
-          color: token.color,
-          network: token.network,
-        };
-      });
-
-      // Only update tokens if we have valid data with prices
-      if (tokensWithPrices.length > 0) {
-        // Check if we have at least some prices (not all 0)
-        const hasPrices = tokensWithPrices.some(t => t.price > 0);
-        
-        if (hasPrices || tokens.length === 0) {
-          // Update if we have prices OR if this is the first load
-          setTokens(tokensWithPrices);
-          onTokensLoaded?.(tokensWithPrices);
-          setLastPriceUpdate(new Date());
-          console.log('Tokens updated successfully with real balances');
-        } else if (isRefresh) {
-          // During refresh, if no prices available, keep existing tokens but update amounts
-          const updatedExistingTokens = tokens.map(existingToken => {
-            const newToken = tokensWithPrices.find(t => t.mint === existingToken.mint);
-            if (newToken) {
-              // Update amount and recalculate value, but keep existing price
-              return {
-                ...existingToken,
-                amount: newToken.amount,
-                value: newToken.amount * existingToken.price,
-              };
-            }
-            return existingToken;
-          });
-          setTokens(updatedExistingTokens);
-          console.log('Tokens updated with new amounts, keeping existing prices');
-        }
-      }
-    } catch (error: any) {
-      console.error('Error fetching token prices:', error.message, error);
-      // Only set fallback if tokens array is empty (initial load)
-      if (tokens.length === 0) {
-        setTokens(balances.map((token, index) => ({
-          id: index + 1,
-          mint: token.mint,
-          name: token.name,
-          symbol: token.symbol,
-          amount: token.amount,
-          value: token.amount * 100, // Fallback value
-          price: 100,
-          change: 0,
-          logo: token.logo,
-          logoUrl: token.logoUrl,
-          color: token.color,
-          network: token.network,
-        })));
-      }
-    } finally {
-      // Only set loading to false on initial load, not on refresh
-      if (!isRefresh) {
-        setLoading(false);
-      }
-    }
+  // Refresh wallet balances (client-side) - used by callbacks
+  const fetchWalletBalances = () => {
+    console.log('[Home] Refreshing wallet balances (client-side)...');
+    loadBlockchainBalances(true);
   };
 
-  // Fetch all verified tokens from CoinGecko (like Phantom)
+  // Fetch all verified tokens from TOKEN_REGISTRY (client-side, like Phantom)
   const fetchAllVerifiedTokens = async () => {
     try {
       setLoadingAllTokens(true);
-      console.log('[Home] Fetching all verified tokens from CoinGecko...');
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/coingecko-coins?page=1&per_page=250`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`
-          }
-        }
-      );
+      console.log('[Home] Loading all verified tokens from TOKEN_REGISTRY (client-side)...');
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Home] Fetch all tokens error:', response.status, errorText);
-        throw new Error('Failed to fetch verified tokens');
-      }
-
-      const coinGeckoData = await response.json();
-      
-      // Merge CoinGecko data with wallet tokens
+      // Merge TOKEN_REGISTRY with wallet tokens
       const mergedTokens: Token[] = [];
       const seenSymbols = new Set<string>();
-      
-      coinGeckoData.forEach((coin: any, index: number) => {
-        const symbolUpper = coin.symbol.toUpperCase();
-        
+
+      TOKEN_REGISTRY.forEach((registryToken, index) => {
+        const symbolUpper = registryToken.symbol.toUpperCase();
+
         // Skip duplicates
         if (seenSymbols.has(symbolUpper)) {
           return;
         }
         seenSymbols.add(symbolUpper);
-        
+
         // Find matching token in wallet
-        const walletToken = tokens.find(t => 
-          t.symbol.toLowerCase() === coin.symbol.toLowerCase() ||
-          t.name.toLowerCase() === coin.name.toLowerCase()
+        const walletToken = tokens.find(t =>
+          t.symbol.toLowerCase() === registryToken.symbol.toLowerCase() ||
+          t.name.toLowerCase() === registryToken.name.toLowerCase()
         );
 
         mergedTokens.push({
           id: index + 1,
-          mint: walletToken?.mint || coin.id, // Use CoinGecko ID as fallback
+          mint: walletToken?.mint || registryToken.mint || registryToken.id,
           symbol: symbolUpper,
-          name: coin.name,
+          name: registryToken.name,
           amount: walletToken?.amount || 0,
           value: walletToken?.value || 0,
-          price: coin.current_price,
-          change: coin.price_change_percentage_24h,
+          price: walletToken?.price || 0, // Price will be loaded dynamically
+          change: walletToken?.change || 0,
           logo: symbolUpper.charAt(0),
           color: walletToken?.color || 'from-purple-600 to-purple-400',
-          logoUrl: coin.image,
+          logoUrl: registryToken.image,
           network: walletToken?.network || 'solana',
         });
-        
-        // Log for debugging
-        if (!walletToken) {
-          console.log('[Home] 🆕 New token without wallet data:', symbolUpper, '- using CoinGecko ID:', coin.id);
-        }
       });
 
       // Sort: tokens with balance first, then by price
@@ -1129,8 +961,8 @@ Check console for full details!
       });
 
       setAllVerifiedTokens(mergedTokens);
-      console.log('[Home] Loaded', mergedTokens.length, 'verified tokens');
-      
+      console.log('[Home] Loaded', mergedTokens.length, 'verified tokens from registry');
+
     } catch (error) {
       console.error('[Home] Error fetching verified tokens:', error);
       toast.error('Failed to load all tokens');
@@ -1156,51 +988,22 @@ Check console for full details!
     
     try {
       setCheckingBlockchain(true);
-      console.log('========== MANUAL BLOCKCHAIN CHECK ==========');
-      console.log('Checking blockchain for new transactions...');
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/check-blockchain-transactions`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ walletId }),
-        }
-      );
+      console.log('========== MANUAL BLOCKCHAIN CHECK (client-side) ==========');
+      console.log('Refreshing balances directly from blockchain...');
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Blockchain check result:', data);
-        
-        // Update network status
-        if (data.network) {
-          setNetworkStatus({
-            network: data.network,
-            lastCheck: new Date().toLocaleTimeString()
-          });
-        }
-        
-        if (data.newTransactions && data.newTransactions.length > 0) {
-          console.log('New transactions detected:', data.newTransactions);
-          toast.success(`Found ${data.newTransactions.length} new transaction(s)!`);
-          // Refresh balances
-          await fetchWalletBalances();
-        } else {
-          console.log('No new transactions found, refreshing balances anyway...');
-          // Even if no new transactions, still refresh to get updated balances
-          await fetchWalletBalances();
-          // Removed toast notification for silent refresh
-        }
-      } else {
-        const errorData = await response.json();
-        console.error('Blockchain check error response:', errorData);
-        toast.error('Failed to check blockchain');
-      }
+      // Update network status
+      setNetworkStatus({
+        network: network.isTestnet ? 'devnet' : 'mainnet',
+        lastCheck: new Date().toLocaleTimeString()
+      });
+
+      // Use client-side blockchain balance loading
+      await loadBlockchainBalances(false);
+
+      console.log('Blockchain refresh complete');
       console.log('===========================================');
     } catch (error) {
-      console.error('Error checking blockchain transactions:', error);
+      console.error('Error checking blockchain:', error);
       toast.error('Error checking blockchain');
     } finally {
       setCheckingBlockchain(false);
@@ -1308,12 +1111,24 @@ Check console for full details!
       return valueB - valueA;
     });
 
+  // Memoize currentAccount to prevent unnecessary re-renders of AccountSwitcher
+  const currentAccountMemo = useMemo(() => ({
+    id: currentAccountId,
+    name: username,
+    addresses: {
+      solana: activeAccountAddress || wallet.addresses?.solana || '',
+      ethereum: wallet.addresses?.ethereum || '',
+    },
+    profilePicture: profilePicture || undefined,
+    selectedEmoji: selectedEmoji || undefined,
+  }), [currentAccountId, username, activeAccountAddress, wallet.addresses?.solana, wallet.addresses?.ethereum, profilePicture, selectedEmoji]);
+
   // Show coin detail if a token is selected
   if (selectedToken) {
     return (
-      <CoinDetail 
-        token={selectedToken} 
-        onBack={() => setSelectedToken(null)} 
+      <CoinDetail
+        token={selectedToken}
+        onBack={() => setSelectedToken(null)}
         walletId={walletId}
         onNavigateToSend={(token) => {
           setSelectedToken(null);
@@ -1415,17 +1230,19 @@ Check console for full details!
         >
           {/* Background with dark overlay on image */}
           <div className="relative h-40">
-            {/* Background Image */}
-            <div 
-              className="absolute inset-0 z-0 opacity-50"
-              style={{
-                backgroundImage: `url('${balanceBackgrounds[balanceBackground]}')`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat'
-              }}
-            />
-            
+            {/* Background Image - only show if not 'none' */}
+            {balanceBackground !== 'none' && balanceBackgrounds[balanceBackground] && (
+              <div
+                className="absolute inset-0 z-0 opacity-50"
+                style={{
+                  backgroundImage: `url('${balanceBackgrounds[balanceBackground]}')`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat'
+                }}
+              />
+            )}
+
             {/* Dark overlay for readability */}
             <div className="absolute inset-0 bg-black/60" />
             
@@ -1798,12 +1615,12 @@ Check console for full details!
                 const tokenChange = token.amount * token.price * token.change / 100;
                 return (
                   <motion.button
-                    key={token.id}
+                    key={`${token.mint}-${token.symbol}`}
                     onClick={() => setSelectedToken(token)}
                     className="w-full p-3 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
-                    initial={{ opacity: 0, x: -20 }}
+                    initial={hasAnimated ? false : { opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.5 + idx * 0.05 }}
+                    transition={hasAnimated ? { duration: 0 } : { delay: 0.5 + idx * 0.05 }}
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
                   >
@@ -1875,16 +1692,7 @@ Check console for full details!
       <AccountSwitcher
         open={accountSwitcherOpen}
         onOpenChange={setAccountSwitcherOpen}
-        currentAccount={{
-          id: currentAccountId,
-          name: username,
-          addresses: {
-            solana: activeAccountAddress || wallet.addresses?.solana || '',
-            ethereum: wallet.addresses?.ethereum || '',
-          },
-          profilePicture: profilePicture || undefined,
-          selectedEmoji: selectedEmoji || undefined,
-        }}
+        currentAccount={currentAccountMemo}
         accounts={accounts}
         onSwitchAccount={handleSwitchAccount}
         onCreateAccount={handleCreateAccount}

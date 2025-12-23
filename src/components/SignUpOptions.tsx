@@ -68,16 +68,11 @@ export function SignUpOptions({ onSelectRecoveryPhrase, onSelectEmail, onSelectG
               whileTap={{ scale: 0.98 }}
             >
               <div className="bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-2xl p-6 text-left hover:border-purple-500/50 transition-all group relative overflow-hidden backdrop-blur-sm">
-                {/* Recommended Badge */}
-                <div className="absolute top-4 right-4 rounded-full bg-purple-500/20 border border-purple-500/40 px-3 py-1 px-[8px] py-[4px]">
-                  <span className="text-xs text-purple-300 font-semibold">Recommended</span>
-                </div>
-                
                 <div className="flex items-start gap-4">
                   <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center flex-shrink-0 group-hover:bg-purple-500/30 transition-colors">
                     <Key className="w-6 h-6 text-purple-400" />
                   </div>
-                  <div className="flex-1 pr-20">
+                  <div className="flex-1">
                     <h3 className="font-semibold mb-1">Recovery Phrase</h3>
                     <p className="text-sm text-slate-400">
                       Create wallet with a 12-word secret recovery phrase

@@ -31,7 +31,6 @@ import { AddressBook } from '../AddressBook';
 import { DevModeDialog } from '../DevModeDialog';
 import { RpcSettings } from './RpcSettings';
 import { HelpAndSupport } from './HelpAndSupport';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { toast } from 'sonner';
 import { PlanetAvatar } from '../PlanetAvatar';
 import { AnimalAvatar } from '../AnimalAvatar';
@@ -41,6 +40,7 @@ import { AccountSwitcher } from '../AccountSwitcher';
 import { AccountManager } from '../../utils/accountManager';
 import { useWallet } from '../../utils/WalletContext';
 import { deriveAddresses } from '../../utils/wallet';
+import { VERSION_STRING } from '../../utils/version';
 
 interface SettingsProps {
   onSignOut: () => void;
@@ -102,21 +102,12 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount }:
     }
   };
 
-  const loadDevMode = async () => {
+  const loadDevMode = () => {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/get-dev-mode?walletId=${walletId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        setDevMode(data.devMode || false);
-      }
+      // Load from localStorage (instant, no server call)
+      const key = `suprik_dev_mode_${walletId}`;
+      const stored = localStorage.getItem(key);
+      setDevMode(stored === 'true');
     } catch (error) {
       console.error('Error loading dev mode:', error);
     } finally {
@@ -136,25 +127,13 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount }:
     }
   };
 
-  const toggleDevMode = async (enabled: boolean) => {
+  const toggleDevMode = (enabled: boolean) => {
     try {
       setDevMode(enabled);
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/set-dev-mode`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ walletId, devMode: enabled }),
-        }
-      );
 
-      if (!response.ok) {
-        throw new Error('Failed to update dev mode');
-      }
+      // Save to localStorage (instant, no server call)
+      const key = `suprik_dev_mode_${walletId}`;
+      localStorage.setItem(key, enabled ? 'true' : 'false');
 
       toast.success(enabled ? 'Testnet Mode enabled' : 'Testnet Mode disabled');
     } catch (error) {
@@ -593,7 +572,7 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount }:
           animate={{ opacity: 1 }}
           transition={{ delay: 0.7 }}
         >
-          <p className="text-slate-600 text-sm">Suprik v1.0.0</p>
+          <p className="text-slate-600 text-sm">{VERSION_STRING}</p>
         </motion.div>
       </div>
 
