@@ -31,13 +31,6 @@ import { AccountManager } from './utils/accountManager';
 import { preloadJupiterTokens } from './utils/jupiterTokens';
 import { checkVersionAndReload } from './utils/version';
 
-// Check for version update FIRST - before anything else
-// This will force reload if user has old cached version
-if (checkVersionAndReload()) {
-  // Page will reload, so don't render anything
-  console.log('[App] Version mismatch - reloading...');
-}
-
 // Preload Jupiter tokens in background for faster search
 preloadJupiterTokens();
 
@@ -60,8 +53,13 @@ export default function App() {
   // Cache for biometric check to prevent multiple calls
   const biometricCheckCache = useRef<{ [key: string]: Promise<void> }>({});
 
-  // Initialize environment variables on mount
+  // Initialize environment and check for version updates on mount
   useEffect(() => {
+    // Check for version update - will reload if user has old cached version
+    if (checkVersionAndReload()) {
+      return; // Page will reload
+    }
+
     initializeEnvironment().catch(() => {
       // Environment initialization failed silently
     });
