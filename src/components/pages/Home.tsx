@@ -171,7 +171,7 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
   const [balanceBackground, setBalanceBackground] = useState<string>(() => {
-    return localStorage.getItem('balanceBackground') || 'atom';
+    return localStorage.getItem('balanceBackground') || 'purple-smoke';
   });
   const [tokens, setTokens] = useState<Token[]>([]);
   const [allVerifiedTokens, setAllVerifiedTokens] = useState<Token[]>([]);
@@ -271,7 +271,7 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
   // Listen for background changes
   useEffect(() => {
     const handleStorageChange = () => {
-      const newBackground = localStorage.getItem('balanceBackground') || 'atom';
+      const newBackground = localStorage.getItem('balanceBackground') || 'purple-smoke';
       setBalanceBackground(newBackground);
     };
 
@@ -279,7 +279,7 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
 
     // Check periodically for same-tab updates (reduced frequency to avoid battery drain)
     const interval = setInterval(() => {
-      const currentBg = localStorage.getItem('balanceBackground') || 'atom';
+      const currentBg = localStorage.getItem('balanceBackground') || 'purple-smoke';
       setBalanceBackground(prev => prev !== currentBg ? currentBg : prev);
     }, 5000); // Check every 5 seconds instead of 1
 

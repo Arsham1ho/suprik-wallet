@@ -145,8 +145,9 @@ interface WalletContextType {
   // Secure accessors - these get values from protected closure, not React state
   getMnemonic: () => string | null;
   getPassword: () => string | null;
-  // Convenience getter for mnemonic (calls getMnemonic internally)
+  // Convenience getters for mnemonic and password (calls getMnemonic/getPassword internally)
   mnemonic: string | null;
+  password: string | null;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -418,10 +419,13 @@ export function WalletProvider({
     // Secure accessors - call into protected closure
     getMnemonic,
     getPassword,
-    // Convenience getter for mnemonic (for backwards compatibility)
-    // Note: This is computed fresh each time but the value only changes when isUnlocked changes
+    // Convenience getters for mnemonic and password (for backwards compatibility)
+    // Note: These are computed fresh each time but values only change when isUnlocked changes
     get mnemonic() {
       return getMnemonic();
+    },
+    get password() {
+      return getPassword();
     },
   }), [walletId, addresses, currentAccount, isUnlocked]);
 

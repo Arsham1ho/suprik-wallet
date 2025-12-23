@@ -42,6 +42,7 @@ import { TOKEN_REGISTRY } from "../../utils/tokenRegistry";
 import type { Token } from "./Home";
 import { BiometricConfirmDialog } from "../BiometricConfirmDialog";
 import { SwapSuccessDialog } from "../SwapSuccessDialog";
+import { SwapFailedDialog } from "../SwapFailedDialog";
 import { SwapNetworkIndicator } from "../SwapNetworkIndicator";
 import { SwapModeIndicator } from "../SwapModeIndicator";
 import type { BiometricSettings } from "../../utils/biometric";
@@ -194,6 +195,15 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     toToken: any;
     fee?: string;
     feeUSD?: string;
+    signature?: string;
+  } | null>(null);
+
+  // Failed dialog state
+  const [showFailedDialog, setShowFailedDialog] = useState(false);
+  const [failedSwapData, setFailedSwapData] = useState<{
+    fromToken: any;
+    toToken: any;
+    error: string;
     signature?: string;
   } | null>(null);
 
@@ -1132,7 +1142,26 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         errorMessage = error.message;
       }
 
-      toast.error(errorMessage);
+      // Show failed dialog with details
+      setFailedSwapData({
+        fromToken: {
+          symbol: fromTokenData?.symbol || "",
+          name: fromTokenData?.name || "",
+          amount: fromAmount,
+          logo: fromTokenData?.logo || "",
+          logoUrl: fromTokenData?.logoUrl || "",
+          color: fromTokenData?.color || "from-purple-500 to-purple-600",
+        },
+        toToken: {
+          symbol: toTokenData?.symbol || "",
+          name: toTokenData?.name || "",
+          logo: toTokenData?.logo || "",
+          logoUrl: toTokenData?.logoUrl || "",
+          color: toTokenData?.color || "from-blue-500 to-blue-600",
+        },
+        error: errorMessage,
+      });
+      setShowFailedDialog(true);
       setShowSwapAnimation(false);
       setIsSwapping(false);
     }
@@ -2642,6 +2671,31 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           feeUSD={successSwapData.feeUSD}
           signature={successSwapData.signature}
           isTestnet={network.isTestnet}
+        />
+      )}
+
+      {/* Failed Dialog */}
+      {failedSwapData && (
+        <SwapFailedDialog
+          open={showFailedDialog}
+          onOpenChange={(open) => {
+            setShowFailedDialog(open);
+            if (!open) {
+              // Clear data when dialog closes
+              setFailedSwapData(null);
+            }
+          }}
+          fromToken={failedSwapData.fromToken}
+          toToken={failedSwapData.toToken}
+          error={failedSwapData.error}
+          signature={failedSwapData.signature}
+          isTestnet={network.isTestnet}
+          onRetry={() => {
+            // Retry the swap with same parameters
+            if (fromAmount && fromToken && toToken) {
+              handleSwap();
+            }
+          }}
         />
       )}
 

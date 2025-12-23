@@ -23,7 +23,7 @@ import {
 } from '../../utils/transactions';
 import { AccountManager } from '../../utils/accountManager';
 import { decryptWithPassword } from '../../utils/wallet';
-import { TOKEN_REGISTRY } from '../../utils/tokenRegistry';
+import { TOKEN_REGISTRY, TOKEN_BY_MINT } from '../../utils/tokenRegistry';
 import cosmicBackground from 'figma:asset/4c2d67025139ca6ca7ae0065c97386bd40e32baa.png';
 
 interface Token {
@@ -590,6 +590,13 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
   };
 
   const handleAmountContinue = () => {
+    // Check if wallet session is still valid before proceeding to review
+    if (!wallet.mnemonic) {
+      toast.error('Session expired. Please unlock your wallet to continue.');
+      onNavigate('home');
+      return;
+    }
+
     if (!amount || parseFloat(amount) <= 0) {
       toast.error('Please enter a valid amount');
       return;
@@ -665,7 +672,9 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
     console.log('[Send] 🎯 typeof network.isTestnet:', typeof network.isTestnet);
 
     if (!wallet.mnemonic) {
-      toast.error('Wallet is locked. Please unlock first.');
+      toast.error('Session expired. Please unlock your wallet to continue.');
+      // Navigate back to home which will show the unlock screen
+      onNavigate('home');
       return;
     }
 
@@ -741,12 +750,35 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
           throw new Error(`No mint address found for ${selectedToken!.symbol}. This token may not be in your wallet.`);
         }
 
-        // Send SPL token (USDC, USDT, etc)
-        const decimals = selectedToken!.symbol === 'USDC' || selectedToken!.symbol === 'USDT' ? 6 : 9;
+        // Get correct decimals from token registry or use known defaults
+        // This is CRITICAL - wrong decimals will cause "insufficient funds" errors
+        let decimals = 9; // Default for most SPL tokens
+
+        // First try to get decimals from TOKEN_BY_MINT registry
+        const registryToken = selectedToken!.mint ? TOKEN_BY_MINT.get(selectedToken!.mint) : null;
+        if (registryToken?.decimals !== undefined) {
+          decimals = registryToken.decimals;
+          console.log(`[Send] Using registry decimals for ${selectedToken!.symbol}: ${decimals}`);
+        } else if (selectedToken!.symbol === 'USDC' || selectedToken!.symbol === 'USDT') {
+          decimals = 6;
+        } else if (selectedToken!.symbol === 'BONK' || selectedToken!.symbol === 'MEW' || selectedToken!.symbol === 'GIGA') {
+          decimals = 5;
+        } else if (['JUP', 'RAY', 'WIF', 'PYTH', 'ORCA', 'W', 'BOME', 'TRUMP', 'PENGU', 'PNUT', 'GOAT', 'MOODENG', 'CHILLGUY', 'SEI', 'TIA', 'AKT', 'ALGO'].includes(selectedToken!.symbol)) {
+          decimals = 6;
+        }
+
+        console.log(`[Send] Sending ${selectedToken!.symbol} with ${decimals} decimals (mint: ${selectedToken!.mint})`);
+
+        // Validate balance before sending
+        const sendAmount = parseFloat(amount);
+        if (sendAmount > selectedToken!.amount) {
+          throw new Error(`Insufficient balance. You have ${selectedToken!.amount.toFixed(6)} ${selectedToken!.symbol} but tried to send ${sendAmount.toFixed(6)}`);
+        }
+
         result = await sendSPLTokenTransaction({
           mnemonic: mnemonicToUse,
           toAddress: address,
-          amount: parseFloat(amount),
+          amount: sendAmount,
           tokenMint: selectedToken!.mint || 'mock-mint-testnet', // Use mock mint for testnet
           decimals,
           accountIndex: accountIndexToUse,
@@ -816,18 +848,10 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
         }
       }, 2000); // Poll every 2 seconds (like Phantom)
       
-      // Return to home after delay
+      // Clean up polling after 30 seconds (user will click Done to navigate)
       setTimeout(() => {
-        clearInterval(pollInterval); // Clean up if user leaves early
-        onNavigate('home');
-        // Reset states
-        setTransactionStatus('idle');
-        setTransactionDetails({});
-        setStep('select-token');
-        setSelectedToken(null);
-        setAddress('');
-        setAmount('');
-      }, 3000);
+        clearInterval(pollInterval);
+      }, 30000);
       
     } catch (error: any) {
       console.error('[Send] ❌ Transaction error:', error);
@@ -1076,23 +1100,19 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                     transition={{ type: 'spring', damping: 15, delay: 0.2 }}
                     className="relative"
                   >
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: [0, 1.2, 1] }}
-                      transition={{ duration: 0.6, delay: 0.3 }}
-                      className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-2xl shadow-green-500/30"
-                    >
-                      <Check className="w-14 h-14 text-white" strokeWidth={3} />
-                    </motion.div>
-                    {/* Ripple effect */}
-                    <motion.div
-                      initial={{ scale: 1, opacity: 0.5 }}
-                      animate={{ scale: 2, opacity: 0 }}
-                      transition={{ duration: 1, delay: 0.3 }}
-                      className="absolute inset-0 rounded-full bg-green-500/50"
-                    />
+                    <div className="w-28 h-28 mx-auto rounded-full overflow-hidden flex items-center justify-center">
+                      <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover scale-125"
+                      >
+                        <source src="/Send.mp4" type="video/mp4" />
+                      </video>
+                    </div>
                   </motion.div>
-                  
+
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1122,6 +1142,28 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                       </div>
                     )}
                   </motion.div>
+
+                  {/* Done button */}
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.8 }}
+                  >
+                    <GradientButton
+                      onClick={() => {
+                        onNavigate('home');
+                        setTransactionStatus('idle');
+                        setTransactionDetails({});
+                        setStep('select-token');
+                        setSelectedToken(null);
+                        setAddress('');
+                        setAmount('');
+                      }}
+                      className="w-full py-3.5"
+                    >
+                      Done
+                    </GradientButton>
+                  </motion.div>
                 </div>
               )}
 
@@ -1133,16 +1175,19 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                     transition={{ type: 'spring', damping: 15, delay: 0.2 }}
                     className="relative"
                   >
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: [0, 1.2, 1] }}
-                      transition={{ duration: 0.6, delay: 0.3 }}
-                      className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-2xl shadow-red-500/30"
-                    >
-                      <AlertCircle className="w-14 h-14 text-white" strokeWidth={3} />
-                    </motion.div>
+                    <div className="w-28 h-28 mx-auto rounded-full overflow-hidden flex items-center justify-center">
+                      <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover scale-125"
+                      >
+                        <source src="/failed_send.mp4" type="video/mp4" />
+                      </video>
+                    </div>
                   </motion.div>
-                  
+
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1658,61 +1703,57 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
               className="space-y-6 py-4"
             >
               {/* Transaction Summary */}
-              <div className="relative p-[2px] rounded-3xl bg-gradient-to-br from-purple-500 via-purple-400 to-pink-500 shadow-2xl shadow-purple-500/30">
-                <div className="relative bg-gradient-to-br from-slate-900/95 via-slate-900/90 to-slate-950/95 backdrop-blur-xl rounded-3xl p-4 overflow-hidden">
-                  {/* Decorative background glow */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-transparent to-pink-500/10" />
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-purple-500/20 rounded-full blur-3xl" />
-                  <div className="absolute bottom-0 left-0 w-16 h-16 bg-pink-500/20 rounded-full blur-3xl" />
-                  
-                  {/* Content */}
-                  <div className="relative z-10 space-y-1.5">
-                    {/* Send Icon */}
-                    <motion.div 
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ duration: 0.3 }}
-                      className="flex justify-center mb-1.5"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/50">
-                        <SendIcon className="w-5 h-5 text-white" />
-                      </div>
-                    </motion.div>
-                    
-                    {/* Label */}
-                    <div className="text-center">
-                      <p className="text-slate-400 text-sm tracking-wide uppercase text-[12px]">You're sending</p>
+              <div className="relative py-6">
+                {/* Decorative background glow */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-purple-500/20 rounded-full blur-3xl" />
+
+                {/* Content */}
+                <div className="relative z-10 space-y-3">
+                  {/* Send Icon */}
+                  <motion.div
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.3 }}
+                    className="flex justify-center mb-2"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/50">
+                      <SendIcon className="w-6 h-6 text-white" />
                     </div>
-                    
-                    {/* Amount */}
-                    <motion.div 
-                      initial={{ scale: 0.9, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ duration: 0.4, delay: 0.1 }}
-                      className="text-center space-y-0.5"
-                    >
-                      <div className="md:text-7xl font-bold bg-gradient-to-r from-white via-purple-100 to-white bg-clip-text text-transparent leading-tight text-[48px]">
-                        {parseFloat(amount).toFixed(selectedToken.symbol === 'SOL' ? 6 : 2)}
-                      </div>
-                      <div className="text-2xl font-semibold bg-gradient-to-r from-purple-300 via-purple-200 to-pink-300 bg-clip-text text-transparent text-[15px]">
-                        {selectedToken.symbol}
-                      </div>
-                    </motion.div>
-                    
-                    {/* USD Value */}
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.4, delay: 0.2 }}
-                      className="text-center pt-0.5"
-                    >
-                      <div className="inline-block px-4 py-1 rounded-full bg-slate-800/50 border border-slate-700/50 backdrop-blur-sm text-[13px]">
-                        <p className="text-slate-300 font-medium text-[13px]">
-                          ≈ ${(parseFloat(amount) * selectedToken.price).toFixed(2)} <span className="text-slate-500">USD</span>
-                        </p>
-                      </div>
-                    </motion.div>
+                  </motion.div>
+
+                  {/* Label */}
+                  <div className="text-center">
+                    <p className="text-slate-400 text-sm tracking-wide uppercase text-[12px]">You're sending</p>
                   </div>
+
+                  {/* Amount */}
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.4, delay: 0.1 }}
+                    className="text-center space-y-1"
+                  >
+                    <div className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-white via-purple-100 to-white bg-clip-text text-transparent leading-tight">
+                      {parseFloat(amount).toFixed(selectedToken.symbol === 'SOL' ? 6 : 2)}
+                    </div>
+                    <div className="text-xl font-semibold bg-gradient-to-r from-purple-300 via-purple-200 to-pink-300 bg-clip-text text-transparent">
+                      {selectedToken.symbol}
+                    </div>
+                  </motion.div>
+
+                  {/* USD Value */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: 0.2 }}
+                    className="text-center pt-1"
+                  >
+                    <div className="inline-block px-4 py-1.5 rounded-full bg-slate-800/50 border border-slate-700/50 backdrop-blur-sm">
+                      <p className="text-slate-300 font-medium text-sm">
+                        ≈ ${(parseFloat(amount) * selectedToken.price).toFixed(2)} <span className="text-slate-500">USD</span>
+                      </p>
+                    </div>
+                  </motion.div>
                 </div>
               </div>
 

@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
 import { motion } from 'motion/react';
-import { CheckCircle2, ArrowDown, X, ExternalLink, Copy } from 'lucide-react';
+import { ArrowDown, X, ExternalLink, Copy } from 'lucide-react';
 import { TokenLogo } from './TokenLogo';
 import { useLanguage } from '../utils/i18n/LanguageContext';
 import { toast } from 'sonner';
@@ -90,15 +90,15 @@ export function SwapSuccessDialog({
                 }}
                 className="relative"
               >
-                <div className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center bg-black">
+                <div className="w-28 h-28 rounded-full overflow-hidden flex items-center justify-center">
                   <video
                     autoPlay
                     loop
                     muted
                     playsInline
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover scale-125"
                   >
-                    <source src="https://fileport.io/fSL6hqvdrCvb" type="video/mp4" />
+                    <source src="/swap.mp4" type="video/mp4" />
                   </video>
                 </div>
               </motion.div>

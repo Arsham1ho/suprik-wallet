@@ -405,6 +405,7 @@ export async function sendSPLTokenTransaction(params: {
     const {
       getAssociatedTokenAddress,
       createTransferInstruction,
+      createTransferCheckedInstruction,
       createAssociatedTokenAccountInstruction,
       TOKEN_PROGRAM_ID,
       TOKEN_2022_PROGRAM_ID,
@@ -428,10 +429,24 @@ export async function sendSPLTokenTransaction(params: {
     if (!mintInfo) {
       throw new Error('Token mint account not found');
     }
-    
+
     const tokenProgramId = mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID)
       ? TOKEN_2022_PROGRAM_ID
       : TOKEN_PROGRAM_ID;
+
+    // CRITICAL: Get actual decimals from the mint account to ensure accuracy
+    // This overrides the passed-in decimals value to prevent "insufficient funds" errors
+    const { getMint } = await import('@solana/spl-token');
+    let actualDecimals = decimals;
+    try {
+      const mintData = await getMint(connection, mintPubkey, 'confirmed', tokenProgramId);
+      actualDecimals = mintData.decimals;
+      if (actualDecimals !== decimals) {
+        console.log(`[Transaction] ⚠️ Decimals mismatch! Passed: ${decimals}, Actual: ${actualDecimals}. Using actual.`);
+      }
+    } catch (mintError) {
+      console.warn('[Transaction] Could not fetch mint decimals, using provided value:', decimals);
+    }
     
     const fromTokenAccount = await getAssociatedTokenAddress(
       mintPubkey,
@@ -493,13 +508,34 @@ export async function sendSPLTokenTransaction(params: {
       }
     }
     
-    // Calculate amount in token's smallest unit
-    const transferAmount = BigInt(Math.floor(amount * Math.pow(10, decimals)));
+    // Calculate amount in token's smallest unit using ACTUAL decimals from blockchain
+    const transferAmount = BigInt(Math.floor(amount * Math.pow(10, actualDecimals)));
+    console.log(`[Transaction] Transfer amount: ${amount} tokens = ${transferAmount.toString()} base units (${actualDecimals} decimals)`);
 
-    // Check if source token account exists and has balance
+    // Check if source token account exists and has sufficient balance
     const fromTokenAccountInfo = await connection.getAccountInfo(fromTokenAccount);
     if (!fromTokenAccountInfo) {
       throw new Error(`No tokens found. Your wallet (${walletAddress.slice(0, 8)}...) has no ${tokenMint.slice(0, 8)}... tokens on mainnet. Check Solscan to verify.`);
+    }
+
+    // Parse token account to check actual balance
+    const { getAccount } = await import('@solana/spl-token');
+    try {
+      const tokenAccountData = await getAccount(connection, fromTokenAccount, 'confirmed', tokenProgramId);
+      const actualBalance = tokenAccountData.amount;
+      console.log(`[Transaction] Token account balance: ${actualBalance.toString()} base units`);
+
+      if (actualBalance < transferAmount) {
+        const actualBalanceHuman = Number(actualBalance) / Math.pow(10, actualDecimals);
+        throw new Error(`Insufficient token balance. You have ${actualBalanceHuman.toFixed(6)} tokens but tried to send ${amount}`);
+      }
+    } catch (balanceError: any) {
+      // If it's our own insufficient balance error, re-throw it
+      if (balanceError.message?.includes('Insufficient token balance')) {
+        throw balanceError;
+      }
+      // Otherwise log and continue (will fail at transaction level if balance is actually insufficient)
+      console.warn('[Transaction] Could not verify token balance:', balanceError.message);
     }
 
     // Verify SOL balance for transaction fees
@@ -526,16 +562,35 @@ export async function sendSPLTokenTransaction(params: {
     }
     
     // Create transfer instruction
-    const transferInstruction = createTransferInstruction(
-      fromTokenAccount,
-      toTokenAccount,
-      fromPubkey,
-      transferAmount,
-      [],
-      tokenProgramId
-    );
-    
-    transaction.add(transferInstruction);
+    // Token-2022 tokens require transfer_checked which includes mint and decimals
+    const isToken2022 = tokenProgramId.equals(TOKEN_2022_PROGRAM_ID);
+
+    if (isToken2022) {
+      // Use transferChecked for Token-2022 (required for tokens with extensions)
+      console.log('[Transaction] Using transferChecked for Token-2022 token');
+      const transferInstruction = createTransferCheckedInstruction(
+        fromTokenAccount,
+        mintPubkey,
+        toTokenAccount,
+        fromPubkey,
+        transferAmount,
+        actualDecimals,
+        [],
+        tokenProgramId
+      );
+      transaction.add(transferInstruction);
+    } else {
+      // Use regular transfer for standard SPL tokens
+      const transferInstruction = createTransferInstruction(
+        fromTokenAccount,
+        toTokenAccount,
+        fromPubkey,
+        transferAmount,
+        [],
+        tokenProgramId
+      );
+      transaction.add(transferInstruction);
+    }
     
     // Get recent blockhash
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
