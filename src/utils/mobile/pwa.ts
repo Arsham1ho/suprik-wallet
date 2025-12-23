@@ -84,6 +84,27 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 
       console.log('[PWA] ✓ Service Worker registered:', registration);
 
+      // Check for updates immediately on registration
+      registration.update().catch(() => {
+        // Silently ignore update check errors
+      });
+
+      // Check for updates periodically (every 30 minutes)
+      setInterval(() => {
+        registration.update().catch(() => {
+          // Silently ignore update check errors
+        });
+      }, 30 * 60 * 1000);
+
+      // Check for updates when the page becomes visible (user returns to app)
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          registration.update().catch(() => {
+            // Silently ignore update check errors
+          });
+        }
+      });
+
       return registration;
     } catch (error) {
       console.log('[PWA] Service Worker registration skipped:', error instanceof Error ? error.message : 'Unknown error');

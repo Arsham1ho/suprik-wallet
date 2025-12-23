@@ -26,6 +26,7 @@ import { initPWAInstall, registerServiceWorker } from './utils/mobile/pwa';
 import { installPWAIconsToCache } from './utils/generatePWAIcons';
 import { SecureStorage, WalletStorage } from './utils/wallet';
 import { UnlockWallet } from './components/UnlockWallet';
+import { UpdateNotification } from './components/UpdateNotification';
 import { initializeEnvironment } from './utils/initEnv';
 import { AccountManager } from './utils/accountManager';
 import { preloadJupiterTokens } from './utils/jupiterTokens';
@@ -529,6 +530,7 @@ export default function App() {
                 )}
                 
                 <InstallPWA />
+                <UpdateNotification />
                 <Toaster theme="dark" />
               </div>
             </div>

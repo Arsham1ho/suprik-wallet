@@ -3,12 +3,15 @@
  * Auto-increment version script
  * Run with: node scripts/bump-version.js [major|minor|patch]
  * Default: patch
+ *
+ * Updates both version.ts and sw.js to keep them in sync
  */
 
 const fs = require('fs');
 const path = require('path');
 
 const versionFile = path.join(__dirname, '../src/utils/version.ts');
+const swFile = path.join(__dirname, '../public/sw.js');
 
 // Read current version
 const content = fs.readFileSync(versionFile, 'utf8');
@@ -43,6 +46,7 @@ switch (bumpType) {
 const newVersion = `${major}.${minor}.${patch}`;
 const today = new Date().toISOString().split('T')[0];
 
+// Update version.ts
 const newContent = `// App version - auto-updated on build
 // Format: MAJOR.MINOR.PATCH
 export const APP_VERSION = '${newVersion}';
@@ -56,5 +60,14 @@ export const VERSION_STRING = \`Suprik v\${APP_VERSION}\`;
 
 fs.writeFileSync(versionFile, newContent);
 
+// Update sw.js version
+const swContent = fs.readFileSync(swFile, 'utf8');
+const updatedSwContent = swContent.replace(
+  /const VERSION = '[^']+';/,
+  `const VERSION = '${newVersion}';`
+);
+fs.writeFileSync(swFile, updatedSwContent);
+
 console.log(`Version bumped: ${versionMatch[0].split("'")[1]} -> ${newVersion}`);
 console.log(`Build date: ${today}`);
+console.log(`Service Worker version synced: ${newVersion}`);

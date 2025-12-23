@@ -1,6 +1,6 @@
 // App version - auto-updated on build
 // Format: MAJOR.MINOR.PATCH
-export const APP_VERSION = '2.1.1';
+export const APP_VERSION = '2.1.2';
 
 // Build timestamp - updated each build
 export const BUILD_DATE = '2025-12-23';
