@@ -3,6 +3,14 @@
  */
 
 let deferredPrompt: any = null;
+let updateCallback: (() => void) | null = null;
+
+/**
+ * Set callback for when update is available
+ */
+export function onUpdateAvailable(callback: () => void) {
+  updateCallback = callback;
+}
 
 /**
  * Listen for install prompt
@@ -63,14 +71,14 @@ export function isRunningAsPWA(): boolean {
 }
 
 /**
- * Register service worker
+ * Register service worker with automatic update handling
  */
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if ('serviceWorker' in navigator) {
     try {
       // First check if sw.js exists
       const swCheck = await fetch('/sw.js', { method: 'HEAD' }).catch(() => null);
-      
+
       if (!swCheck || !swCheck.ok) {
         console.log('[PWA] Service Worker file not found - skipping registration');
         console.log('[PWA] ℹ️ This is normal in development. SW will work in production.');
@@ -79,22 +87,53 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 
       const registration = await navigator.serviceWorker.register('/sw.js', {
         scope: '/',
+        updateViaCache: 'none', // Always fetch fresh SW from network
       });
 
       console.log('[PWA] ✓ Service Worker registered:', registration);
 
-      // Check for updates
+      // Listen for messages from SW (like SW_UPDATED)
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data?.type === 'SW_UPDATED') {
+          console.log('[PWA] Service Worker updated to version:', event.data.version);
+          if (updateCallback) {
+            updateCallback();
+          }
+        }
+      });
+
+      // Check for updates on registration
       registration.addEventListener('updatefound', () => {
         const newWorker = registration.installing;
         console.log('[PWA] Service Worker update found');
 
         if (newWorker) {
           newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              console.log('[PWA] New Service Worker available - reload to update');
-              // You can show a notification to the user here
+            if (newWorker.state === 'installed') {
+              if (navigator.serviceWorker.controller) {
+                // New SW available, old one still controlling
+                console.log('[PWA] New version available! Refresh to update.');
+                if (updateCallback) {
+                  updateCallback();
+                }
+              } else {
+                // First install
+                console.log('[PWA] Service Worker installed for the first time');
+              }
             }
           });
+        }
+      });
+
+      // Check for updates every 5 minutes
+      setInterval(() => {
+        registration.update().catch(() => {});
+      }, 5 * 60 * 1000);
+
+      // Also check for updates when app becomes visible
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          registration.update().catch(() => {});
         }
       });
 
@@ -105,9 +144,26 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
       return null;
     }
   }
-  
+
   console.log('[PWA] Service Workers not supported in this browser');
   return null;
+}
+
+/**
+ * Force update the service worker and reload
+ */
+export async function forceUpdate(): Promise<void> {
+  if ('serviceWorker' in navigator) {
+    const registration = await navigator.serviceWorker.ready;
+
+    // Tell waiting SW to skip waiting
+    if (registration.waiting) {
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+
+    // Reload the page to get the new version
+    window.location.reload();
+  }
 }
 
 /**
@@ -171,12 +227,12 @@ export function showNotification(title: string, options?: NotificationOptions) {
   if ('Notification' in window && Notification.permission === 'granted') {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then((registration) => {
+        // Use type assertion for vibrate as it's valid for ServiceWorker notifications
         registration.showNotification(title, {
           icon: '/icons/icon-192x192.png',
           badge: '/icons/icon-72x72.png',
-          vibrate: [200, 100, 200],
           ...options,
-        });
+        } as NotificationOptions & { vibrate?: number[] });
       });
     } else {
       new Notification(title, {

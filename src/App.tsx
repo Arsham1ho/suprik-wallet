@@ -22,7 +22,7 @@ import { LanguageProvider } from './utils/i18n/LanguageContext';
 import { NetworkProvider } from './utils/NetworkContext';
 import { isWalletLocked, type BiometricSettings } from './utils/biometric';
 import { getUserSettings } from './utils/userSettings';
-import { initPWAInstall, registerServiceWorker } from './utils/mobile/pwa';
+import { initPWAInstall, registerServiceWorker, onUpdateAvailable, forceUpdate } from './utils/mobile/pwa';
 import { installPWAIconsToCache } from './utils/generatePWAIcons';
 import { SecureStorage, WalletStorage } from './utils/wallet';
 import { UnlockWallet } from './components/UnlockWallet';
@@ -171,6 +171,19 @@ export default function App() {
   // Initialize PWA on mount
   useEffect(() => {
     initPWAInstall();
+
+    // Set up update notification callback
+    onUpdateAvailable(() => {
+      toast('New version available!', {
+        description: 'Tap to update and get the latest features.',
+        duration: 10000,
+        action: {
+          label: 'Update Now',
+          onClick: () => forceUpdate(),
+        },
+      });
+    });
+
     registerServiceWorker().catch(() => {
       // Silently handle SW errors - app works fine without it
     });
