@@ -15,27 +15,40 @@ import { HDKey } from 'micro-ed25519-hdkey';
  * to ensure the address shown in Receive page matches the address used for transactions.
  */
 export async function deriveSolanaKeypair(mnemonic: string, accountIndex: number = 0) {
-  // Convert mnemonic to seed - use mnemonicToSeedSync with empty passphrase
-  // This MUST match wallet.ts line 404: bip39.mnemonicToSeedSync(mnemonic, '')
-  const seed = bip39.mnemonicToSeedSync(mnemonic, '');
-
-  // Derive Solana path using micro-ed25519-hdkey (SLIP-0010, same as Phantom)
-  // Path: m/44'/501'/accountIndex'/0'
-  const path = `m/44'/501'/${accountIndex}'/0'`;
-  const hdkey = HDKey.fromMasterSeed(seed);
-  const derived = hdkey.derive(path);
-
-  if (!derived.privateKey) {
-    throw new Error('Failed to derive Solana private key');
+  // Validate mnemonic before attempting derivation
+  if (!mnemonic || typeof mnemonic !== 'string' || mnemonic.trim().length === 0) {
+    throw new Error('Wallet is locked or session expired. Please unlock your wallet and try again.');
   }
 
-  // Import Solana web3.js dynamically
-  const { Keypair } = await import('@solana/web3.js');
+  try {
+    // Convert mnemonic to seed - use mnemonicToSeedSync with empty passphrase
+    // This MUST match wallet.ts line 404: bip39.mnemonicToSeedSync(mnemonic, '')
+    const seed = bip39.mnemonicToSeedSync(mnemonic, '');
 
-  // Create keypair from derived private key (32 bytes)
-  const keypair = Keypair.fromSeed(derived.privateKey);
+    // Derive Solana path using micro-ed25519-hdkey (SLIP-0010, same as Phantom)
+    // Path: m/44'/501'/accountIndex'/0'
+    const path = `m/44'/501'/${accountIndex}'/0'`;
+    const hdkey = HDKey.fromMasterSeed(seed);
+    const derived = hdkey.derive(path);
 
-  return keypair;
+    if (!derived.privateKey) {
+      throw new Error('Failed to derive Solana private key');
+    }
+
+    // Import Solana web3.js dynamically
+    const { Keypair } = await import('@solana/web3.js');
+
+    // Create keypair from derived private key (32 bytes)
+    const keypair = Keypair.fromSeed(derived.privateKey);
+
+    return keypair;
+  } catch (error: any) {
+    // Provide a user-friendly error message for mnemonic issues
+    if (error.message?.includes('mnemonic') || error.message?.includes('Invalid')) {
+      throw new Error('Wallet session expired. Please lock and unlock your wallet to continue.');
+    }
+    throw error;
+  }
 }
 
 /**

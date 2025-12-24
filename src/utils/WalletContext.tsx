@@ -72,32 +72,20 @@ function isCurrentlyLocked(): { isLocked: boolean; remainingSeconds: number } {
 
 // Secure session storage - NOT exposed in React state/DevTools
 // Uses closure to protect sensitive data
+// NOTE: Session never expires - wallet stays unlocked until user explicitly locks it
 const createSecureSession = () => {
   let _mnemonic: string | null = null;
   let _password: string | null = null;
-  let _sessionExpiry: number = 0;
-  const SESSION_DURATION = 30 * 60 * 1000; // 30 minutes
 
   return {
     setCredentials: (mnemonic: string, password: string) => {
       _mnemonic = mnemonic;
       _password = password;
-      _sessionExpiry = Date.now() + SESSION_DURATION;
     },
     getMnemonic: (): string | null => {
-      if (Date.now() > _sessionExpiry) {
-        _mnemonic = null;
-        _password = null;
-        return null;
-      }
       return _mnemonic;
     },
     getPassword: (): string | null => {
-      if (Date.now() > _sessionExpiry) {
-        _mnemonic = null;
-        _password = null;
-        return null;
-      }
       return _password;
     },
     clear: () => {
@@ -106,15 +94,12 @@ const createSecureSession = () => {
       _password = '';
       _mnemonic = null;
       _password = null;
-      _sessionExpiry = 0;
     },
     isValid: (): boolean => {
-      return _mnemonic !== null && Date.now() < _sessionExpiry;
+      return _mnemonic !== null;
     },
     extendSession: () => {
-      if (_mnemonic) {
-        _sessionExpiry = Date.now() + SESSION_DURATION;
-      }
+      // No-op - session never expires
     }
   };
 };
