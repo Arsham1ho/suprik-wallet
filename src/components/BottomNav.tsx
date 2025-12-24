@@ -2,6 +2,7 @@ import { Home, ArrowLeftRight, Activity, Settings, Orbit } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../utils/i18n/LanguageContext';
 import { useState } from 'react';
+import { toast } from 'sonner';
 
 interface BottomNavProps {
   currentPage: string;
@@ -35,6 +36,16 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
                 console.log('[BottomNav] Button clicked:', item.id);
                 setTappedButton(item.id);
                 setTimeout(() => setTappedButton(null), 600);
+
+                // CosmoPay is coming soon
+                if (item.id === 'p2p') {
+                  toast('Coming Soon!', {
+                    description: 'CosmoPay will be available in a future update.',
+                    icon: '🚀',
+                  });
+                  return;
+                }
+
                 onNavigate(item.id as any);
               }}
               className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all flex-1 relative pointer-events-auto cursor-pointer ${

@@ -122,19 +122,16 @@ export function LanguageProvider({
 
     const currencySymbol = symbol || currencySymbols[currency] || '$';
 
-    // Format number based on currency
+    // Format number based on currency - round to 2 decimal places like Phantom
     let formattedNumber: string;
 
     if (['JPY', 'KRW'].includes(currency)) {
       // No decimals for JPY and KRW
       formattedNumber = Math.round(convertedAmount).toLocaleString();
-    } else if (convertedAmount < 0.01 && convertedAmount > 0) {
-      // For very small amounts, show more decimals
-      formattedNumber = convertedAmount.toFixed(6);
-    } else if (convertedAmount < 1) {
-      formattedNumber = convertedAmount.toFixed(4);
     } else {
-      formattedNumber = convertedAmount.toLocaleString(undefined, {
+      // Round to nearest 0.10 for cleaner display (like Phantom)
+      const roundedAmount = Math.round(convertedAmount * 10) / 10;
+      formattedNumber = roundedAmount.toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });

@@ -217,7 +217,7 @@ export function ThemeCustomization({ onThemeChange }: ThemeCustomizationProps) {
   const { t } = useLanguage();
   const { setTheme } = useTheme();
   const [selectedBackground, setSelectedBackground] = useState<string>(() => {
-    return localStorage.getItem('balanceBackground') || 'atom';
+    return localStorage.getItem('balanceBackground') || 'circuit-board';
   });
 
   // Theme selection is now client-side only (saved via ThemeContext to localStorage)
