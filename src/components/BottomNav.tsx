@@ -21,7 +21,7 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
   ];
 
   return (
-    <div className="wallet-bottom-nav fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur-xl border-t border-slate-900/50 w-full md:max-w-[430px] md:left-1/2 md:-translate-x-1/2 mx-auto z-[100] pointer-events-auto">
+    <div className="wallet-bottom-nav fixed bottom-0 left-0 right-0 bg-black/80 backdrop-blur-xl border-t border-slate-900/50 w-full z-[100] pointer-events-auto">
       <div className="flex items-center justify-between px-2 py-3 w-full">
         {navItems.map((item) => {
           const Icon = item.icon;

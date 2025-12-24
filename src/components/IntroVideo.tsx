@@ -132,15 +132,12 @@ export function IntroVideo({ onComplete }: IntroVideoProps) {
         />
       </div>
 
-      {/* Video Player - Full screen - only visible when video is loaded */}
+      {/* Video Player - Full container - only visible when video is loaded */}
       <div
         className="absolute inset-0 z-10"
         style={{
-          width: '100vw',
-          height: '100vh',
-          position: 'fixed',
-          top: 0,
-          left: 0,
+          width: '100%',
+          height: '100%',
           opacity: videoLoaded && !showFallback ? 1 : 0,
           pointerEvents: videoLoaded && !showFallback ? 'auto' : 'none',
           backgroundColor: '#000',
@@ -150,8 +147,8 @@ export function IntroVideo({ onComplete }: IntroVideoProps) {
           ref={videoRef}
           src={VIDEO_PATH}
           style={{
-            width: '100vw',
-            height: '100vh',
+            width: '100%',
+            height: '100%',
             objectFit: 'cover',
             display: 'block',
           }}

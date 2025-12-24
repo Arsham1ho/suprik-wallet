@@ -557,76 +557,36 @@ html, body {
   }
 }
 
-/* Desktop/Laptop: Fixed width centered layout with phone frame */
+/* Desktop/Laptop: Fixed width centered layout */
 @media (min-width: 768px) {
   .wallet-outer {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100%;
+    height: 100vh;
     min-height: 100vh;
-    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%);
-    padding: 20px;
+    background: #000000;
   }
 
   .wallet-container {
     max-width: 430px;
     width: 430px;
-    height: calc(100vh - 40px);
-    max-height: 932px; /* iPhone 15 Pro Max height */
-    min-height: 600px;
+    height: 100vh;
+    max-height: 100vh;
     margin: 0 auto;
-    border-radius: 40px;
-    box-shadow:
-      0 0 0 12px #1a1a1a,
-      0 0 0 14px #2a2a2a,
-      0 25px 50px -12px rgba(0, 0, 0, 0.8),
-      0 0 100px rgba(139, 92, 246, 0.1);
     position: relative;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
-  /* Phone notch/dynamic island simulation */
-  .wallet-container::before {
-    content: '';
-    position: absolute;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 120px;
-    height: 32px;
-    background: #000000;
-    border-radius: 20px;
-    z-index: 9999;
-    box-shadow: inset 0 0 0 2px #1a1a1a;
-  }
-
-  /* Phone home indicator simulation */
-  .wallet-container::after {
-    content: '';
-    position: absolute;
-    bottom: 8px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 134px;
-    height: 5px;
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 3px;
-    z-index: 9999;
-  }
-
-  /* Add subtle glow effect */
-  .wallet-outer::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 600px;
-    height: 600px;
-    background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
-    pointer-events: none;
-    z-index: 0;
+  /* Bottom nav positioning on desktop */
+  .wallet-bottom-nav {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 430px !important;
+    max-width: 430px !important;
   }
 }
 
