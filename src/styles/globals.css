@@ -588,6 +588,15 @@ html, body {
     width: 430px !important;
     max-width: 430px !important;
   }
+
+  /* Update notification positioning on desktop */
+  .wallet-update-notification {
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: calc(430px - 32px) !important;
+    max-width: calc(430px - 32px) !important;
+  }
 }
 
 /* Mobile: Full width responsive */

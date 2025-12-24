@@ -47,11 +47,12 @@ interface SettingsProps {
   walletId: string;
   onLockWallet?: () => void;
   onSwitchAccount?: (walletId: string) => void;
+  onSubpageChange?: (isSubpage: boolean) => void;
 }
 
 type SettingsPage = 'main' | 'account' | 'preferences' | 'security' | 'about' | 'invite' | 'nft' | 'theme' | 'addressBook' | 'feeWallet' | 'apiKeys' | 'balanceChecker' | 'verifyToken' | 'rpc' | 'helpSupport';
 
-export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount }: SettingsProps) {
+export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, onSubpageChange }: SettingsProps) {
   const [currentPage, setCurrentPage] = useState<SettingsPage>('main');
   const [devMode, setDevMode] = useState(false);
   const [devDialogOpen, setDevDialogOpen] = useState(false);
@@ -65,6 +66,11 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount }:
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [currentPage]);
+
+  // Notify parent when on a subpage (to hide bottom nav)
+  useEffect(() => {
+    onSubpageChange?.(currentPage !== 'main');
+  }, [currentPage, onSubpageChange]);
 
   useEffect(() => {
     loadDevMode();

@@ -83,7 +83,7 @@ export function UpdateNotification() {
   if (!showUpdate) return null;
 
   return (
-    <div className="fixed bottom-20 left-4 right-4 z-50 animate-in slide-in-from-bottom-4 duration-300">
+    <div className="wallet-update-notification fixed bottom-20 left-4 right-4 z-50 animate-in slide-in-from-bottom-4 duration-300">
       <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl p-4 shadow-2xl border border-purple-400/30">
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">

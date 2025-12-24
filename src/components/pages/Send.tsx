@@ -3,7 +3,7 @@ import { Button } from '../ui/button';
 import { GradientButton } from '../GradientButton';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { ChevronLeft, Send as SendIcon, Check, AlertCircle, Loader2, Search, X, Camera } from 'lucide-react';
+import { ChevronLeft, Send as SendIcon, Check, AlertCircle, Loader2, Search, X, Camera, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { getUserSettings } from '../../utils/userSettings';
@@ -619,29 +619,24 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
     // MAINNET ONLY: Validate balances
     // For SOL, calculate total including fees and rent-exempt reserve
     if (selectedToken!.symbol === 'SOL') {
-      const RENT_EXEMPT_MINIMUM = 0.00089088;
-      const NETWORK_FEE = 0.000005;
-      const SAFETY_BUFFER = 0.0002;
-      const MIN_REMAINING_BALANCE = RENT_EXEMPT_MINIMUM + NETWORK_FEE + SAFETY_BUFFER;
-      
-      const totalRequired = sendAmount; // No app fee
-      const balanceAfterTransaction = selectedToken!.amount - totalRequired;
-      
+      // Use consistent reserve across the app (same as Max button)
+      const SOL_RESERVE = 0.001; // Covers rent-exempt + network fee + safety buffer
+
+      const totalRequired = sendAmount;
+      const maxSendable = Math.max(0, selectedToken!.amount - SOL_RESERVE);
+
       // Check if user has enough balance
       if (totalRequired > selectedToken!.amount) {
         toast.error(`Insufficient balance. Need ${totalRequired.toFixed(6)} SOL but have ${selectedToken!.amount.toFixed(6)} SOL`);
         return;
       }
-      
-      // Check if account will remain rent-exempt
-      if (balanceAfterTransaction < MIN_REMAINING_BALANCE) {
-        const maxSendable = Math.max(0, selectedToken!.amount - MIN_REMAINING_BALANCE);
-        toast.error(
-          `Transaction would leave your account below the rent-exempt minimum. Maximum you can send: ${maxSendable.toFixed(6)} SOL`,
-          {
-            description: 'Solana accounts need ~0.002 SOL minimum to stay active'
-          }
-        );
+
+      // Auto-fix amount if it exceeds max sendable (instead of just showing error)
+      if (sendAmount > maxSendable) {
+        setAmount(maxSendable.toFixed(6));
+        toast.info(`Amount adjusted to ${maxSendable.toFixed(6)} SOL to keep account active`, {
+          description: 'Reserved 0.001 SOL for fees and rent'
+        });
         return;
       }
     } else {
@@ -930,8 +925,11 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
         open={showBiometricConfirm}
         onOpenChange={setShowBiometricConfirm}
         onConfirm={handleBiometricConfirm}
-        actionType="transaction"
-        actionDetails={`Send ${amount} ${selectedToken?.symbol}`}
+        walletId={walletId}
+        title="Confirm Send"
+        amount={amount}
+        token={selectedToken?.symbol}
+        recipient={address}
       />
 
       {/* QR Scanner Dialog */}
@@ -1132,7 +1130,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                       </div>
                     )}
                     {transactionDetails.signature && (
-                      <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/50">
+                      <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/50 mb-4">
                         <p className="text-xs text-slate-400 mb-1">
                           {network.isTestnet ? 'Mock Signature' : 'Transaction Signature'}
                         </p>
@@ -1140,6 +1138,18 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                           {transactionDetails.signature.slice(0, 12)}...{transactionDetails.signature.slice(-12)}
                         </p>
                       </div>
+                    )}
+                    {/* View on Solscan button */}
+                    {transactionDetails.signature && !network.isTestnet && selectedToken?.network === 'solana' && (
+                      <a
+                        href={`https://solscan.io/tx/${transactionDetails.signature}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 text-sm text-purple-300 hover:text-purple-200 transition-all bg-gradient-to-r from-purple-500/10 to-blue-500/10 hover:from-purple-500/20 hover:to-blue-500/20 rounded-lg py-2.5 border border-purple-500/20 group mb-4"
+                      >
+                        <ExternalLink className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                        View on Solscan
+                      </a>
                     )}
                   </motion.div>
 
@@ -1625,7 +1635,9 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                     onClick={handleMaxAmount}
                     className="text-sm text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 px-2 py-1 rounded-lg transition-all font-medium active:scale-95"
                   >
-                    Max: {selectedToken.amount.toFixed(selectedToken.symbol === 'SOL' ? 6 : 2)} {selectedToken.symbol}
+                    Max: {selectedToken.symbol === 'SOL'
+                      ? Math.max(0, selectedToken.amount - 0.001).toFixed(6)
+                      : selectedToken.amount.toFixed(2)} {selectedToken.symbol}
                   </button>
                 </div>
                 <div className="relative">

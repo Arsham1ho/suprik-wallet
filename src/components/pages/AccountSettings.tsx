@@ -379,38 +379,43 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
     }
 
     try {
-      // Validate walletId exists
-      if (!walletId) {
-        toast.error('Wallet ID not found. Please try reloading the page.');
-        return;
-      }
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/update-username`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ walletId, username }),
-        }
-      );
+      // Normalize username
+      const normalizedUsername = username.toLowerCase();
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update username');
-      }
-      
-      const data = await response.json();
-      
-      // Update localStorage with the normalized username from server
-      localStorage.setItem('saturn_username', data.username);
-      
-      toast.success('Username updated successfully');
-      setOriginalUsername(data.username);
-      setUsername(data.username);
+      // Save locally FIRST (this is the primary storage for client-side wallet)
+      localStorage.setItem('saturn_username', normalizedUsername);
+
+      // Update state immediately
+      setOriginalUsername(normalizedUsername);
+      setUsername(normalizedUsername);
       setUsernameAvailable(null);
+
+      // Try to sync with server (optional - don't fail if server doesn't have wallet)
+      if (walletId) {
+        try {
+          const response = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/update-username`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${publicAnonKey}`,
+              },
+              body: JSON.stringify({ walletId, username: normalizedUsername }),
+            }
+          );
+
+          if (!response.ok) {
+            // Server sync failed - that's okay, we saved locally
+            console.log('[AccountSettings] Server sync failed, but username saved locally');
+          }
+        } catch (serverError) {
+          // Server sync failed - that's okay, we saved locally
+          console.log('[AccountSettings] Server sync error:', serverError);
+        }
+      }
+
+      toast.success('Username updated successfully');
       loadWalletInfo();
       loadAccounts();
     } catch (error) {

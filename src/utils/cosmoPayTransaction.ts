@@ -262,7 +262,9 @@ export async function createOfflineSPLTransaction(params: {
   }
 
   // Calculate amount in token's smallest unit
-  const transferAmount = BigInt(Math.floor(amount * Math.pow(10, decimals)));
+  // Use Math.round() and convert to string to avoid floating-point precision issues with BigInt
+  const rawAmount = amount * Math.pow(10, decimals);
+  const transferAmount = BigInt(Math.round(rawAmount).toString());
 
   // Create transaction
   const transaction = new Transaction();

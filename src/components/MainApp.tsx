@@ -20,6 +20,7 @@ interface MainAppProps {
 
 export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount }: MainAppProps) {
   const [currentPage, setCurrentPage] = useState<'home' | 'swap' | 'activity' | 'settings' | 'p2p' | 'send' | 'receive' | 'search' | 'coinDetail'>('home');
+  const [hideBottomNav, setHideBottomNav] = useState(false);
   
   // Scroll to top when page changes
   useEffect(() => {
@@ -29,6 +30,10 @@ export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount 
   const handleNavigate = (page: 'home' | 'swap' | 'activity' | 'settings' | 'p2p') => {
     console.log('[MainApp] Navigating to:', page);
     setCurrentPage(page);
+    // Reset hideBottomNav when navigating to a different main page
+    if (page !== 'settings') {
+      setHideBottomNav(false);
+    }
   };
   const [tokensData, setTokensData] = useState<any[]>([]);
   const [selectedCoinForDetail, setSelectedCoinForDetail] = useState<Token | null>(null);
@@ -64,7 +69,7 @@ export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount 
       {currentPage === 'home' && <Home onNavigate={setCurrentPage} walletId={accessToken || ''} onTokensLoaded={setTokensData} key={refreshTrigger} />}
       {currentPage === 'swap' && <Swap tokens={tokensData} walletId={accessToken || ''} onSwapComplete={handleRefreshTokens} />}
       {currentPage === 'activity' && <Activity walletId={accessToken || ''} />}
-      {currentPage === 'settings' && <Settings onSignOut={onSignOut} walletId={accessToken || ''} onLockWallet={onLockWallet} onSwitchAccount={onSwitchAccount} />}
+      {currentPage === 'settings' && <Settings onSignOut={onSignOut} walletId={accessToken || ''} onLockWallet={onLockWallet} onSwitchAccount={onSwitchAccount} onSubpageChange={setHideBottomNav} />}
       {currentPage === 'p2p' && <P2PTransfer onBack={() => setCurrentPage('home')} />}
       {currentPage === 'send' && <Send onNavigate={setCurrentPage} tokens={tokensData} walletId={accessToken || ''} onSendComplete={handleRefreshTokens} />}
       {currentPage === 'receive' && <Receive onBack={() => setCurrentPage('home')} walletId={accessToken || ''} />}
@@ -88,7 +93,7 @@ export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount 
         />
       )}
       
-      {currentPage !== 'send' && currentPage !== 'receive' && currentPage !== 'search' && currentPage !== 'coinDetail' && <BottomNav currentPage={currentPage} onNavigate={handleNavigate} />}
+      {currentPage !== 'send' && currentPage !== 'receive' && currentPage !== 'search' && currentPage !== 'coinDetail' && !hideBottomNav && <BottomNav currentPage={currentPage} onNavigate={handleNavigate} />}
     </div>
   );
 }

@@ -278,16 +278,20 @@ export async function loadAllTokens(
     }
     
     // ========== SPL TOKENS - AUTO-DETECT EVERYTHING! ==========
-    if (balances.solana.tokens && balances.solana.tokens.length > 0) {
-      console.log('[TokenLoader] 🎯 Auto-adding', balances.solana.tokens.length, 'SPL tokens...');
-      console.log('[TokenLoader] 📋 SPL tokens from blockchain:', balances.solana.tokens.map(t => ({
+    // Filter out wrapped SOL to prevent double-counting with native SOL
+    const WRAPPED_SOL_MINT = 'So11111111111111111111111111111111111111112';
+    const filteredSplTokens = balances.solana.tokens.filter(t => t.mint !== WRAPPED_SOL_MINT);
+
+    if (filteredSplTokens && filteredSplTokens.length > 0) {
+      console.log('[TokenLoader] 🎯 Auto-adding', filteredSplTokens.length, 'SPL tokens (filtered wrapped SOL)...');
+      console.log('[TokenLoader] 📋 SPL tokens from blockchain:', filteredSplTokens.map(t => ({
         symbol: t.symbol,
         name: t.name,
         amount: t.amount,
         mint: t.mint
       })));
-      
-      balances.solana.tokens.forEach((token, idx) => {
+
+      filteredSplTokens.forEach((token, idx) => {
         // In testnet: only show tokens with balance
         // In mainnet: show ALL tokens (like Phantom)
         if (token.amount > 0 || !isTestnet) {

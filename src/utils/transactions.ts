@@ -218,7 +218,8 @@ export async function sendSolanaTransaction(params: {
       retries--;
     }
 
-    const lamports = amount * LAMPORTS_PER_SOL;
+    // Use Math.round() to avoid floating-point precision issues (e.g., 4003999.9999999995)
+    const lamports = Math.round(amount * LAMPORTS_PER_SOL);
 
     // Get fee estimate
     const { blockhash } = await connection.getLatestBlockhash('confirmed');
@@ -509,7 +510,9 @@ export async function sendSPLTokenTransaction(params: {
     }
     
     // Calculate amount in token's smallest unit using ACTUAL decimals from blockchain
-    const transferAmount = BigInt(Math.floor(amount * Math.pow(10, actualDecimals)));
+    // Use Math.round() and convert to string to avoid floating-point precision issues with BigInt
+    const rawAmount = amount * Math.pow(10, actualDecimals);
+    const transferAmount = BigInt(Math.round(rawAmount).toString());
     console.log(`[Transaction] Transfer amount: ${amount} tokens = ${transferAmount.toString()} base units (${actualDecimals} decimals)`);
 
     // Check if source token account exists and has sufficient balance

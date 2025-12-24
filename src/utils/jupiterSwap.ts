@@ -603,7 +603,42 @@ export async function getJupiterSwapQuote(params: {
       throw new Error('Invalid amount');
     }
 
-    const slippageBps = Math.floor(slippage * 100);
+    // Smart slippage calculation based on token type (like Phantom does)
+    // Stablecoins: 0.5%, Major tokens: 1%, Meme coins: 5-15%
+    const STABLECOIN_MINTS = [
+      'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+      'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+    ];
+    const MAJOR_TOKEN_MINTS = [
+      'So11111111111111111111111111111111111111112',  // SOL
+      'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', // JUP
+      'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So', // mSOL
+      'J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn', // jitoSOL
+    ];
+
+    // Determine auto slippage based on token types
+    let autoSlippageBps: number;
+    const isStablePair = STABLECOIN_MINTS.includes(inputMint) && STABLECOIN_MINTS.includes(outputMint);
+    const isMajorPair = MAJOR_TOKEN_MINTS.includes(inputMint) || MAJOR_TOKEN_MINTS.includes(outputMint);
+    const isPumpToken = inputMint.endsWith('pump') || outputMint.endsWith('pump');
+
+    if (isStablePair) {
+      autoSlippageBps = 50; // 0.5% for stablecoin pairs
+      console.log('[Jupiter] Stablecoin pair detected - using 0.5% slippage');
+    } else if (isPumpToken) {
+      autoSlippageBps = 1500; // 15% for pump.fun meme coins (very volatile)
+      console.log('[Jupiter] Pump.fun token detected - using 15% slippage');
+    } else if (isMajorPair) {
+      autoSlippageBps = 100; // 1% for major tokens
+      console.log('[Jupiter] Major token pair detected - using 1% slippage');
+    } else {
+      autoSlippageBps = 500; // 5% default for unknown tokens (meme coins, etc.)
+      console.log('[Jupiter] Unknown token pair - using 5% slippage');
+    }
+
+    // Use user's slippage if they set it higher, otherwise use auto
+    const slippageBps = Math.max(Math.floor(slippage * 100), autoSlippageBps);
+    console.log('[Jupiter] Final slippage:', slippageBps, 'bps (', slippageBps / 100, '%)');
 
     // Check if we have a fee account for the output token
     const hasFeeAccount = FEE_WALLET_CONFIG.tokenAccounts &&
@@ -838,21 +873,21 @@ export async function executeJupiterSwap(params: {
     }
 
     // Build swap request body
-    // Use dynamicSlippage to handle volatile tokens like meme coins
-    // This lets Jupiter automatically adjust slippage at execution time
+    // NOTE: dynamicSlippage has been DISCONTINUED by Jupiter
+    // We now use autoSlippage with autoSlippageCollisionUsdValue for better results
+    // Reference: https://dev.jup.ag/docs/swap-api/send-swap-transaction
     const swapRequestBody: any = {
       quoteResponse: quoteResponse.quoteResponse,
       userPublicKey: keypair.publicKey.toBase58(),
       wrapAndUnwrapSol: true,
       dynamicComputeUnitLimit: true,
       prioritizationFeeLamports: 'auto',
-      // Enable dynamic slippage for volatile tokens
-      // minBps: minimum slippage (50 = 0.5%), maxBps: maximum slippage (3000 = 30%)
-      // Increased maxBps to handle very volatile meme coins and low liquidity tokens
-      dynamicSlippage: {
-        minBps: 50,   // 0.5% minimum (for stablecoins)
-        maxBps: 3000, // 30% maximum (for very volatile meme coins)
-      },
+      // Use autoSlippage - Jupiter's recommended approach
+      // This automatically calculates optimal slippage based on the route
+      autoSlippage: true,
+      // Maximum additional slippage allowed in USD value for auto slippage
+      // Set to $1 USD max slippage to protect users
+      autoSlippageCollisionUsdValue: 1,
     };
 
     // Add fee account if we have one configured for the output token
@@ -866,7 +901,7 @@ export async function executeJupiterSwap(params: {
     }
 
     console.log('[Jupiter] Requesting swap transaction...');
-    console.log('[Jupiter] Dynamic slippage enabled: 0.5% - 30%');
+    console.log('[Jupiter] Auto slippage enabled with $1 USD max collision');
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
@@ -961,23 +996,87 @@ export async function executeJupiterSwap(params: {
       if (finalStatus?.value?.confirmationStatus === 'confirmed' ||
           finalStatus?.value?.confirmationStatus === 'finalized') {
         confirmed = true;
+        // Check for errors even if "confirmed"
+        if (finalStatus?.value?.err) {
+          console.error('[Jupiter] Transaction confirmed but FAILED:', finalStatus.value.err);
+          throw new Error(`Transaction failed: ${JSON.stringify(finalStatus.value.err)}`);
+        }
       } else if (finalStatus?.value?.err) {
         throw new Error(`Transaction failed: ${JSON.stringify(finalStatus.value.err)}`);
       } else {
         // Transaction was sent but not confirmed in time
-        // Return success with the signature - user can check on Solscan
-        console.log('[Jupiter] Transaction sent but confirmation timed out. Signature:', signature);
-        console.log('[Jupiter] Transaction may still succeed - check: https://solscan.io/tx/' + signature);
+        // Do a final transaction lookup to check actual status
+        console.log('[Jupiter] Checking transaction status on-chain...');
+        try {
+          const txInfo = await connection.getTransaction(signature, {
+            commitment: 'confirmed',
+            maxSupportedTransactionVersion: 0,
+          });
 
-        // Return as success with signature - the transaction is on-chain
+          if (txInfo) {
+            if (txInfo.meta?.err) {
+              console.error('[Jupiter] Transaction found but FAILED:', txInfo.meta.err);
+              throw new Error(`Swap failed on-chain: ${JSON.stringify(txInfo.meta.err)}`);
+            }
+            // Transaction exists and no error - it succeeded
+            confirmed = true;
+            console.log('[Jupiter] Transaction confirmed via lookup');
+          } else {
+            // Transaction not found yet - could still be processing
+            console.log('[Jupiter] Transaction not found yet, returning pending status');
+            return {
+              success: false,
+              signature,
+              error: 'Transaction sent but status unclear. Check Solscan: https://solscan.io/tx/' + signature,
+            };
+          }
+        } catch (lookupError) {
+          console.warn('[Jupiter] Transaction lookup failed:', lookupError);
+          return {
+            success: false,
+            signature,
+            error: 'Transaction sent but confirmation timed out. Check Solscan: https://solscan.io/tx/' + signature,
+          };
+        }
+      }
+    }
+
+    // Double-check the transaction actually succeeded by fetching it
+    try {
+      const txInfo = await connection.getTransaction(signature, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0,
+      });
+
+      if (txInfo?.meta?.err) {
+        console.error('[Jupiter] Transaction has error:', txInfo.meta.err);
+        // Parse the error for user-friendly message
+        const errStr = JSON.stringify(txInfo.meta.err);
+        let userMessage = 'Swap failed on-chain';
+
+        if (errStr.includes('InstructionError') && errStr.includes('Custom')) {
+          // Extract custom error code
+          const customMatch = errStr.match(/Custom.*?(\d+)/);
+          const errorCode = customMatch ? parseInt(customMatch[1]) : 0;
+
+          if (errorCode === 1 || errorCode === 6024 || errStr.includes('0x1788')) {
+            userMessage = 'Swap failed: Price moved too much (slippage exceeded). Try increasing slippage or use a smaller amount.';
+          } else if (errorCode === 6000) {
+            userMessage = 'Swap failed: Insufficient funds for this swap.';
+          } else {
+            userMessage = `Swap failed with error code ${errorCode}. The price may have moved or liquidity changed.`;
+          }
+        }
+
         return {
-          success: true,
+          success: false,
           signature,
-          inputAmount: quoteResponse.inputAmount,
-          outputAmount: quoteResponse.outputAmount,
-          platformFee: quoteResponse.platformFee,
+          error: userMessage,
         };
       }
+    } catch (verifyError) {
+      console.warn('[Jupiter] Could not verify transaction:', verifyError);
+      // Continue - we'll return success but with a note
     }
 
     console.log('[Jupiter] Swap confirmed!');
