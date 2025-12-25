@@ -68,6 +68,7 @@ export interface SwapResult {
   outputAmount?: number;
   platformFee?: number;
   error?: string;
+  pending?: boolean; // Transaction sent but confirmation pending
 }
 
 // ===========================
@@ -1022,20 +1023,21 @@ export async function executeJupiterSwap(params: {
             confirmed = true;
             console.log('[Jupiter] Transaction confirmed via lookup');
           } else {
-            // Transaction not found yet - could still be processing
-            console.log('[Jupiter] Transaction not found yet, returning pending status');
+            // Transaction not found yet - but it was sent, so treat as success (pending confirmation)
+            console.log('[Jupiter] Transaction sent, pending confirmation');
             return {
-              success: false,
+              success: true,
               signature,
-              error: 'Transaction sent but status unclear. Check Solscan: https://solscan.io/tx/' + signature,
+              pending: true,
             };
           }
         } catch (lookupError) {
           console.warn('[Jupiter] Transaction lookup failed:', lookupError);
+          // Transaction was sent, just couldn't confirm - treat as success (pending)
           return {
-            success: false,
+            success: true,
             signature,
-            error: 'Transaction sent but confirmation timed out. Check Solscan: https://solscan.io/tx/' + signature,
+            pending: true,
           };
         }
       }

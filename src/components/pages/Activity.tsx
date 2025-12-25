@@ -5,10 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
-import { useWallet } from '../../utils/WalletContext';
-import { useNetwork } from '../../utils/NetworkContext';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
-import { fetchAllTransactionHistory, getLocalSwapHistory, clearTransactionCache, type TransactionItem } from '../../utils/transactionHistory';
+import { getLocalSwapHistory, clearTransactionCache, type TransactionItem } from '../../utils/transactionHistory';
 import { TokenLogo } from '../TokenLogo';
 
 interface ActivityProps {
@@ -16,8 +14,6 @@ interface ActivityProps {
 }
 
 export function Activity({ walletId }: ActivityProps) {
-  const wallet = useWallet();
-  const network = useNetwork();
   const { t } = useLanguage();
   const [activities, setActivities] = useState<TransactionItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,40 +22,23 @@ export function Activity({ walletId }: ActivityProps) {
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
 
   useEffect(() => {
-    // Clear old cache on initial load to ensure fresh data with updated token symbol resolution
+    // Clear old cache on initial load
     clearTransactionCache();
-    // Only fetch initially
+    // Load local transaction history
     fetchActivities(false);
-    
-    // 🚀 POLLING: Auto-refresh every 60 seconds (reduced from 15s for better UX)
-    const pollingInterval = setInterval(() => {
-      if (wallet.addresses?.solana && wallet.addresses?.ethereum) {
-        console.log('[Activity] ⚡ Auto-polling for new transactions...');
-        fetchActivities(true); // Background refresh without loading state
-      }
-    }, 60000); // 60 seconds - much less aggressive
-    
-    // Listen for balance updates which might include new transactions
-    const handleBalanceUpdate = () => {
-      console.log('[Activity] Balance update event received, refreshing activities...');
-      fetchActivities();
-    };
 
-    // Listen for swap history updates
+    // Listen for swap history updates (when user completes a swap)
     const handleSwapHistoryUpdate = () => {
       console.log('[Activity] Swap history updated, refreshing activities...');
       fetchActivities();
     };
 
-    window.addEventListener('walletBalanceUpdated', handleBalanceUpdate);
     window.addEventListener('swapHistoryUpdated', handleSwapHistoryUpdate);
 
     return () => {
-      clearInterval(pollingInterval);
-      window.removeEventListener('walletBalanceUpdated', handleBalanceUpdate);
       window.removeEventListener('swapHistoryUpdated', handleSwapHistoryUpdate);
     };
-  }, [walletId, network.isTestnet]); // Removed wallet.addresses to prevent unnecessary re-renders
+  }, [walletId]);
 
   const fetchActivities = async (backgroundRefresh = false) => {
     try {
@@ -71,61 +50,18 @@ export function Activity({ walletId }: ActivityProps) {
       }
 
       setLastFetchTime(now);
-      console.log('[Activity] 🔄 Fetching transaction history...');
-      console.log('[Activity] Network mode:', network.isTestnet ? 'TESTNET' : 'MAINNET');
+      console.log('[Activity] 🔄 Loading transaction history...');
 
-      // Get local swap history IMMEDIATELY (no loading delay)
+      // Get local swap history - this is the ONLY source of transaction data
+      // We only show transactions that the user actually made through this wallet
+      // Blockchain history is disabled to avoid showing spam/airdrop tokens
       const localSwaps = getLocalSwapHistory();
-      console.log('[Activity] 📱 Local swap history:', localSwaps.length, 'swaps');
+      console.log('[Activity] 📱 Local transaction history:', localSwaps.length, 'transactions');
 
-      // Show local swaps immediately while blockchain loads
-      if (localSwaps.length > 0 && !backgroundRefresh) {
-        setActivities(localSwaps);
-        setLoading(false); // Stop loading immediately if we have local data
-      }
-
-      // 🧪 TESTNET MODE: Show local swap history only (blockchain txs not available)
-      if (network.isTestnet) {
-        console.log('[Activity] ⚠️ Testnet mode: Showing local swap history only');
-        setActivities(localSwaps);
-        setLoading(false);
-        return;
-      }
-
-      if (!wallet.addresses.solana || !wallet.addresses.ethereum) {
-        console.warn('[Activity] No addresses available yet');
-        if (localSwaps.length === 0) {
-          setActivities([]);
-          setLoading(false);
-        }
-        return;
-      }
-
-      // Fetch from blockchain APIs in background
-      const transactions = await fetchAllTransactionHistory(
-        {
-          solana: wallet.addresses.solana,
-          ethereum: wallet.addresses.ethereum,
-        },
-        false // Always use mainnet for real transaction history
-      );
-
-      console.log('[Activity] ✅ Loaded', transactions.length, 'transactions from blockchain');
-
-      // Merge local swaps with blockchain transactions
-      // IMPORTANT: Local swaps should REPLACE blockchain transactions with same signature
-      const localSwapSignatures = new Set(localSwaps.map(swap => swap.signature).filter(Boolean));
-
-      // Filter out blockchain transactions that are actually swaps (we have better data locally)
-      const filteredBlockchainTxs = transactions.filter(tx => !localSwapSignatures.has(tx.signature));
-
-      // Combine: local swaps (with full swap data) + blockchain txs (excluding duplicates)
-      const allActivities = [...localSwaps, ...filteredBlockchainTxs].sort((a, b) => {
-        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-      });
-
-      console.log('[Activity] 📊 Total activities:', allActivities.length, '(local swaps:', localSwaps.length, ', blockchain (non-swap):', filteredBlockchainTxs.length, ')');
-      setActivities(allActivities);
+      // Show only local swap/transaction history
+      // This ensures users only see transactions they actually made
+      setActivities(localSwaps);
+      setLoading(false);
     } catch (error: any) {
       console.error('[Activity] ❌ Error fetching activities:', error);
       // Don't show error toast for background refreshes
@@ -478,31 +414,15 @@ export function Activity({ walletId }: ActivityProps) {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3 }}
           >
-            {network.isTestnet ? (
-              <>
-                <motion.div 
-                  className="w-24 h-24 rounded-full bg-yellow-500/10 flex items-center justify-center mx-auto mb-4 border border-yellow-500/20"
-                  animate={{ rotate: [0, 5, -5, 0] }}
-                  transition={{ duration: 2, repeat: Infinity, repeatDelay: 1 }}
-                >
-                  <span className="text-5xl">🧪</span>
-                </motion.div>
-                <h3 className="text-slate-300 font-semibold mb-2">Testnet Mode</h3>
-                <p className="text-slate-500 text-sm max-w-xs mx-auto">Transaction history is only available on Mainnet. Switch to Mainnet to view your transactions.</p>
-              </>
-            ) : (
-              <>
-                <motion.div 
-                  className="w-24 h-24 rounded-full bg-slate-900/50 flex items-center justify-center mx-auto mb-4 border border-slate-800/50"
-                  animate={{ y: [0, -10, 0] }}
-                  transition={{ duration: 2, repeat: Infinity, repeatDelay: 0.5 }}
-                >
-                  <ArrowUpRight className="w-12 h-12 text-slate-600" strokeWidth={1.5} />
-                </motion.div>
-                <h3 className="text-slate-400 font-semibold mb-2">No transactions yet</h3>
-                <p className="text-slate-600 text-sm max-w-xs mx-auto">When you send, receive, or swap tokens, your activity will appear here.</p>
-              </>
-            )}
+            <motion.div
+              className="w-24 h-24 rounded-full bg-slate-900/50 flex items-center justify-center mx-auto mb-4 border border-slate-800/50"
+              animate={{ y: [0, -10, 0] }}
+              transition={{ duration: 2, repeat: Infinity, repeatDelay: 0.5 }}
+            >
+              <ArrowUpRight className="w-12 h-12 text-slate-600" strokeWidth={1.5} />
+            </motion.div>
+            <h3 className="text-slate-400 font-semibold mb-2">No transactions yet</h3>
+            <p className="text-slate-600 text-sm max-w-xs mx-auto">When you swap tokens using this wallet, your activity will appear here.</p>
           </motion.div>
         )}
       </div>

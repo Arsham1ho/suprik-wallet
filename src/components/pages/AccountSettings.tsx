@@ -482,19 +482,24 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
   // Handle create new account (like Home page - no dialog)
   const handleCreateAccount = async () => {
     try {
-      if (!wallet.mnemonic || !wallet.isUnlocked) {
+      // Get mnemonic from secure session
+      const mnemonic = wallet.getMnemonic();
+
+      if (!mnemonic || !wallet.isUnlocked) {
         toast.error('Please unlock your wallet first');
         return;
       }
 
       console.log('[AccountSettings] ➕ Creating new account...');
-      
+
       // Get next account index
       const nextIndex = AccountManager.getNextAccountIndex();
-      
+      console.log('[AccountSettings] Next account index:', nextIndex);
+
       // Derive addresses for new account
-      const newAddresses = await deriveAddresses(wallet.mnemonic, nextIndex);
-      
+      const newAddresses = await deriveAddresses(mnemonic, nextIndex);
+      console.log('[AccountSettings] Derived addresses for new account');
+
       // Create account in AccountManager
       const newAccount = AccountManager.createNewAccount(
         walletId,
@@ -509,9 +514,9 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
 
       toast.success(`Created ${newAccount.name}!`);
       console.log('[AccountSettings] ✅ New account created:', newAccount);
-    } catch (error) {
+    } catch (error: any) {
       console.error('[AccountSettings] Error creating account:', error);
-      toast.error('Failed to create account');
+      toast.error(error.message || 'Failed to create account');
     }
   };
 

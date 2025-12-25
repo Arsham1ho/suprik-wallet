@@ -1643,18 +1643,12 @@ Check console for full details!
                     </div>
 
                     <div className="text-right">
-                      {token.amount > 0 ? (
-                        <>
-                          <p className="text-white font-semibold">
-                            {formatPrice(token.value)}
-                          </p>
-                          <p className={`text-sm ${tokenChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            {tokenChange >= 0 ? '+' : ''}{formatPrice(Math.abs(tokenChange))}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-slate-500 text-sm">
-                          ${token.price.toFixed(2)}
+                      <p className="text-white font-semibold">
+                        {formatPrice(token.value)}
+                      </p>
+                      {token.amount > 0 && (
+                        <p className={`text-sm ${tokenChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {tokenChange >= 0 ? '+' : ''}{formatPrice(Math.abs(tokenChange))}
                         </p>
                       )}
                     </div>
