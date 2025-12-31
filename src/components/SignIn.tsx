@@ -226,7 +226,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
     }
   };
 
-  const handlePrivateKeyImport = async () => {
+  const handlePrivateKeyImport = async (shouldEnableBiometric?: boolean) => {
     if (!password || password.length < 8) {
       toast.error('Password must be at least 8 characters');
       return;
@@ -277,8 +277,9 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
         throw new Error('Failed to unlock wallet after import');
       }
 
-      // Register biometric if user opted in
-      if (enableBiometric && biometricAvailable) {
+      // Register biometric if user opted in (use parameter if provided, otherwise use state)
+      const useBiometric = shouldEnableBiometric !== undefined ? shouldEnableBiometric : enableBiometric;
+      if (useBiometric && biometricAvailable) {
         const biometricResult = await registerBiometric(walletId);
 
         if (biometricResult.success) {
@@ -379,7 +380,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
     }
   };
 
-  const handleImport = async () => {
+  const handleImport = async (shouldEnableBiometric?: boolean) => {
     if (!password) {
       toast.error('Please enter your password');
       return;
@@ -463,8 +464,9 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
         throw new Error('Failed to unlock wallet after import');
       }
 
-      // Register biometric if user opted in
-      if (enableBiometric && biometricAvailable) {
+      // Register biometric if user opted in (use parameter if provided, otherwise use state)
+      const useBiometric = shouldEnableBiometric !== undefined ? shouldEnableBiometric : enableBiometric;
+      if (useBiometric && biometricAvailable) {
         const biometricResult = await registerBiometric(walletId);
 
         if (biometricResult.success) {
@@ -562,15 +564,15 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
   // Handle biometric step continue
   const handleBiometricContinue = async (enable: boolean) => {
     setEnableBiometric(enable);
-    await performImport();
+    await performImport(enable);
   };
 
   // Perform the actual import
-  const performImport = async () => {
+  const performImport = async (shouldEnableBiometric?: boolean) => {
     if (importMode === 'privateKey') {
-      await handlePrivateKeyImport();
+      await handlePrivateKeyImport(shouldEnableBiometric);
     } else {
-      await handleImport();
+      await handleImport(shouldEnableBiometric);
     }
   };
 

@@ -84,7 +84,7 @@ export function WelcomePage({ onContinue }: WelcomePageProps) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-6 py-10 relative z-10">
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-6 py-10 relative z-10 welcome-page-content">
           <div className="space-y-8 w-full">
             {/* Logo with Real Wallet Logo */}
             <motion.div

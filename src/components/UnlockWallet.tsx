@@ -278,9 +278,9 @@ export function UnlockWallet({
   // Show loading state while auto-unlocking - but allow user to skip
   if (autoUnlocking) {
     return (
-      <div className="min-h-screen bg-black text-white w-full flex items-center justify-center px-6">
+      <div className="min-h-screen bg-black text-white w-full flex items-center justify-center">
         <motion.div
-          className="text-center space-y-4"
+          className="text-center space-y-4 w-full max-w-md px-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         >
@@ -317,9 +317,9 @@ export function UnlockWallet({
   };
 
   return (
-    <div className="min-h-screen bg-black text-white w-full flex items-center justify-center px-6">
+    <div className="min-h-screen bg-black text-white w-full flex items-center justify-center">
       <motion.div
-        className="w-full max-w-md space-y-8"
+        className="w-full max-w-md space-y-8 px-6 unlock-wallet-content"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >

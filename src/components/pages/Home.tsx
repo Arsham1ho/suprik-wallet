@@ -1255,8 +1255,8 @@ Check console for full details!
                 {loading ? (
                   <div className="h-12 w-40 bg-white/20 rounded-xl animate-pulse" />
                 ) : (
-                  <motion.h1 
-                    className="text-5xl tracking-tight text-white"
+                  <motion.h1
+                    className="text-5xl tracking-tight text-white total-balance-amount"
                     key={totalBalance}
                     initial={{ scale: 1.05, opacity: 0.8 }}
                     animate={{ scale: 1, opacity: 1 }}

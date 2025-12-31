@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion } from 'motion/react';
+import { Volume2, VolumeX } from 'lucide-react';
 
 interface IntroVideoProps {
   onComplete: () => void;
@@ -7,8 +8,9 @@ interface IntroVideoProps {
 
 export function IntroVideo({ onComplete }: IntroVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [showFallback, setShowFallback] = useState(false);
+  const [showFallback, setShowFallback] = useState(true); // Show fallback by default
   const [videoLoaded, setVideoLoaded] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const hasCalledComplete = useRef(false);
   const hasAttemptedPlay = useRef(false);
 
@@ -49,17 +51,39 @@ export function IntroVideo({ onComplete }: IntroVideoProps) {
     // Try to play the video
     const playVideo = async () => {
       try {
-        // iOS requires muted for autoplay, then we can try to unmute
+        // iOS requires muted for autoplay
         video.muted = true;
+        video.load(); // Force reload for mobile
+
+        // Wait for video to be ready
+        await new Promise<void>((resolve, reject) => {
+          const onCanPlay = () => {
+            video.removeEventListener('canplaythrough', onCanPlay);
+            video.removeEventListener('error', onError);
+            resolve();
+          };
+          const onError = () => {
+            video.removeEventListener('canplaythrough', onCanPlay);
+            video.removeEventListener('error', onError);
+            reject(new Error('Video load error'));
+          };
+          video.addEventListener('canplaythrough', onCanPlay);
+          video.addEventListener('error', onError);
+
+          // Timeout if video doesn't load in 5 seconds
+          setTimeout(() => {
+            video.removeEventListener('canplaythrough', onCanPlay);
+            video.removeEventListener('error', onError);
+            reject(new Error('Video load timeout'));
+          }, 5000);
+        });
+
         await video.play();
         // Video is playing successfully
         setVideoLoaded(true);
-        // Try to unmute after user interaction context
-        setTimeout(() => {
-          if (video) video.muted = false;
-        }, 100);
+        setShowFallback(false); // Hide fallback when video plays
       } catch {
-        // Video failed to play, show fallback
+        // Video failed to play, keep showing fallback
         setShowFallback(true);
       }
     };
@@ -86,13 +110,21 @@ export function IntroVideo({ onComplete }: IntroVideoProps) {
     setTimeout(handleComplete, 4000);
   };
 
+  const toggleMute = () => {
+    const video = videoRef.current;
+    if (video) {
+      video.muted = !video.muted;
+      setIsMuted(video.muted);
+    }
+  };
+
   return (
     <div
-      className="flex flex-col relative overflow-hidden"
+      className="flex flex-col relative overflow-hidden min-h-screen"
       style={{
         width: '100%',
-        height: '100%',
-        minHeight: '100%',
+        height: '100vh',
+        minHeight: '100vh',
         touchAction: 'none',
         overscrollBehavior: 'none',
         backgroundColor: '#0f1729'
@@ -146,18 +178,38 @@ export function IntroVideo({ onComplete }: IntroVideoProps) {
         <video
           ref={videoRef}
           src={VIDEO_PATH}
+          onClick={toggleMute}
           style={{
             width: '100%',
             height: '100%',
             objectFit: 'cover',
+            cursor: 'pointer',
             display: 'block',
           }}
           playsInline
           autoPlay
           muted
+          preload="auto"
           onEnded={handleVideoEnded}
           onError={handleVideoError}
+          {...{ "webkit-playsinline": "true" }}
         />
+
+        {/* Mute/Unmute button */}
+        <motion.button
+          onClick={toggleMute}
+          className="absolute bottom-8 right-6 z-30 p-3 rounded-full bg-black/50 backdrop-blur-sm border border-white/20"
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.5 }}
+          whileTap={{ scale: 0.9 }}
+        >
+          {isMuted ? (
+            <VolumeX className="w-6 h-6 text-white" />
+          ) : (
+            <Volume2 className="w-6 h-6 text-white" />
+          )}
+        </motion.button>
       </div>
 
       {/* Fallback Animation - Shows while video is loading or when it fails */}

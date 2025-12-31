@@ -56,9 +56,9 @@ export function SignInOptions({ onSelectRecoveryPhrase, onBack }: SignInOptionsP
                     <Key className="w-6 h-6 text-purple-400" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold mb-1">Recovery Phrase</h3>
+                    <h3 className="font-semibold mb-1">Recovery Phrase / Private Key</h3>
                     <p className="text-sm text-slate-400">
-                      Sign in with your 12-word secret recovery phrase
+                      Sign in with your 12-word secret recovery phrase or private key
                     </p>
                   </div>
                 </div>
