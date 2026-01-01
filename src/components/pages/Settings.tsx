@@ -301,20 +301,12 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
     <div className="min-h-screen bg-black text-white pb-20 w-full">
       <div className="px-4 py-6 w-full max-w-2xl mx-auto">
         {/* Header */}
-        <motion.h1 
-          className="text-2xl mb-8"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
+        <h1 className="text-2xl mb-8">
           Settings
-        </motion.h1>
+        </h1>
 
         {/* Account */}
-        <motion.div 
-          className="space-y-3 mb-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
+        <div className="space-y-3 mb-6">
           <h3 className="text-slate-400 text-sm px-2">General</h3>
           
           <button
@@ -383,15 +375,10 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
           </button>
-        </motion.div>
+        </div>
 
         {/* Developer Settings */}
-        <motion.div 
-          className="space-y-3 mb-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
+        <div className="space-y-3 mb-6">
           <h3 className="text-slate-400 text-sm px-2">Developer</h3>
           
           <div className={`p-4 rounded-xl border transition-all ${
@@ -461,15 +448,10 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
           </button>
-        </motion.div>
+        </div>
 
         {/* Support & Info */}
-        <motion.div 
-          className="space-y-3 mb-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
+        <div className="space-y-3 mb-6">
           <h3 className="text-slate-400 text-sm px-2">Support</h3>
           
           <button
@@ -519,15 +501,10 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
           </button>
-        </motion.div>
+        </div>
 
         {/* Lock Wallet */}
-        <motion.div 
-          className="mt-8 space-y-3"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-        >
+        <div className="mt-8 space-y-3">
           <Button
             onClick={() => {
               if (onLockWallet) {
@@ -569,17 +546,12 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
             <LogOut className="w-4 h-4 mr-2" />
             Sign Out
           </Button>
-        </motion.div>
+        </div>
 
         {/* Version */}
-        <motion.div 
-          className="text-center mt-8"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.7 }}
-        >
+        <div className="text-center mt-8">
           <p className="text-slate-600 text-sm">{VERSION_STRING}</p>
-        </motion.div>
+        </div>
       </div>
 
       {/* Dev Mode Dialog */}

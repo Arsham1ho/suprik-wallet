@@ -1,5 +1,4 @@
 import { Sparkles, Shield, Zap, Lock, ArrowRight, Check } from 'lucide-react';
-import { motion } from 'motion/react';
 import logo from 'figma:asset/ed7942d275ee52c87815efe3d7991e061c49a8ae.png';
 import backgroundImage from 'figma:asset/7fff6c0f4086de297821ed0e75fcf92b1f55b37f.png';
 
@@ -36,26 +35,17 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
             {/* Logo Circle - Light purple with atom icon */}
             <div className="relative mb-6 select-none pointer-events-none">
               {/* Outer glow */}
-              <motion.div 
-                className="absolute inset-0 -m-6 rounded-full"
+              <div
+                className="absolute inset-0 -m-6 rounded-full animate-pulse-glow"
                 style={{
                   background: 'radial-gradient(circle, rgba(216, 180, 254, 0.3) 0%, transparent 70%)',
                   filter: 'blur(20px)',
                 }}
-                animate={{
-                  scale: [1, 1.1, 1],
-                  opacity: [0.3, 0.5, 0.3],
-                }}
-                transition={{
-                  duration: 3,
-                  repeat: Infinity,
-                  ease: "easeInOut"
-                }}
               />
-              
+
               {/* Logo */}
-              <motion.div
-                className="relative w-32 h-32 flex items-center justify-center"
+              <div
+                className="relative w-32 h-32 flex items-center justify-center animate-spin-slow"
                 style={{
                   borderRadius: '50%',
                   overflow: 'hidden',
@@ -63,12 +53,6 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
                   WebkitClipPath: 'circle(50%)',
                   transform: 'translateZ(0)',
                   WebkitTransform: 'translateZ(0)',
-                }}
-                animate={{ rotate: 360 }}
-                transition={{
-                  duration: 8,
-                  repeat: Infinity,
-                  ease: "linear"
                 }}
               >
                 <img
@@ -80,7 +64,7 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
                     display: 'block',
                   }}
                 />
-              </motion.div>
+              </div>
             </div>
 
             {/* Brand & Tagline */}
@@ -174,7 +158,7 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
             <div className="flex items-center justify-center gap-2 pt-2 select-none">
               <Check className="w-4 h-4 text-purple-400" />
               <span className="text-xs text-slate-400">
-                Trusted by thousands
+                Trusted by Community
               </span>
             </div>
 

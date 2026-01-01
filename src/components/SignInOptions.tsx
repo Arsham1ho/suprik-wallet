@@ -70,8 +70,8 @@ export function SignInOptions({ onSelectRecoveryPhrase, onBack }: SignInOptionsP
               <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 text-left transition-all relative overflow-hidden opacity-60">
                 {/* Coming Soon Badge */}
                 <div className="absolute top-4 right-4 z-10">
-                  <div className="px-3 py-1.5 bg-gradient-to-r from-purple-600/30 to-blue-600/30 border border-purple-500/40 rounded-full backdrop-blur-sm">
-                    <p className="text-purple-300 font-semibold text-xs">Coming Soon</p>
+                  <div className="px-2 py-1 bg-gradient-to-r from-purple-600/30 to-blue-600/30 border border-purple-500/40 rounded-full backdrop-blur-sm">
+                    <p className="text-purple-300 font-medium text-[10px]">Coming Soon</p>
                   </div>
                 </div>
 

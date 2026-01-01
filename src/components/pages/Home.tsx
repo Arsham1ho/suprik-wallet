@@ -1147,11 +1147,7 @@ Check console for full details!
         <BlockchainSetup walletId={walletId} />
 
         {/* Header with Profile Info */}
-        <motion.div 
-          className="space-y-4 pt-2"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
+        <div className="space-y-4 pt-2">
           {/* Top row - Avatar and Actions */}
           <div className="flex items-center justify-between">
             <button
@@ -1167,7 +1163,7 @@ Check console for full details!
               <div className="text-left">
                 <p className="text-slate-400 text-sm">{username}</p>
                 <div className="flex items-center gap-1.5">
-                  <h2 className="text-white font-semibold">Suprik Wallet</h2>
+                  <h2 className="text-white font-semibold wallet-name-text">Suprik Wallet</h2>
                   <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-purple-400 transition-colors" />
                 </div>
                 {network.isTestnet && (
@@ -1219,15 +1215,10 @@ Check console for full details!
               </button>
             </div>
           </div>
-        </motion.div>
+        </div>
 
         {/* Total Balance Card */}
-        <motion.div 
-          className="relative rounded-2xl overflow-hidden"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-        >
+        <div className="relative rounded-2xl overflow-hidden">
           {/* Background with dark overlay on image */}
           <div className="relative h-40">
             {/* Background Image - only show if not 'none' */}
@@ -1279,15 +1270,10 @@ Check console for full details!
               </div>
             </div>
           </div>
-        </motion.div>
+        </div>
 
         {/* Action Buttons */}
-        <motion.div 
-          className="grid grid-cols-4 gap-3"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
+        <div className="grid grid-cols-4 gap-3">
           <motion.button
             onClick={() => {
               setReceiveBtnTapped(true);
@@ -1527,15 +1513,10 @@ Check console for full details!
             </motion.div>
             <span className="text-sm text-slate-300 relative z-10">Buy</span>
           </motion.button>
-        </motion.div>
+        </div>
 
         {/* Tokens Section */}
-        <motion.div
-          className="space-y-3"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-        >
+        <div className="space-y-3">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-white font-semibold">{t.home.yourAssets}</h3>
             <div className="flex items-center gap-2">
@@ -1552,7 +1533,7 @@ Check console for full details!
                 {loadingAllTokens && <Loader2 className="w-3 h-3 animate-spin" />}
               </button>
               <button
-                onClick={() => setAddTokenOpen(true)}
+                onClick={() => onNavigate('search')}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 transition-colors text-sm font-medium"
               >
                 <Plus className="w-4 h-4" />
@@ -1568,11 +1549,7 @@ Check console for full details!
               ))}
             </div>
           ) : filteredTokens.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="p-8 rounded-xl bg-slate-900/50 border border-slate-800/30 text-center space-y-3"
-            >
+            <div className="p-8 rounded-xl bg-slate-900/50 border border-slate-800/30 text-center space-y-3">
               {network.isTestnet ? (
                 <>
                   <div className="text-4xl mb-2">🧪</div>
@@ -1608,24 +1585,19 @@ Check console for full details!
                   </p>
                 </>
               )}
-            </motion.div>
+            </div>
           ) : (
             <div className="space-y-2">
               {(showAllTokens ? allVerifiedTokens : filteredTokens).map((token, idx) => {
                 const tokenChange = token.amount * token.price * token.change / 100;
                 return (
-                  <motion.button
+                  <button
                     key={`${token.mint}-${token.symbol}`}
                     onClick={() => setSelectedToken(token)}
                     className="w-full p-3 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
-                    initial={hasAnimated ? false : { opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={hasAnimated ? { duration: 0 } : { delay: 0.5 + idx * 0.05 }}
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
                   >
                     <div className="flex items-center gap-3">
-                      <TokenLogo 
+                      <TokenLogo
                         logoUrl={token.logoUrl}
                         logo={token.logo}
                         name={token.name}
@@ -1652,25 +1624,20 @@ Check console for full details!
                         </p>
                       )}
                     </div>
-                  </motion.button>
+                  </button>
                 );
               })}
             </div>
           )}
-        </motion.div>
+        </div>
 
         {/* View Disclosures */}
-        <motion.div
-          className="pt-2 pb-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-        >
+        <div className="pt-2 pb-4">
           <button className="flex items-center gap-2 text-slate-500 text-sm hover:text-slate-400 transition-colors">
             <span className="w-4 h-4 flex items-center justify-center">ⓘ</span>
             View disclosures
           </button>
-        </motion.div>
+        </div>
       </div>
 
       <SendReceiveDialog open={sendOpen} onOpenChange={setSendOpen} mode="send" />

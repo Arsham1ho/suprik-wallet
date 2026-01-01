@@ -10,7 +10,7 @@ import { getHeliusApiKey, getAlchemyApiKey } from './env';
 const SWAP_HISTORY_KEY = 'suprik_swap_history';
 
 // Cache for transaction history to avoid repeated API calls
-const TX_CACHE_KEY = 'suprik_tx_cache_v10'; // v10: fixed TOKEN symbol resolution with mint addresses
+const TX_CACHE_KEY = 'suprik_tx_cache_v12'; // v12: fetch token account transactions for complete history
 const TX_CACHE_TTL = 60 * 1000; // 1 minute cache TTL
 
 interface TxCache {
@@ -100,7 +100,7 @@ export function clearTransactionCache(): void {
     // Clear old cache versions too
     localStorage.removeItem('suprik_tx_cache_solana-mainnet');
     localStorage.removeItem('suprik_tx_cache_solana-devnet');
-    for (let v = 2; v <= 10; v++) {
+    for (let v = 2; v <= 12; v++) {
       localStorage.removeItem(`suprik_tx_cache_v${v}_solana-mainnet`);
       localStorage.removeItem(`suprik_tx_cache_v${v}_solana-devnet`);
     }
@@ -233,8 +233,363 @@ function getTokenSymbol(transfer: any): string {
 const loggedUnknownMints = new Set<string>();
 
 /**
+ * Known DEX/Swap program IDs for detecting swap transactions
+ */
+const SWAP_PROGRAM_IDS = [
+  'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4',  // Jupiter v6
+  'JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB',  // Jupiter v4
+  'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc', // Orca Whirlpool
+  '9W959DqEETiGZocYWCQPaJ6sBmUzgfxXfqGeTEdp3aQP', // Orca v2
+  'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK', // Raydium CPMM
+  '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8', // Raydium AMM v4
+  'LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo',  // Meteora DLMM
+];
+
+/**
+ * Fetch Solana transaction history using public RPC (fallback when no Helius API key)
+ * Uses getSignaturesForAddress and getParsedTransaction
+ * Enhanced to detect swaps via token balance changes
+ */
+async function fetchSolanaTransactionHistoryViaRPC(
+  address: string,
+  isTestnet: boolean = false
+): Promise<TransactionItem[]> {
+  try {
+    const rpcUrl = isTestnet
+      ? 'https://api.devnet.solana.com'
+      : 'https://api.mainnet-beta.solana.com';
+    const networkName = isTestnet ? 'solana-devnet' : 'solana-mainnet';
+
+    // Check cache first
+    const cached = getCachedTransactions(address, networkName);
+    if (cached) {
+      return cached;
+    }
+
+    console.log('[TxHistory] Fetching via public RPC for:', address);
+
+    // Step 1: Get user's token accounts to fetch their transactions too
+    // This is important because SPL token transfers go through the token account, not the wallet directly
+    let tokenAccountAddresses: string[] = [];
+    try {
+      const tokenAccountsResponse = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getTokenAccountsByOwner',
+          params: [
+            address,
+            { programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' },
+            { encoding: 'jsonParsed' }
+          ]
+        })
+      });
+      const tokenAccountsData = await tokenAccountsResponse.json();
+      if (tokenAccountsData.result?.value) {
+        tokenAccountAddresses = tokenAccountsData.result.value.map((acc: any) => acc.pubkey);
+        console.log('[TxHistory] Found', tokenAccountAddresses.length, 'token accounts');
+      }
+    } catch (e) {
+      console.log('[TxHistory] Could not fetch token accounts:', e);
+    }
+
+    // Step 2: Get recent signatures for the wallet address
+    const signaturesResponse = await fetch(rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getSignaturesForAddress',
+        params: [address, { limit: 100 }]
+      })
+    });
+
+    const signaturesData = await signaturesResponse.json();
+    const allSignatures = new Set<string>();
+
+    if (signaturesData.result) {
+      for (const s of signaturesData.result) {
+        allSignatures.add(s.signature);
+      }
+    }
+
+    // Step 3: Also get signatures for each token account (to catch token transfers)
+    // Limit to first 5 token accounts to avoid rate limits
+    for (const tokenAccount of tokenAccountAddresses.slice(0, 5)) {
+      try {
+        const tokenSigsResponse = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'getSignaturesForAddress',
+            params: [tokenAccount, { limit: 30 }]
+          })
+        });
+        const tokenSigsData = await tokenSigsResponse.json();
+        if (tokenSigsData.result) {
+          for (const s of tokenSigsData.result) {
+            allSignatures.add(s.signature);
+          }
+        }
+      } catch {
+        // Ignore individual token account errors
+      }
+    }
+
+    if (allSignatures.size === 0) {
+      console.log('[TxHistory] No transactions found via RPC');
+      return [];
+    }
+
+    const signatures = Array.from(allSignatures);
+    console.log('[TxHistory] Found', signatures.length, 'total signatures via RPC');
+
+    // Step 4: Fetch parsed transactions in batches (to avoid rate limits)
+    const transactions: TransactionItem[] = [];
+    const processedSignatures = new Set<string>();
+    const batchSize = 5;
+
+    // Process up to 100 signatures to get more history
+    for (let i = 0; i < Math.min(signatures.length, 100); i += batchSize) {
+      const batch = signatures.slice(i, i + batchSize);
+
+      const txResponses = await Promise.all(batch.map(async (sig: string) => {
+        try {
+          const response = await fetch(rpcUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'getParsedTransaction',
+              params: [sig, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 }]
+            })
+          });
+          const data = await response.json();
+          return { signature: sig, tx: data.result };
+        } catch {
+          return { signature: sig, tx: null };
+        }
+      }));
+
+      for (const { signature, tx } of txResponses) {
+        if (!tx || !tx.meta || processedSignatures.has(signature)) continue;
+        processedSignatures.add(signature);
+
+        try {
+          const timestamp = tx.blockTime
+            ? new Date(tx.blockTime * 1000).toISOString()
+            : new Date().toISOString();
+          const status = tx.meta.err ? 'failed' : 'confirmed';
+
+          // Check if this is a swap by looking at involved programs
+          const accountKeys = tx.transaction?.message?.accountKeys || [];
+          const isSwap = accountKeys.some((acc: any) => {
+            const pubkey = typeof acc === 'string' ? acc : acc.pubkey;
+            return SWAP_PROGRAM_IDS.includes(pubkey);
+          });
+
+          // Parse token balance changes from preTokenBalances and postTokenBalances
+          const preTokenBalances = tx.meta.preTokenBalances || [];
+          const postTokenBalances = tx.meta.postTokenBalances || [];
+
+          // Build a map of token balance changes for the user
+          const tokenChanges: Map<string, { mint: string; change: number; decimals: number }> = new Map();
+
+          // Find user's token accounts and calculate changes
+          for (const post of postTokenBalances) {
+            if (post.owner === address) {
+              const mint = post.mint;
+              const postAmount = parseFloat(post.uiTokenAmount?.uiAmountString || '0');
+              const pre = preTokenBalances.find((p: any) => p.accountIndex === post.accountIndex);
+              const preAmount = pre ? parseFloat(pre.uiTokenAmount?.uiAmountString || '0') : 0;
+              const change = postAmount - preAmount;
+
+              // Keep all token changes (even tiny amounts like 0.00001 USDC)
+              if (Math.abs(change) > 0) {
+                tokenChanges.set(mint, {
+                  mint,
+                  change,
+                  decimals: post.uiTokenAmount?.decimals || 9
+                });
+              }
+            }
+          }
+
+          // Also check preTokenBalances for accounts that may have been closed
+          for (const pre of preTokenBalances) {
+            if (pre.owner === address && !tokenChanges.has(pre.mint)) {
+              const post = postTokenBalances.find((p: any) => p.accountIndex === pre.accountIndex);
+              const preAmount = parseFloat(pre.uiTokenAmount?.uiAmountString || '0');
+              const postAmount = post ? parseFloat(post.uiTokenAmount?.uiAmountString || '0') : 0;
+              const change = postAmount - preAmount;
+
+              // Keep all token changes (even tiny amounts)
+              if (Math.abs(change) > 0) {
+                tokenChanges.set(pre.mint, {
+                  mint: pre.mint,
+                  change,
+                  decimals: pre.uiTokenAmount?.decimals || 9
+                });
+              }
+            }
+          }
+
+          // Parse SOL balance changes
+          const preBalances = tx.meta.preBalances || [];
+          const postBalances = tx.meta.postBalances || [];
+          const userAccountIndex = accountKeys.findIndex((acc: any) => {
+            const pubkey = typeof acc === 'string' ? acc : acc.pubkey;
+            return pubkey === address;
+          });
+
+          let solChange = 0;
+          if (userAccountIndex >= 0 && preBalances[userAccountIndex] !== undefined) {
+            const preBal = preBalances[userAccountIndex] / 1e9;
+            const postBal = postBalances[userAccountIndex] / 1e9;
+            solChange = postBal - preBal;
+          }
+
+          // Detect swap: user loses one token and gains another (or SOL)
+          const increases = Array.from(tokenChanges.values()).filter(t => t.change > 0);
+          const decreases = Array.from(tokenChanges.values()).filter(t => t.change < 0);
+
+          // Include SOL in swap detection
+          if (solChange > 0.001) {
+            increases.push({ mint: 'So11111111111111111111111111111111111111112', change: solChange, decimals: 9 });
+          } else if (solChange < -0.001) {
+            decreases.push({ mint: 'So11111111111111111111111111111111111111112', change: solChange, decimals: 9 });
+          }
+
+          if (isSwap && increases.length > 0 && decreases.length > 0) {
+            // This is a swap transaction
+            const fromToken = decreases[0];
+            const toToken = increases[0];
+            const fromSymbol = KNOWN_TOKEN_MINTS[fromToken.mint] || 'TOKEN';
+            const toSymbol = KNOWN_TOKEN_MINTS[toToken.mint] || 'TOKEN';
+
+            console.log('[TxHistory] 🔄 RPC detected SWAP:', Math.abs(fromToken.change), fromSymbol, '→', toToken.change, toSymbol);
+
+            transactions.push({
+              id: signature,
+              type: 'swap',
+              token: fromSymbol,
+              amount: Math.abs(fromToken.change),
+              date: timestamp,
+              timestamp,
+              status,
+              signature,
+              network: isTestnet ? 'devnet' : 'solana',
+              fromToken: fromSymbol,
+              toToken: toSymbol,
+              fromAmount: Math.abs(fromToken.change),
+              toAmount: toToken.change,
+              from: address,
+            });
+          } else if (tokenChanges.size > 0) {
+            // Regular token transfers
+            for (const [mint, data] of tokenChanges) {
+              const tokenSymbol = KNOWN_TOKEN_MINTS[mint] || 'TOKEN';
+              const isReceive = data.change > 0;
+
+              // Try to find the counterparty address from token balances
+              let counterpartyAddress = 'Unknown';
+              if (isReceive) {
+                // For receives, find who sent the tokens (their balance decreased)
+                for (const pre of preTokenBalances) {
+                  if (pre.mint === mint && pre.owner !== address) {
+                    const post = postTokenBalances.find((p: any) => p.accountIndex === pre.accountIndex);
+                    const preAmt = parseFloat(pre.uiTokenAmount?.uiAmountString || '0');
+                    const postAmt = post ? parseFloat(post.uiTokenAmount?.uiAmountString || '0') : 0;
+                    if (postAmt < preAmt) {
+                      counterpartyAddress = pre.owner;
+                      break;
+                    }
+                  }
+                }
+              } else {
+                // For sends, find who received the tokens (their balance increased)
+                for (const post of postTokenBalances) {
+                  if (post.mint === mint && post.owner !== address) {
+                    const pre = preTokenBalances.find((p: any) => p.accountIndex === post.accountIndex);
+                    const preAmt = pre ? parseFloat(pre.uiTokenAmount?.uiAmountString || '0') : 0;
+                    const postAmt = parseFloat(post.uiTokenAmount?.uiAmountString || '0');
+                    if (postAmt > preAmt) {
+                      counterpartyAddress = post.owner;
+                      break;
+                    }
+                  }
+                }
+              }
+
+              console.log('[TxHistory] 📥 RPC found token tx:', isReceive ? 'receive' : 'send', Math.abs(data.change), tokenSymbol);
+
+              transactions.push({
+                id: `${signature}_${mint}`,
+                type: isReceive ? 'receive' : 'send',
+                token: tokenSymbol,
+                amount: Math.abs(data.change),
+                date: timestamp,
+                timestamp,
+                status,
+                signature,
+                network: isTestnet ? 'devnet' : 'solana',
+                from: isReceive ? counterpartyAddress : address,
+                to: isReceive ? address : counterpartyAddress,
+              });
+            }
+          } else if (Math.abs(solChange) > 0.001) {
+            // Pure SOL transfer (not part of a swap)
+            console.log('[TxHistory] 📥 RPC found SOL tx:', solChange > 0 ? 'receive' : 'send', Math.abs(solChange).toFixed(6), 'SOL');
+
+            transactions.push({
+              id: signature,
+              type: solChange > 0 ? 'receive' : 'send',
+              token: 'SOL',
+              amount: Math.abs(solChange),
+              date: timestamp,
+              timestamp,
+              status,
+              signature,
+              network: isTestnet ? 'devnet' : 'solana',
+              from: solChange < 0 ? address : 'Unknown',
+              to: solChange > 0 ? address : 'Unknown',
+            });
+          }
+        } catch (parseError) {
+          console.error('[TxHistory] Error parsing RPC transaction:', parseError);
+        }
+      }
+
+      // Small delay between batches to avoid rate limits
+      if (i + batchSize < signatures.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
+    // Sort by timestamp (newest first)
+    transactions.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    // Cache the results
+    cacheTransactions(address, networkName, transactions);
+    console.log('[TxHistory] ✅ Fetched', transactions.length, 'transactions via public RPC');
+
+    return transactions;
+  } catch (error) {
+    console.error('[TxHistory] Error fetching via public RPC:', error);
+    return [];
+  }
+}
+
+/**
  * Fetch Solana transaction history using Helius Enhanced Transactions API
  * This API returns parsed transactions including SPL token transfers
+ * Falls back to public RPC if no Helius API key is configured
  */
 export async function fetchSolanaTransactionHistory(
   address: string,
@@ -245,8 +600,8 @@ export async function fetchSolanaTransactionHistory(
     const network = isTestnet ? 'solana-devnet' : 'solana-mainnet';
 
     if (!apiKey) {
-      console.log('[TxHistory] ℹ️ Helius API key not configured - transaction history not available');
-      return [];
+      console.log('[TxHistory] ℹ️ Helius API key not configured - using public RPC fallback');
+      return fetchSolanaTransactionHistoryViaRPC(address, isTestnet);
     }
 
     // Check cache first (but use short TTL)
@@ -487,11 +842,14 @@ export async function fetchSolanaTransactionHistory(
     }
 
     // Filter out very small amounts that are just fees/dust
+    // Be more lenient to match Phantom's display
     const filteredTransactions = transactions.filter(tx => {
       if (tx.type === 'swap') return true; // Keep all swaps
       if (tx.type === 'receive') {
-        // Be more lenient with receives - only filter very tiny amounts
-        if (tx.token === 'SOL' && tx.amount < 0.00001) return false; // Less than 0.00001 SOL
+        // Keep all token receives (even tiny USDC amounts like Phantom shows)
+        if (tx.token !== 'SOL') return tx.amount > 0;
+        // For SOL receives, only filter extremely tiny amounts
+        if (tx.token === 'SOL' && tx.amount < 0.000001) return false;
         return tx.amount > 0;
       }
       // For sends, filter more aggressively (dust, fees, spam)

@@ -163,27 +163,16 @@ export function AccountSwitcher({
 
         {/* Add Account Button / Options */}
         <div className="px-6 py-4 border-t border-slate-800/30">
-          <AnimatePresence mode="wait">
-            {!showAddOptions ? (
-              <motion.button
-                key="add-button"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                onClick={() => setShowAddOptions(true)}
-                className="w-full p-4 rounded-xl bg-[#ad46ff] hover:bg-[#ad46ff]/90 text-white flex items-center justify-center gap-2 transition-all font-medium"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Another Account</span>
-              </motion.button>
-            ) : (
-              <motion.div
-                key="options"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="space-y-3"
-              >
+          {!showAddOptions ? (
+            <button
+              onClick={() => setShowAddOptions(true)}
+              className="w-full p-4 rounded-xl bg-[#ad46ff] hover:bg-[#ad46ff]/90 text-white flex items-center justify-center gap-2 transition-all font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Another Account</span>
+            </button>
+          ) : (
+            <div className="space-y-3">
                 <p className="text-sm text-slate-400 mb-3">Choose how to add an account:</p>
 
                 {/* Option 1: Create New Account */}
@@ -258,9 +247,8 @@ export function AccountSwitcher({
                 >
                   Cancel
                 </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

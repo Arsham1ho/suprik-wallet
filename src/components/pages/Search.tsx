@@ -899,7 +899,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
   };
 
   return (
-    <div className="min-h-screen max-w-md mx-auto bg-black pb-24 overflow-x-hidden relative">
+    <div className="search-page max-w-md mx-auto bg-black pb-24 overflow-x-hidden relative">
       {/* Cosmic background image */}
       <div 
         className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none opacity-20"

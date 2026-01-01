@@ -657,11 +657,7 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
 
       <div className="px-4 py-6 max-w-2xl mx-auto space-y-6">
         {/* Profile Picture */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col items-center gap-4 py-6"
-        >
+        <div className="flex flex-col items-center gap-4 py-6">
           <div className="relative">
             <AnimalAvatar
               size="lg"
@@ -681,15 +677,10 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
           <p className="text-slate-400 text-sm">
             Customize your avatar
           </p>
-        </motion.div>
+        </div>
 
         {/* Username */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="space-y-3 bg-slate-900/50 rounded-xl p-4 border border-slate-800/30"
-        >
+        <div className="space-y-3 bg-slate-900/50 rounded-xl p-4 border border-slate-800/30">
           <Label htmlFor="username" className="text-white flex items-center gap-2">
             <User className="w-4 h-4 text-slate-400" />
             Username
@@ -782,15 +773,10 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
               )}
             </AnimatePresence>
           </div>
-        </motion.div>
+        </div>
 
         {/* Wallet Information */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="space-y-4 bg-slate-900/50 rounded-xl p-4 border border-slate-800/30"
-        >
+        <div className="space-y-4 bg-slate-900/50 rounded-xl p-4 border border-slate-800/30">
           <h3 className="text-white font-medium flex items-center gap-2">
             <Wallet className="w-4 h-4 text-slate-400" />
             Wallet Information
@@ -824,15 +810,10 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
               </span>
             </div>
           </div>
-        </motion.div>
+        </div>
 
         {/* Accounts */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="space-y-3"
-        >
+        <div className="space-y-3">
           <h3 className="text-slate-400 text-sm px-2">Your Accounts</h3>
           
           {/* Info Card */}
@@ -979,17 +960,12 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
+        </div>
 
         <Separator className="bg-slate-800" />
 
         {/* Danger Zone */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="space-y-3"
-        >
+        <div className="space-y-3">
           <h3 className="text-slate-400 text-sm px-2">Danger Zone</h3>
           
           <div className="bg-slate-900/50 rounded-xl border border-red-900/30 p-4">
@@ -1012,7 +988,7 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
               Delete Account Permanently
             </Button>
           </div>
-        </motion.div>
+        </div>
       </div>
 
       {/* Add Account Dialog */}
@@ -1187,11 +1163,21 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
             <AlertDialogTitle className="text-base sm:text-lg">
               {accounts.length <= 1 ? 'Delete Entire Wallet?' : 'Delete This Account?'}
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-400 text-sm">
+            <AlertDialogDescription asChild className="text-slate-400 text-sm">
               {accounts.length <= 1 ? (
-                'This is your only account. Deleting it will remove your entire wallet and sign you out. Make sure you have backed up your recovery phrase. This action cannot be undone.'
+                <div className="space-y-3">
+                  <p className="text-red-400 font-semibold">⚠️ WARNING: Risk of Permanent Fund Loss!</p>
+                  <p>If you haven't saved your recovery phrase or private keys, <span className="text-red-400 font-medium">ALL your funds will be permanently lost</span> and cannot be recovered.</p>
+                  <p>Before deleting, please make sure you have:</p>
+                  <ul className="list-disc list-inside space-y-1 text-slate-300">
+                    <li>Downloaded or written down your 12-word recovery phrase</li>
+                    <li>Exported private keys for all accounts</li>
+                    <li>Verified you can access your backup</li>
+                  </ul>
+                  <p className="text-slate-500 text-xs mt-2">This action cannot be undone.</p>
+                </div>
               ) : (
-                'This will delete the currently active account. Your other accounts will remain intact. You can recreate this account later using the same recovery phrase.'
+                <p>This will delete the currently active account. Your other accounts will remain intact. You can recreate this account later using the same recovery phrase.</p>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>

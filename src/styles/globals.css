@@ -555,6 +555,40 @@ html, body {
     height: -webkit-fill-available;
     min-height: -webkit-fill-available;
   }
+
+  /* iOS Safari: Fix receive page - prevent vertical centering */
+  .receive-page {
+    display: block !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+  }
+
+  .receive-page > div {
+    display: block !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+  }
+
+  /* iOS Safari: Fix receive page buttons */
+  .receive-networks-container {
+    display: block !important;
+    height: auto !important;
+  }
+
+  /* iOS Safari: Fix QR display - allow flex centering but prevent vertical centering */
+  .receive-qr-display {
+    height: auto !important;
+    align-self: flex-start !important;
+    margin-top: 0 !important;
+  }
+
+  .receive-network-btn {
+    display: block !important;
+    height: auto !important;
+    min-height: 56px !important;
+    max-height: 72px !important;
+    flex: none !important;
+  }
 }
 
 /* Desktop/Laptop: Fixed width centered layout */
@@ -620,29 +654,81 @@ html, body {
     height: 100%;
   }
 
-  /* Push unlock wallet content down on mobile */
+  /* Move unlock wallet content up on mobile */
   .unlock-wallet-content {
-    padding-top: 13rem !important;
+    margin-top: -3rem !important;
   }
 
-  /* Push welcome page content down on mobile */
+  /* Move welcome page content up on mobile */
   .welcome-page-content {
-    padding-top: 13rem !important;
+    margin-top: -3rem !important;
+    padding-top: 0 !important;
   }
 
-  /* Push landing page content down on mobile */
+  /* Move landing page content up on mobile */
   .landing-page-content {
-    padding-top: 8rem !important;
+    margin-top: 1rem !important;
+    padding-top: 0 !important;
   }
 
-  /* Slightly increase total balance font size on mobile */
+  /* Reduce total balance font size on mobile */
   .total-balance-amount {
-    font-size: 3.25rem !important;
+    font-size: 2.5rem !important;
+  }
+
+  /* Increase token price font size on mobile */
+  .token-price-amount {
+    font-size: 3rem !important;
+  }
+
+  /* Reduce wallet name font size on mobile */
+  .wallet-name-text {
+    font-size: 1rem !important;
   }
 
   /* Prevent switch from being affected by container scaling */
   [data-slot="switch"] {
     transform: none !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Fix receive page - prevent vertical centering on iOS */
+  .receive-page {
+    display: block !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+  }
+
+  .receive-page > div {
+    display: block !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+  }
+
+  /* Fix receive page network cards on mobile - especially iOS */
+  .receive-networks-container {
+    display: block !important;
+    height: auto !important;
+    flex: none !important;
+  }
+
+  /* Fix receive QR display - allow flex centering but prevent vertical centering */
+  .receive-qr-display {
+    height: auto !important;
+    align-self: flex-start !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  .wallet-container .receive-network-btn,
+  .receive-network-btn {
+    display: block !important;
+    height: auto !important;
+    min-height: 56px !important;
+    max-height: 72px !important;
+    flex: 0 0 auto !important;
+    -webkit-flex: 0 0 auto !important;
+    flex-grow: 0 !important;
     flex-shrink: 0 !important;
   }
 
@@ -796,5 +882,55 @@ html, body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* ===========================================
+   LANDING PAGE LOGO ANIMATIONS (CSS-based)
+   =========================================== */
+
+/* Slow spin animation for logo */
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+
+/* Pulse glow animation for logo outer glow */
+@keyframes pulse-glow {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+/* ===========================================
+   SEARCH PAGE FULL HEIGHT FIX FOR iOS
+   =========================================== */
+
+.search-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+}
+
+@supports (-webkit-touch-callout: none) {
+  .search-page {
+    min-height: -webkit-fill-available !important;
   }
 }

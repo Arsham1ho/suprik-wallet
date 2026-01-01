@@ -47,16 +47,42 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [activeAccountAddress, setActiveAccountAddress] = useState<string>('');
 
-  // Get the active account's Solana address from AccountManager
+  // Generate QR code function
+  const generateQRCode = async (address: string): Promise<string> => {
+    try {
+      const dataUrl = await QRCode.toDataURL(address, {
+        width: 300,
+        margin: 2,
+        errorCorrectionLevel: 'H',
+        color: {
+          dark: '#000000',
+          light: '#ffffff',
+        },
+      });
+      return dataUrl;
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+      return '';
+    }
+  };
+
+  // Get the active account's Solana address from AccountManager and pre-generate QR
   useEffect(() => {
-    const loadActiveAccountAddress = () => {
+    const loadActiveAccountAddress = async () => {
       const activeAccount = AccountManager.getActiveAccount();
+      let address = '';
+
       if (activeAccount?.addresses?.solana) {
-        setActiveAccountAddress(activeAccount.addresses.solana);
-        setLoading(false);
+        address = activeAccount.addresses.solana;
       } else if (wallet.addresses?.solana) {
-        // Fallback to WalletContext if no active account
-        setActiveAccountAddress(wallet.addresses.solana);
+        address = wallet.addresses.solana;
+      }
+
+      if (address) {
+        setActiveAccountAddress(address);
+        // Pre-generate QR code so it's ready instantly
+        const qr = await generateQRCode(address);
+        setQrCode(qr);
         setLoading(false);
       }
     };
@@ -161,36 +187,14 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
     },
   ];
 
-  const generateQRCode = async (address: string): Promise<string> => {
-    try {
-      const dataUrl = await QRCode.toDataURL(address, {
-        width: 300,
-        margin: 2,
-        errorCorrectionLevel: 'H', // High error correction allows logo overlay
-        color: {
-          dark: '#000000',
-          light: '#ffffff',
-        },
-      });
-      return dataUrl;
-    } catch (error) {
-      console.error('Error generating QR code:', error);
-      return '';
-    }
-  };
-
-  const handleNetworkSelect = async (network: NetworkOption) => {
+  const handleNetworkSelect = (network: NetworkOption) => {
     if (network.comingSoon) {
       toast.info(`${network.name} coming soon! 🚀`);
       return;
     }
 
+    // QR code is already pre-generated, just select the network
     setSelectedNetwork(network);
-    
-    if (network.address) {
-      const qr = await generateQRCode(network.address);
-      setQrCode(qr);
-    }
   };
 
   const handleCopyAddress = async () => {
@@ -280,14 +284,10 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white w-full">
-      <div className="px-6 py-6 pb-24">
+    <div className="receive-page bg-black text-white w-full" style={{ minHeight: '100vh', display: 'block' }}>
+      <div className="px-6 py-6 pb-24" style={{ display: 'block' }}>
         {/* Header */}
-        <motion.div 
-          className="flex items-center gap-4 mb-8"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
+        <div className="flex items-center gap-4 mb-6">
           <Button
             variant="ghost"
             size="icon"
@@ -297,133 +297,107 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <h1 className="text-2xl font-bold">Receive Crypto</h1>
-        </motion.div>
+        </div>
 
         {/* Network Selection or QR Display */}
         <AnimatePresence mode="wait">
           {!selectedNetwork ? (
-            <motion.div
-              key="network-list"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              className="space-y-4"
-            >
-              <p className="text-slate-400 mb-6">Select a network to receive crypto</p>
-              
+            <div className="receive-networks-container">
+              <p className="text-slate-400 mb-4">Select a network to receive crypto</p>
+
               {networks.map((network) => (
-                <motion.button
-                  key={network.id}
-                  onClick={() => handleNetworkSelect(network)}
-                  className={`w-full p-5 rounded-2xl border transition-all relative overflow-hidden ${
-                    network.comingSoon
-                      ? 'border-slate-800 bg-slate-950/50 opacity-60'
-                      : 'border-slate-700 hover:border-purple-500 bg-slate-900/50 hover:bg-slate-900'
-                  }`}
-                  whileHover={!network.comingSoon ? { scale: 1.02 } : {}}
-                  whileTap={!network.comingSoon ? { scale: 0.98 } : {}}
-                >
-                  {/* Background gradient */}
-                  {!network.comingSoon && (
-                    <div className={`absolute inset-0 bg-gradient-to-r ${network.gradient} opacity-0 hover:opacity-10 transition-opacity`} />
-                  )}
-                  
-                  <div className="flex items-center justify-between relative z-10">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl ${network.id === 'solana' || network.id === 'ethereum' || network.id === 'bitcoin' || network.id === 'polygon' || network.id === 'sui' || network.id === 'monad' || network.id === 'base' || network.id === 'hyperevm' ? 'bg-black' : network.color} overflow-hidden p-1.5`}>
-                        {network.logoUrl ? (
-                          <img 
-                            src={network.logoUrl} 
-                            alt={network.name}
-                            className="w-full h-full object-contain"
-                          />
-                        ) : (
-                          network.logo
-                        )}
-                      </div>
-                      <div className="text-left">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-white">{network.name}</h3>
-                          {network.comingSoon && (
-                            <Badge variant="secondary" className="text-xs bg-slate-800 text-slate-400 border-slate-700">
-                              Coming Soon
-                            </Badge>
+                <div key={network.id} className="mb-3">
+                  <button
+                    onClick={() => handleNetworkSelect(network)}
+                    className={`receive-network-btn w-full p-4 rounded-xl border transition-all ${
+                      network.comingSoon
+                        ? 'border-slate-800 bg-slate-900/30 opacity-50'
+                        : 'border-purple-500/50 hover:border-purple-500 bg-gradient-to-r from-purple-500/10 to-blue-500/10'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center bg-black overflow-hidden p-1.5 flex-shrink-0">
+                          {network.logoUrl ? (
+                            <img
+                              src={network.logoUrl}
+                              alt={network.name}
+                              className="w-full h-full object-contain"
+                            />
+                          ) : (
+                            <span className="text-xl">{network.logo}</span>
                           )}
                         </div>
-                        <p className="text-sm text-slate-400">{network.symbol}</p>
+                        <div className="text-left">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-white">{network.name}</h3>
+                            {network.comingSoon && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">
+                                Soon
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-400">{network.symbol}</p>
+                        </div>
                       </div>
+
+                      {!network.comingSoon && (
+                        <ChevronRight className="w-5 h-5 text-purple-400 flex-shrink-0" />
+                      )}
                     </div>
-                    
-                    {!network.comingSoon && (
-                      <ChevronRight className="w-5 h-5 text-slate-500" />
-                    )}
-                  </div>
-                </motion.button>
+                  </button>
+                </div>
               ))}
-            </motion.div>
+            </div>
           ) : (
-            <motion.div
+            <div
               key="qr-display"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="space-y-6"
+              className="receive-qr-display flex flex-col items-center space-y-2"
             >
               {/* Selected Network Info */}
-              <div className="text-center">
-                <div className={`w-20 h-20 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 ${selectedNetwork.id === 'solana' || selectedNetwork.id === 'ethereum' || selectedNetwork.id === 'bitcoin' || selectedNetwork.id === 'polygon' || selectedNetwork.id === 'sui' || selectedNetwork.id === 'monad' || selectedNetwork.id === 'base' || selectedNetwork.id === 'hyperevm' ? 'bg-black' : selectedNetwork.color} overflow-hidden p-3`}>
-                  {selectedNetwork.logoUrl ? (
-                    <img 
-                      src={selectedNetwork.logoUrl} 
-                      alt={selectedNetwork.name}
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    selectedNetwork.logo
-                  )}
-                </div>
-                <h2 className="text-2xl font-bold mb-1">{selectedNetwork.name}</h2>
-                <p className="text-slate-400">{selectedNetwork.symbol} Network</p>
+              <div className="text-center mb-2 w-full">
+                <h2 className="text-lg font-bold">{selectedNetwork.name}</h2>
+                <p className="text-slate-400 text-xs">{selectedNetwork.symbol} Network</p>
               </div>
 
               {/* QR Code */}
-              <motion.div 
-                className="bg-white rounded-3xl p-6 mx-auto w-fit"
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.1 }}
-              >
-                {qrCode && (
+              <div className="bg-white rounded-3xl p-6 mx-auto w-fit">
+                {qrCode ? (
                   <div className="relative w-[280px] h-[280px]">
-                    <img 
-                      src={qrCode} 
-                      alt="QR Code" 
+                    <img
+                      src={qrCode}
+                      alt="QR Code"
                       className="w-full h-full"
+                      style={{ imageRendering: 'pixelated' }}
                     />
                     {/* Suprik Wallet Logo in center - sized to work with QR error correction */}
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
                       <img
                         src={suprikQrLogo}
                         alt="Suprik Wallet"
-                        className="w-16 h-16 rounded-full object-cover shadow-lg"
+                        className="w-14 h-14 rounded-full object-cover shadow-lg"
                       />
                     </div>
                   </div>
+                ) : (
+                  <div className="w-[280px] h-[280px] flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+                  </div>
                 )}
-              </motion.div>
+              </div>
 
               {/* Address */}
-              <div className="bg-slate-900/50 rounded-2xl p-4 border border-slate-800">
+              <div className="bg-slate-900/50 rounded-2xl p-4 border border-slate-800 w-full">
                 <p className="text-xs text-slate-400 mb-2 text-center">Your {selectedNetwork.name} Address</p>
-                <div className="flex items-center justify-between gap-3">
-                  <code className="text-sm text-white font-mono flex-1 text-center break-all px-2">
+                <div className="flex items-center justify-center gap-3">
+                  <code className="text-sm text-white font-mono text-center break-all px-2">
                     {selectedNetwork.address ? truncateAddress(selectedNetwork.address) : ''}
                   </code>
                 </div>
               </div>
 
               {/* Action Buttons */}
-              <div className="grid grid-cols-2 gap-3 pt-4">
+              <div className="grid grid-cols-2 gap-3 pt-4 w-full">
                 <Button
                   onClick={handleShare}
                   className="h-14 bg-slate-800 hover:bg-slate-700 text-white border-slate-700 rounded-xl"
@@ -450,7 +424,7 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
                   )}
                 </Button>
               </div>
-            </motion.div>
+            </div>
           )}
         </AnimatePresence>
       </div>

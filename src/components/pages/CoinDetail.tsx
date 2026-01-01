@@ -695,7 +695,7 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
                 initial={{ opacity: 0.7 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.4 }}
-                className="text-5xl font-bold mb-3"
+                className="text-6xl font-bold mb-3 token-price-amount"
               >
                 {formatCurrency(currentPrice)}
               </motion.h2>

@@ -6,7 +6,10 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
-import { getLocalSwapHistory, clearTransactionCache, type TransactionItem } from '../../utils/transactionHistory';
+import { getLocalSwapHistory, clearTransactionCache, fetchSolanaTransactionHistory, type TransactionItem } from '../../utils/transactionHistory';
+import { useWallet } from '../../utils/WalletContext';
+import { useNetwork } from '../../utils/NetworkContext';
+import { AccountManager } from '../../utils/accountManager';
 import { TokenLogo } from '../TokenLogo';
 
 interface ActivityProps {
@@ -15,6 +18,8 @@ interface ActivityProps {
 
 export function Activity({ walletId }: ActivityProps) {
   const { t } = useLanguage();
+  const { wallet } = useWallet();
+  const { network } = useNetwork();
   const [activities, setActivities] = useState<TransactionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState<TransactionItem | null>(null);
@@ -22,9 +27,7 @@ export function Activity({ walletId }: ActivityProps) {
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
 
   useEffect(() => {
-    // Clear old cache on initial load
-    clearTransactionCache();
-    // Load local transaction history
+    // Load transaction history
     fetchActivities(false);
 
     // Listen for swap history updates (when user completes a swap)
@@ -38,7 +41,7 @@ export function Activity({ walletId }: ActivityProps) {
     return () => {
       window.removeEventListener('swapHistoryUpdated', handleSwapHistoryUpdate);
     };
-  }, [walletId]);
+  }, [walletId, network]);
 
   const fetchActivities = async (backgroundRefresh = false) => {
     try {
@@ -50,17 +53,63 @@ export function Activity({ walletId }: ActivityProps) {
       }
 
       setLastFetchTime(now);
+      if (!backgroundRefresh) {
+        setLoading(true);
+      }
       console.log('[Activity] 🔄 Loading transaction history...');
 
-      // Get local swap history - this is the ONLY source of transaction data
-      // We only show transactions that the user actually made through this wallet
-      // Blockchain history is disabled to avoid showing spam/airdrop tokens
+      // Get local swap history
       const localSwaps = getLocalSwapHistory();
-      console.log('[Activity] 📱 Local transaction history:', localSwaps.length, 'transactions');
+      console.log('[Activity] 📱 Local swap history:', localSwaps.length, 'transactions');
 
-      // Show only local swap/transaction history
-      // This ensures users only see transactions they actually made
-      setActivities(localSwaps);
+      // Get the wallet address
+      const activeAccount = AccountManager.getActiveAccount();
+      const solanaAddress = activeAccount?.addresses?.solana || wallet.addresses?.solana;
+
+      let blockchainTxs: TransactionItem[] = [];
+
+      // Fetch blockchain transactions if we have a Solana address
+      if (solanaAddress) {
+        console.log('[Activity] 🔗 Fetching blockchain transactions for:', solanaAddress);
+        try {
+          // Default to mainnet if network context is not yet available
+          const isTestnet = network?.isTestnet ?? false;
+          blockchainTxs = await fetchSolanaTransactionHistory(solanaAddress, isTestnet);
+          console.log('[Activity] 🔗 Blockchain transactions:', blockchainTxs.length);
+        } catch (error) {
+          console.warn('[Activity] Failed to fetch blockchain transactions:', error);
+        }
+      }
+
+      // Merge local swaps and blockchain transactions
+      // Use a Map to deduplicate by signature
+      const txMap = new Map<string, TransactionItem>();
+
+      // Add blockchain transactions first
+      for (const tx of blockchainTxs) {
+        if (tx.signature) {
+          txMap.set(tx.signature, tx);
+        } else {
+          txMap.set(tx.id, tx);
+        }
+      }
+
+      // Add local swaps (will override blockchain if same signature - local has more details)
+      for (const tx of localSwaps) {
+        if (tx.signature) {
+          txMap.set(tx.signature, tx);
+        } else {
+          txMap.set(tx.id, tx);
+        }
+      }
+
+      // Convert to array and sort by timestamp (most recent first)
+      const allTransactions = Array.from(txMap.values()).sort((a, b) => {
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      });
+
+      console.log('[Activity] ✅ Total transactions:', allTransactions.length);
+      setActivities(allTransactions);
       setLoading(false);
     } catch (error: any) {
       console.error('[Activity] ❌ Error fetching activities:', error);
@@ -98,15 +147,18 @@ export function Activity({ walletId }: ActivityProps) {
   const getDateGroup = (timestamp: string): string => {
     const date = new Date(timestamp);
     const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
+
+    // Reset time parts for accurate day comparison
+    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const nowOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const diffMs = nowOnly.getTime() - dateOnly.getTime();
     const diffDays = Math.floor(diffMs / 86400000);
 
     if (diffDays === 0) return 'Today';
     if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return 'This Week';
-    if (diffDays < 30) return 'This Month';
-    
-    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    // Show actual date for older transactions (like Phantom)
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const groupTransactionsByDate = (transactions: TransactionItem[]): { [key: string]: TransactionItem[] } => {
@@ -370,7 +422,7 @@ export function Activity({ walletId }: ActivityProps) {
                                 <p className="text-slate-400 text-sm">
                                   {activity.type === 'send' && activity.to && `To ${truncateAddress(activity.to, 4, 4)}`}
                                   {activity.type === 'receive' && activity.from && `From ${truncateAddress(activity.from, 4, 4)}`}
-                                  {activity.type === 'swap' && activity.toToken && `${activity.fromToken || tokenSymbol} → ${activity.toToken}`}
+                                  {activity.type === 'swap' && 'Jupiter'}
                                 </p>
                               </div>
                             </div>
