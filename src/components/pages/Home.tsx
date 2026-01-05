@@ -125,16 +125,6 @@ const defaultSolanaTokens: TokenData[] = [
     color: 'from-cyan-500 to-blue-600',
     network: 'solana'
   },
-  {
-    mint: 'CmGx4FoMTnYxWEmKso3BTwMsCgGFWRRYTqBmKRxnAkNH',
-    name: 'Suprana',
-    symbol: 'SUPRA',
-    amount: 0,
-    logo: 'S',
-    logoUrl: 'https://pbs.twimg.com/profile_images/1860413893823324160/8V-KVKXF_400x400.jpg',
-    color: 'from-orange-500 to-red-600',
-    network: 'solana'
-  },
 ];
 
 // Coming Soon Networks (disabled for now, will be enabled later)

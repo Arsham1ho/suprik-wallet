@@ -46,7 +46,7 @@ const VERIFIED_TOKEN_LOGOS: Record<string, string> = {
   'PYTH': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3/logo.png',
   'PARAI': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
   'PAI': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
-  'SUP': 'https://coin-images.coingecko.com/coins/images/67062/large/Suprana4-transparent-200x200x.png?1751626734',
+  'SUPRA': 'https://coin-images.coingecko.com/coins/images/67062/large/Suprana4-transparent-200x200x.png?1751626734',
   'HNT': 'https://cryptologos.cc/logos/helium-hnt-logo.png',
 };
 
@@ -78,7 +78,7 @@ const VERIFIED_TOKEN_METADATA: Record<string, TokenMetadata> = {
     logo: 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png'
   },
   'SupreByajmUdeJGLzvUEUm8W4xv1gF8JBqwYnvG41Dp': {
-    symbol: 'SUP',
+    symbol: 'SUPRA',
     name: 'Suprana',
     logo: 'https://coin-images.coingecko.com/coins/images/67062/large/Suprana4-transparent-200x200x.png?1751626734'
   },

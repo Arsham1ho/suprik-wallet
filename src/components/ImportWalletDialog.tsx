@@ -41,6 +41,8 @@ export function ImportWalletDialog({
 }: ImportWalletDialogProps) {
   const wallet = useWallet();
   const [seedPhrase, setSeedPhrase] = useState('');
+  const [seedWords, setSeedWords] = useState<string[]>(Array(12).fill(''));
+  const [wordCount, setWordCount] = useState<12 | 24>(12);
   const [privateKey, setPrivateKey] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -53,8 +55,39 @@ export function ImportWalletDialog({
   const [selectedAccounts, setSelectedAccounts] = useState<number[]>([]);
   const [scanProgress, setScanProgress] = useState(0);
 
+  // Sync seedWords array to seedPhrase string
+  const updateSeedPhrase = (words: string[]) => {
+    setSeedWords(words);
+    setSeedPhrase(words.filter(w => w.trim()).join(' '));
+  };
+
+  const handleWordChange = (index: number, value: string) => {
+    // Handle paste of full seed phrase
+    const trimmedValue = value.trim();
+    const pastedWords = trimmedValue.split(/\s+/);
+
+    if (pastedWords.length > 1) {
+      // User pasted multiple words
+      const newWordCount = pastedWords.length === 24 ? 24 : 12;
+      setWordCount(newWordCount);
+      const newWords = Array(newWordCount).fill('');
+      pastedWords.slice(0, newWordCount).forEach((word, i) => {
+        newWords[i] = word.toLowerCase();
+      });
+      updateSeedPhrase(newWords);
+      return;
+    }
+
+    // Single word input
+    const newWords = [...seedWords];
+    newWords[index] = value.toLowerCase();
+    updateSeedPhrase(newWords);
+  };
+
   const resetForm = () => {
     setSeedPhrase('');
+    setSeedWords(Array(12).fill(''));
+    setWordCount(12);
     setPrivateKey('');
     setPassword('');
     setConfirmPassword('');
@@ -681,7 +714,7 @@ export function ImportWalletDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="bg-slate-950/95 backdrop-blur-xl border-slate-800/50 text-white sm:max-w-md">
+      <DialogContent className="bg-slate-950/95 backdrop-blur-xl border-slate-800/50 text-white sm:max-w-lg">
         <DialogHeader>
           <div className="flex items-center gap-3 mb-2">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
@@ -701,7 +734,7 @@ export function ImportWalletDialog({
               </DialogTitle>
               <DialogDescription className="text-sm text-slate-400">
                 {mode === 'seed-phrase'
-                  ? 'Enter your 12 or 24 word recovery phrase'
+                  ? 'Enter your 12 word recovery phrase'
                   : 'Enter your Solana private key'}
               </DialogDescription>
             </div>
@@ -718,20 +751,31 @@ export function ImportWalletDialog({
               className="space-y-4 py-4"
             >
               {mode === 'seed-phrase' ? (
-                <div className="space-y-2">
-                  <Label htmlFor="seedPhrase">Recovery Phrase</Label>
-                  <textarea
-                    id="seedPhrase"
-                    value={seedPhrase}
-                    onChange={(e) => {
-                      setSeedPhrase(e.target.value);
-                      setError('');
-                    }}
-                    className="w-full h-32 px-3 py-2 bg-slate-900/50 border border-slate-700/50 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-green-500/30 resize-none font-mono text-sm"
-                    placeholder="Enter your 12 or 24 word seed phrase, separated by spaces..."
-                  />
+                <div className="space-y-3">
+                  <Label>Recovery Phrase</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {seedWords.map((word, index) => (
+                      <div key={index} className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-500 font-medium">
+                          {index + 1}.
+                        </span>
+                        <input
+                          type="text"
+                          value={word}
+                          onChange={(e) => {
+                            handleWordChange(index, e.target.value);
+                            setError('');
+                          }}
+                          className="w-full pl-7 pr-2 py-2.5 bg-slate-800/80 border border-slate-700/50 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500/50"
+                          placeholder=""
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </div>
+                    ))}
+                  </div>
                   <p className="text-xs text-slate-500">
-                    Words: {seedPhrase.trim() ? seedPhrase.trim().split(/\s+/).length : 0}
+                    Words: {seedWords.filter(w => w.trim()).length} / {wordCount}
                   </p>
                 </div>
               ) : (
@@ -784,7 +828,7 @@ export function ImportWalletDialog({
                 </Button>
                 <Button
                   onClick={handleContinue}
-                  disabled={loading || (mode === 'seed-phrase' ? !seedPhrase.trim() : !privateKey.trim())}
+                  disabled={loading || (mode === 'seed-phrase' ? seedWords.filter(w => w.trim()).length < wordCount : !privateKey.trim())}
                   className="flex-1 bg-[#ad46ff] hover:bg-[#ad46ff]/90 text-white disabled:opacity-50"
                 >
                   {loading ? (

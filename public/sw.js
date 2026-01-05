@@ -6,7 +6,7 @@
  */
 
 // ⚠️ INCREMENT THIS ON EVERY DEPLOY TO FORCE UPDATE
-const VERSION = '2.1.29';
+const VERSION = '2.1.33';
 
 const CACHE_NAME = `suprik-wallet-v${VERSION}`;
 const RUNTIME_CACHE = `suprik-runtime-v${VERSION}`;
