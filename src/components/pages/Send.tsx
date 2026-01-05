@@ -13,6 +13,7 @@ import { BiometricConfirmDialog } from '../BiometricConfirmDialog';
 import type { BiometricSettings } from '../../utils/biometric';
 import { useWallet } from '../../utils/WalletContext';
 import { useNetwork } from '../../utils/NetworkContext';
+import { useTheme } from '../../utils/ThemeContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Html5Qrcode } from 'html5-qrcode';
 import {
@@ -24,6 +25,7 @@ import {
 import { AccountManager } from '../../utils/accountManager';
 import { decryptWithPassword } from '../../utils/wallet';
 import { TOKEN_REGISTRY, TOKEN_BY_MINT } from '../../utils/tokenRegistry';
+import { playSendWhoosh } from '../../utils/sounds';
 import cosmicBackground from 'figma:asset/4c2d67025139ca6ca7ae0065c97386bd40e32baa.png';
 
 interface Token {
@@ -71,6 +73,7 @@ type TransactionStatus = 'idle' | 'processing' | 'success' | 'error';
 export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: SendProps) {
   const wallet = useWallet();
   const network = useNetwork();
+  const { colors, gradient } = useTheme();
   const [step, setStep] = useState<Step>('select-token');
   const [selectedToken, setSelectedToken] = useState<SendToken | null>(null);
   const [address, setAddress] = useState('');
@@ -102,11 +105,25 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const scannerElementId = 'qr-reader';
 
+  // Check wallet session on mount
+  useEffect(() => {
+    console.log('[Send] 🔐 Component mounted, checking wallet session...');
+    console.log('[Send] 🔐 isUnlocked:', wallet.isUnlocked);
+    console.log('[Send] 🔐 mnemonic exists:', !!wallet.mnemonic);
+    console.log('[Send] 🔐 addresses:', wallet.addresses?.solana?.slice(0, 8) + '...');
+
+    if (!wallet.isUnlocked || !wallet.mnemonic) {
+      console.warn('[Send] ⚠️ Wallet session not valid on mount!');
+      toast.error('Please unlock your wallet first');
+      onNavigate('home');
+    }
+  }, [wallet.isUnlocked]);
+
   // Load biometric settings and all coins - run once on mount
   useEffect(() => {
     loadBiometricSettings();
     fetchAllCoins();
-    
+
     // Check if a token was pre-selected from CoinDetail
     const preSelectedToken = localStorage.getItem('saturn_send_selected_token');
     if (preSelectedToken) {
@@ -665,9 +682,14 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
     console.log('[Send] 🎯 network object:', network);
     console.log('[Send] 🎯 network.isTestnet:', network.isTestnet);
     console.log('[Send] 🎯 typeof network.isTestnet:', typeof network.isTestnet);
+    console.log('[Send] 🎯 wallet.isUnlocked:', wallet.isUnlocked);
+    console.log('[Send] 🎯 wallet.mnemonic exists:', !!wallet.mnemonic);
 
     if (!wallet.mnemonic) {
-      toast.error('Session expired. Please unlock your wallet to continue.');
+      console.error('[Send] ❌ No mnemonic found in wallet context!');
+      console.error('[Send] ❌ isUnlocked:', wallet.isUnlocked);
+      console.error('[Send] ❌ addresses:', wallet.addresses);
+      toast.error('Wallet session not found. Please lock and unlock your wallet.');
       // Navigate back to home which will show the unlock screen
       onNavigate('home');
       return;
@@ -679,7 +701,84 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
     try {
       // Check if active account is an imported account with its own mnemonic
       const activeAccount = AccountManager.getActiveAccount();
+      console.log('[Send] 📋 Active account:', activeAccount?.name, 'isImported:', activeAccount?.isImportedSeedPhrase, 'isPrivateKeyImport:', (activeAccount as any)?.isPrivateKeyImport, 'accountIndex:', activeAccount?.accountIndex);
+      console.log('[Send] 📋 wallet.mnemonic first 20 chars:', wallet.mnemonic?.substring(0, 20), '...');
+      console.log('[Send] 📋 wallet.mnemonic word count:', wallet.mnemonic?.trim().split(/\s+/).length);
       let mnemonicToUse = wallet.mnemonic;
+
+      // Check if this is a private key import - those don't have mnemonics!
+      // Private keys are stored as "PRIVKEY:xxxx..." in the wallet
+      const isPrivateKeyWallet = wallet.mnemonic?.startsWith('PRIVKEY:');
+      if (isPrivateKeyWallet || (activeAccount as any)?.isPrivateKeyImport) {
+        console.log('[Send] ⚠️ Detected private key wallet, using direct private key for transaction');
+
+        // Extract the private key (remove the PRIVKEY: prefix)
+        const privateKeyBase58 = wallet.mnemonic?.replace('PRIVKEY:', '');
+
+        if (!privateKeyBase58) {
+          toast.error('Private key not found. Please unlock the wallet again.');
+          setSending(false);
+          setTransactionStatus('idle');
+          return;
+        }
+
+        // For private key imports, we can only send SOL/SPL tokens on Solana
+        if (selectedToken!.symbol === 'ETH' || selectedToken!.network === 'ethereum') {
+          toast.error('Private key imports only support Solana transactions.');
+          setSending(false);
+          setTransactionStatus('idle');
+          return;
+        }
+
+        // Handle private key transaction
+        const { sendSolanaTransactionWithPrivateKey, sendSPLTokenTransactionWithPrivateKey } = await import('../../utils/transactions');
+
+        let result;
+        if (selectedToken!.symbol === 'SOL') {
+          result = await sendSolanaTransactionWithPrivateKey({
+            privateKeyBase58,
+            toAddress: address,
+            amount: parseFloat(amount),
+            isTestnet: network.isTestnet,
+          });
+        } else if (selectedToken!.network === 'solana') {
+          // SPL token
+          let decimals = 9;
+          const registryToken = selectedToken!.mint ? TOKEN_BY_MINT.get(selectedToken!.mint) : null;
+          if (registryToken?.decimals !== undefined) {
+            decimals = registryToken.decimals;
+          } else if (selectedToken!.symbol === 'USDC' || selectedToken!.symbol === 'USDT') {
+            decimals = 6;
+          }
+
+          result = await sendSPLTokenTransactionWithPrivateKey({
+            privateKeyBase58,
+            toAddress: address,
+            amount: parseFloat(amount),
+            tokenMint: selectedToken!.mint || '',
+            decimals,
+            isTestnet: network.isTestnet,
+          });
+        } else {
+          toast.error('Unsupported token for private key wallet.');
+          setSending(false);
+          setTransactionStatus('idle');
+          return;
+        }
+
+        if (!result || !result.success) {
+          throw new Error(result?.error || 'Transaction failed');
+        }
+
+        console.log('[Send] ✅ Private key transaction successful!');
+        playSendWhoosh();
+        setTransactionStatus('success');
+        setTransactionDetails({ signature: result.signature });
+        window.dispatchEvent(new Event('walletBalanceUpdated'));
+        onSendComplete?.();
+        setSending(false);
+        return;
+      }
 
       if (activeAccount?.isImportedSeedPhrase) {
         // Check if this imported account has an encrypted mnemonic stored
@@ -811,13 +910,16 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
 
       console.log('[Send] ✅ Transaction successful!');
       console.log('[Send] Signature/Hash:', result.signature || result.hash);
-      
+
+      // Play success sound
+      playSendWhoosh();
+
       // REMOVED TESTNET BACKEND UPDATE - Now using real blockchain!
       // Testnet mode now works exactly like mainnet:
       // - Real transactions to Devnet/Sepolia
       // - Balances fetched from blockchain (not backend)
       // - No need for manual balance updates
-      
+
       // Set success state
       setTransactionStatus('success');
       setTransactionDetails({
@@ -937,7 +1039,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
         <DialogContent className="max-w-md bg-slate-950/95 border-slate-800/50 backdrop-blur-xl">
           <DialogHeader>
             <DialogTitle className="text-xl text-white flex items-center gap-2">
-              <Camera className="w-5 h-5 text-purple-400" />
+              <Camera className="w-5 h-5" style={{ color: colors.primary }} />
               Scan QR Code
             </DialogTitle>
             <DialogDescription className="text-slate-400">
@@ -955,7 +1057,8 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ type: 'spring', damping: 15 }}
-                    className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-purple-600 to-purple-400 flex items-center justify-center"
+                    className="w-24 h-24 mx-auto rounded-full flex items-center justify-center"
+                    style={{ background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.accent})` }}
                   >
                     <Camera className="w-12 h-12 text-white" />
                   </motion.div>
@@ -968,9 +1071,16 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                   </div>
                 </div>
 
-                <div className="flex items-start gap-3 p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
-                  <div className="text-purple-400 text-xl">🔒</div>
-                  <div className="flex-1 text-sm text-purple-200/80">
+                <div
+                  className="flex items-start gap-3 p-4 rounded-xl"
+                  style={{
+                    backgroundColor: `${colors.primary}1A`,
+                    borderWidth: 1,
+                    borderColor: `${colors.primary}33`,
+                  }}
+                >
+                  <div style={{ color: colors.primary }} className="text-xl">🔒</div>
+                  <div className="flex-1 text-sm" style={{ color: `${colors.accent}CC` }}>
                     Your camera will only be used for scanning QR codes. We don't store or transmit any images.
                   </div>
                 </div>
@@ -1037,9 +1147,16 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                   </motion.div>
                 )}
 
-                <div className="flex items-start gap-3 p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
-                  <div className="text-purple-400 text-xl">📷</div>
-                  <div className="flex-1 text-sm text-purple-200/80">
+                <div
+                  className="flex items-start gap-3 p-4 rounded-xl"
+                  style={{
+                    backgroundColor: `${colors.primary}1A`,
+                    borderWidth: 1,
+                    borderColor: `${colors.primary}33`,
+                  }}
+                >
+                  <div style={{ color: colors.primary }} className="text-xl">📷</div>
+                  <div className="flex-1 text-sm" style={{ color: `${colors.accent}CC` }}>
                     Point your camera at a wallet address QR code. The address will be automatically detected and filled in.
                   </div>
                 </div>
@@ -1080,8 +1197,14 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                     transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
                     className="w-24 h-24 mx-auto relative"
                   >
-                    <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-purple-600 to-purple-400 opacity-20 blur-xl" />
-                    <div className="absolute inset-0 rounded-full border-4 border-purple-500/30 border-t-purple-500" />
+                    <div
+                      className="absolute inset-0 rounded-full opacity-20 blur-xl"
+                      style={{ background: `linear-gradient(to top right, ${colors.primary}, ${colors.accent})` }}
+                    />
+                    <div
+                      className="absolute inset-0 rounded-full border-4"
+                      style={{ borderColor: `${colors.primary}4D`, borderTopColor: colors.primary }}
+                    />
                   </motion.div>
                   <div>
                     <h3 className="text-2xl text-white mb-2">Processing Transaction</h3>
@@ -1268,11 +1391,13 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
         <div className="flex items-center gap-2">
           {['select-token', 'enter-address', 'enter-amount', 'review'].map((s, idx) => (
             <div key={s} className="flex items-center flex-1">
-              <div className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                ['select-token', 'enter-address', 'enter-amount', 'review'].indexOf(step) >= idx
-                  ? 'bg-gradient-to-r from-purple-600 to-purple-500'
-                  : 'bg-slate-800'
-              }`}></div>
+              <div
+                className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+                  ['select-token', 'enter-address', 'enter-amount', 'review'].indexOf(step) >= idx
+                    ? `bg-gradient-to-r ${gradient}`
+                    : 'bg-slate-800'
+                }`}
+              ></div>
             </div>
           ))}
         </div>
@@ -1515,7 +1640,12 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                   <Button
                     type="button"
                     onClick={() => setShowQRScanner(true)}
-                    className="h-8 px-3 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 text-sm"
+                    className="h-8 px-3 text-sm"
+                    style={{
+                      backgroundColor: `${colors.primary}33`,
+                      borderColor: `${colors.primary}4D`,
+                      color: colors.accent,
+                    }}
                   >
                     <Camera className="w-4 h-4 mr-1.5" />
                     Scan QR
@@ -1576,9 +1706,16 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
               </GradientButton>
 
               {/* Info */}
-              <div className="flex items-start gap-3 p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
-                <div className="text-purple-400 text-xl">💡</div>
-                <div className="flex-1 text-sm text-purple-200/80">
+              <div
+                className="flex items-start gap-3 p-4 rounded-xl"
+                style={{
+                  backgroundColor: `${colors.primary}1A`,
+                  borderWidth: 1,
+                  borderColor: `${colors.primary}33`,
+                }}
+              >
+                <div style={{ color: colors.primary }} className="text-xl">💡</div>
+                <div className="flex-1 text-sm" style={{ color: `${colors.accent}CC` }}>
                   Address validation uses cryptographic verification to ensure the {getNetworkName(selectedToken.network)} address is properly formatted and checksummed. Double-check before proceeding.
                 </div>
               </div>
@@ -1633,7 +1770,16 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                   <button
                     type="button"
                     onClick={handleMaxAmount}
-                    className="text-sm text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 px-2 py-1 rounded-lg transition-all font-medium active:scale-95"
+                    className="text-sm px-2 py-1 rounded-lg transition-all font-medium active:scale-95"
+                    style={{ color: colors.primary }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = colors.accent;
+                      e.currentTarget.style.backgroundColor = `${colors.primary}1A`;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = colors.primary;
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }}
                   >
                     Max: {selectedToken.symbol === 'SOL'
                       ? Math.max(0, selectedToken.amount - 0.001).toFixed(6)
@@ -1698,7 +1844,11 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
               <Button
                 onClick={handleAmountContinue}
                 disabled={!amount || parseFloat(amount) <= 0}
-                className="w-full h-14 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white border-0 shadow-lg shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full h-14 text-white border-0 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: `linear-gradient(to right, ${colors.primary}, ${colors.primaryDark})`,
+                  boxShadow: `0 10px 15px -3px ${colors.primary}33`,
+                }}
               >
                 Review Transaction
               </Button>
@@ -1717,19 +1867,45 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
               {/* Transaction Summary */}
               <div className="relative py-6">
                 {/* Decorative background glow */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-purple-500/20 rounded-full blur-3xl" />
+                <div
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 rounded-full blur-3xl"
+                  style={{ backgroundColor: `${colors.primary}33` }}
+                />
 
                 {/* Content */}
                 <div className="relative z-10 space-y-3">
-                  {/* Send Icon */}
+                  {/* Token Icon */}
                   <motion.div
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ duration: 0.3 }}
                     className="flex justify-center mb-2"
                   >
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/50">
-                      <SendIcon className="w-6 h-6 text-white" />
+                    <div
+                      className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg relative bg-slate-800/50"
+                      style={{
+                        boxShadow: `0 10px 25px -5px ${colors.primary}80`,
+                      }}
+                    >
+                      {selectedToken.logoUrl ? (
+                        <img
+                          src={selectedToken.logoUrl}
+                          alt={selectedToken.name}
+                          className="w-full h-full object-cover rounded-full"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            if (e.currentTarget.nextSibling) {
+                              (e.currentTarget.nextSibling as HTMLElement).style.display = 'flex';
+                            }
+                          }}
+                        />
+                      ) : null}
+                      <div
+                        className={`w-full h-full rounded-full bg-gradient-to-br ${selectedToken.color} flex items-center justify-center text-white text-2xl shadow-inner absolute inset-0`}
+                        style={{ display: selectedToken.logoUrl ? 'none' : 'flex' }}
+                      >
+                        {selectedToken.logo}
+                      </div>
                     </div>
                   </motion.div>
 
@@ -1738,17 +1914,22 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                     <p className="text-slate-400 text-sm tracking-wide uppercase text-[12px]">You're sending</p>
                   </div>
 
-                  {/* Amount */}
+                  {/* Amount with Token Symbol */}
                   <motion.div
                     initial={{ scale: 0.9, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ duration: 0.4, delay: 0.1 }}
                     className="text-center space-y-1"
                   >
-                    <div className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-white via-purple-100 to-white bg-clip-text text-transparent leading-tight">
-                      {parseFloat(amount).toFixed(selectedToken.symbol === 'SOL' ? 6 : 2)}
+                    <div className="flex items-center justify-center gap-3">
+                      <div className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-white via-slate-100 to-white bg-clip-text text-transparent leading-tight">
+                        {parseFloat(amount).toFixed(selectedToken.symbol === 'SOL' ? 6 : 2)}
+                      </div>
                     </div>
-                    <div className="text-xl font-semibold bg-gradient-to-r from-purple-300 via-purple-200 to-pink-300 bg-clip-text text-transparent">
+                    <div
+                      className="text-xl font-semibold"
+                      style={{ color: colors.accent }}
+                    >
                       {selectedToken.symbol}
                     </div>
                   </motion.div>
@@ -1790,7 +1971,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                 <div className="h-px bg-slate-800"></div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-400">Amount</span>
-                  <span className="text-white">{parseFloat(amount).toFixed(6)} {selectedToken.symbol}</span>
+                  <span className="text-white">{parseFloat(amount).toFixed(selectedToken.symbol === 'SOL' ? 4 : 2)} {selectedToken.symbol}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-400">Network Fee</span>
@@ -1801,8 +1982,8 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                   <span className="text-white font-semibold">Total Cost</span>
                   <span className="text-white font-semibold">
                     {selectedToken.symbol === 'SOL'
-                      ? `${(parseFloat(amount) + 0.000005).toFixed(6)} SOL`
-                      : `${parseFloat(amount).toFixed(6)} ${selectedToken.symbol} + ~0.000005 SOL`
+                      ? `${(parseFloat(amount) + 0.000005).toFixed(4)} SOL`
+                      : `${parseFloat(amount).toFixed(2)} ${selectedToken.symbol} + ~0.000005 SOL`
                     }
                   </span>
                 </div>
@@ -1820,7 +2001,11 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
               <Button
                 onClick={handleSend}
                 disabled={sending}
-                className="w-full h-14 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white border-0 shadow-lg shadow-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full h-14 text-white border-0 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: `linear-gradient(to right, ${colors.primary}, ${colors.primaryDark})`,
+                  boxShadow: `0 10px 15px -3px ${colors.primary}33`,
+                }}
               >
                 {sending ? (
                   <>

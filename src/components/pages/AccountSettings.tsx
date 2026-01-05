@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -14,6 +14,7 @@ import { EmojiSelector } from '../EmojiSelector';
 import { ImportWalletDialog } from '../ImportWalletDialog';
 import { AccountManager } from '../../utils/accountManager';
 import { useWallet } from '../../utils/WalletContext';
+import { useTheme } from '../../utils/ThemeContext';
 import { deriveAddresses } from '../../utils/wallet';
 
 interface AccountSettingsProps {
@@ -43,6 +44,7 @@ interface Account {
 
 export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }: AccountSettingsProps) {
   const wallet = useWallet(); // Access wallet context
+  const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
   const [username, setUsername] = useState('');
@@ -626,7 +628,7 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: colors.primary }}></div>
       </div>
     );
   }
@@ -655,7 +657,7 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
         </div>
       </div>
 
-      <div className="px-4 py-6 max-w-2xl mx-auto space-y-6">
+      <div className="px-4 py-6 max-w-2xl mx-auto space-y-6 relative z-0">
         {/* Profile Picture */}
         <div className="flex flex-col items-center gap-4 py-6">
           <div className="relative">
@@ -666,9 +668,12 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
               selectedEmoji={activeAccount?.selectedEmoji || selectedEmoji}
             />
             
-            <button 
+            <button
               onClick={() => setShowEmojiSelector(true)}
-              className="absolute -bottom-1 -right-1 p-2 bg-[#ad46ff] hover:bg-[#ad46ff]/90 rounded-full shadow-lg border-2 border-black transition-colors"
+              className="absolute -bottom-1 -right-1 p-2 rounded-full shadow-lg border-2 border-black transition-colors"
+              style={{ backgroundColor: colors.primary }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primaryDark}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary}
             >
               <Smile className="w-4 h-4 text-white" />
             </button>
@@ -697,8 +702,9 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
                       ? 'border-red-500/50 focus-visible:ring-red-500/30'
                       : usernameAvailable === true && username !== originalUsername
                       ? 'border-green-500/50 focus-visible:ring-green-500/30'
-                      : 'border-slate-700/50 focus-visible:ring-purple-500/30'
+                      : 'border-slate-700/50'
                   }`}
+                  style={!usernameError && !(usernameAvailable === true && username !== originalUsername) ? { '--tw-ring-color': `${colors.primary}4D` } as React.CSSProperties : undefined}
                   placeholder="@username"
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -734,16 +740,19 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
                   </AnimatePresence>
                 </div>
               </div>
-              <Button 
+              <Button
                 onClick={saveUsername}
                 disabled={
-                  checkingUsername || 
-                  usernameAvailable === false || 
+                  checkingUsername ||
+                  usernameAvailable === false ||
                   username === originalUsername ||
                   username.length < 4 ||
                   !!usernameError
                 }
-                className="bg-[#ad46ff] hover:bg-[#ad46ff]/90 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: colors.primary }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primaryDark}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary}
               >
                 Save
               </Button>
@@ -775,51 +784,20 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
           </div>
         </div>
 
-        {/* Wallet Information */}
-        <div className="space-y-4 bg-slate-900/50 rounded-xl p-4 border border-slate-800/30">
-          <h3 className="text-white font-medium flex items-center gap-2">
-            <Wallet className="w-4 h-4 text-slate-400" />
-            Wallet Information
-          </h3>
-          
-          <Separator className="bg-slate-700/50" />
-          
-          <div className="space-y-3">
-            <div className="flex justify-between items-center p-3 rounded-lg bg-slate-950/30 border border-slate-800/30">
-              <span className="text-slate-400 text-sm">Wallet ID</span>
-              <span className="text-slate-300 font-mono text-xs">
-                {walletId.slice(0, 8)}...{walletId.slice(-6)}
-              </span>
-            </div>
-            
-            <div className="flex justify-between items-center p-3 rounded-lg bg-slate-950/30 border border-slate-800/30">
-              <span className="text-slate-400 text-sm">Created</span>
-              <span className="text-slate-300 text-sm">
-                {walletInfo?.createdAt ? new Date(walletInfo.createdAt).toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                }) : 'Recently'}
-              </span>
-            </div>
-
-            <div className="flex justify-between items-center p-3 rounded-lg bg-slate-950/30 border border-slate-800/30">
-              <span className="text-slate-400 text-sm">Type</span>
-              <span className="text-slate-300 text-sm">
-                Multi-chain Wallet
-              </span>
-            </div>
-          </div>
-        </div>
-
         {/* Accounts */}
         <div className="space-y-3">
           <h3 className="text-slate-400 text-sm px-2">Your Accounts</h3>
           
           {/* Info Card */}
-          <div className="bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-xl p-4">
+          <div
+            className="rounded-xl p-4 border"
+            style={{
+              background: `linear-gradient(to bottom right, ${colors.primary}1A, ${colors.secondary}1A)`,
+              borderColor: `${colors.primary}4D`,
+            }}
+          >
             <p className="text-slate-300 text-sm">
-              <span className="text-purple-300">💡</span> Manage multiple accounts with the same recovery phrase. Each account has its own unique address.
+              <span style={{ color: colors.accent }}>💡</span> Manage multiple accounts with the same recovery phrase. Each account has its own unique address.
             </p>
           </div>
           
@@ -832,10 +810,14 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
                   key={account.id}
                   onClick={() => !isActive && switchAccount(account.walletId)}
                   className={`w-full p-4 rounded-xl border transition-all ${
-                    isActive 
-                      ? 'bg-gradient-to-br from-purple-500/10 to-blue-500/10 border-purple-500/50' 
+                    isActive
+                      ? ''
                       : 'bg-slate-900/50 border-slate-800/30 hover:bg-slate-900/80'
                   }`}
+                  style={isActive ? {
+                    background: `linear-gradient(to bottom right, ${colors.primary}1A, ${colors.secondary}1A)`,
+                    borderColor: `${colors.primary}80`,
+                  } : undefined}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.4 + index * 0.05 }}
@@ -860,7 +842,14 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
                     </div>
                     {isActive && (
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-purple-300 bg-purple-600/20 px-2.5 py-1 rounded-full border border-purple-500/30">
+                        <span
+                          className="text-xs px-2.5 py-1 rounded-full border"
+                          style={{
+                            color: colors.accent,
+                            backgroundColor: `${colors.primary}33`,
+                            borderColor: `${colors.primary}4D`,
+                          }}
+                        >
                           Active
                         </span>
                       </div>
@@ -879,7 +868,10 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 onClick={() => setShowAddAccountOptions(true)}
-                className="w-full p-4 rounded-xl bg-[#ad46ff] hover:bg-[#ad46ff]/90 text-white flex items-center justify-center gap-2 transition-all font-medium"
+                className="w-full p-4 rounded-xl text-white flex items-center justify-center gap-2 transition-all font-medium"
+                style={{ backgroundColor: colors.primary }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primaryDark}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary}
               >
                 <Plus className="w-4 h-4" />
                 <span>Add Another Account</span>
@@ -900,16 +892,25 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
                     handleCreateAccount();
                     setShowAddAccountOptions(false);
                   }}
-                  className="w-full p-4 rounded-xl bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30 hover:border-purple-400/50 transition-all flex items-center gap-4 group"
+                  className="w-full p-4 rounded-xl border transition-all flex items-center gap-4 group"
+                  style={{
+                    background: `linear-gradient(to right, ${colors.primary}33, ${colors.secondary}33)`,
+                    borderColor: `${colors.primary}4D`,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = `${colors.primary}80`}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = `${colors.primary}4D`}
                 >
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
+                    style={{ background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.secondary})` }}
+                  >
                     <Sparkles className="w-6 h-6 text-white" />
                   </div>
                   <div className="text-left flex-1">
                     <h4 className="text-white font-semibold">Create New Account</h4>
                     <p className="text-slate-400 text-sm">Generate a new address from your wallet</p>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-purple-400 transition-colors" />
+                  <ChevronRight className="w-5 h-5 text-slate-500 transition-colors" style={{ color: undefined }} />
                 </button>
 
                 {/* Option 2: Import Seed Phrase */}
@@ -1099,7 +1100,7 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
 
             <div className="bg-slate-900/50 rounded-lg p-3 space-y-2">
               <div className="flex items-center gap-2 text-sm">
-                <Wallet className="w-4 h-4 text-purple-400" />
+                <Wallet className="w-4 h-4" style={{ color: colors.accent }} />
                 <span className="text-slate-300">Features:</span>
               </div>
               <ul className="text-xs text-slate-400 space-y-1 ml-6">
@@ -1129,10 +1130,13 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
               </Button>
               <Button
                 onClick={createAccount}
-                className="flex-1 bg-purple-600 hover:bg-purple-700"
+                className="flex-1 text-white"
+                style={{ backgroundColor: colors.primary }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primaryDark}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary}
                 disabled={
-                  creatingAccount || 
-                  !newAccountName.trim() || 
+                  creatingAccount ||
+                  !newAccountName.trim() ||
                   newAccountName === '@' ||
                   checkingNewUsername ||
                   newUsernameAvailable === false ||

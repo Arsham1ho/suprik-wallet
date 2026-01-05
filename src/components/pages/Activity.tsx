@@ -6,6 +6,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { toast } from 'sonner';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
+import { useTheme } from '../../utils/ThemeContext';
 import { getLocalSwapHistory, clearTransactionCache, fetchSolanaTransactionHistory, type TransactionItem } from '../../utils/transactionHistory';
 import { useWallet } from '../../utils/WalletContext';
 import { useNetwork } from '../../utils/NetworkContext';
@@ -18,6 +19,7 @@ interface ActivityProps {
 
 export function Activity({ walletId }: ActivityProps) {
   const { t } = useLanguage();
+  const { colors } = useTheme();
   const { wallet } = useWallet();
   const { network } = useNetwork();
   const [activities, setActivities] = useState<TransactionItem[]>([]);
@@ -190,13 +192,13 @@ export function Activity({ walletId }: ActivityProps) {
   const getActivityIcon = (type: string) => {
     switch (type) {
       case 'receive':
-        return { Icon: ArrowDownLeft, color: 'text-green-500', bg: 'bg-green-500/10' };
+        return { Icon: ArrowDownLeft, color: 'text-green-500', bg: 'bg-green-500/10', themeColor: null };
       case 'send':
-        return { Icon: ArrowUpRight, color: 'text-purple-500', bg: 'bg-purple-500/10' };
+        return { Icon: ArrowUpRight, color: '', bg: '', themeColor: colors.primary };
       case 'swap':
-        return { Icon: RefreshCw, color: 'text-blue-500', bg: 'bg-blue-500/10' };
+        return { Icon: RefreshCw, color: 'text-blue-500', bg: 'bg-blue-500/10', themeColor: null };
       default:
-        return { Icon: ArrowUpRight, color: 'text-slate-500', bg: 'bg-slate-500/10' };
+        return { Icon: ArrowUpRight, color: 'text-slate-500', bg: 'bg-slate-500/10', themeColor: null };
     }
   };
 
@@ -264,7 +266,7 @@ export function Activity({ walletId }: ActivityProps) {
     return (
       <div className="min-h-screen bg-black text-white pb-20 w-full flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 text-purple-500 animate-spin mx-auto mb-3" />
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" style={{ color: colors.primary }} />
           <p className="text-slate-400">Loading transactions...</p>
         </div>
       </div>
@@ -375,7 +377,10 @@ export function Activity({ walletId }: ActivityProps) {
                                       )}
                                     </div>
                                     {/* Swap icon badge */}
-                                    <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center border-2 border-slate-950 shadow-lg z-20">
+                                    <div
+                                      className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center border-2 border-slate-950 shadow-lg z-20"
+                                      style={{ backgroundColor: colors.primary }}
+                                    >
                                       <RefreshCw className="w-2.5 h-2.5 text-white" strokeWidth={3} />
                                     </div>
                                   </div>
@@ -395,7 +400,10 @@ export function Activity({ walletId }: ActivityProps) {
                                     )}
                                     {/* Send/Receive icon badge */}
                                     {activity.type === 'send' && (
-                                      <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center border-2 border-slate-950 shadow-lg">
+                                      <div
+                                        className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center border-2 border-slate-950 shadow-lg"
+                                        style={{ backgroundColor: colors.primary }}
+                                      >
                                         <ArrowUpRight className="w-2.5 h-2.5 text-white" strokeWidth={3} />
                                       </div>
                                     )}
@@ -439,9 +447,10 @@ export function Activity({ walletId }: ActivityProps) {
                                 </>
                               ) : (
                                 <>
-                                  <p className={`font-semibold ${
-                                    activity.type === 'receive' ? 'text-green-500' : 'text-purple-500'
-                                  }`}>
+                                  <p
+                                    className="font-semibold"
+                                    style={{ color: activity.type === 'receive' ? '#22c55e' : colors.primary }}
+                                  >
                                     {activity.type === 'receive' ? '+' : '-'}
                                     {formatAmount(activity.amount, tokenSymbol)} {tokenSymbol}
                                   </p>
@@ -494,98 +503,93 @@ export function Activity({ walletId }: ActivityProps) {
               </DialogHeader>
 
               <div className="space-y-3 pt-2">
-                {/* Status Badge with Token Logo */}
-                <div className="flex items-center justify-center gap-3">
-                  {(() => {
-                    const { Icon, color, bg } = getActivityIcon(selectedActivity.type);
-                    const tokenSymbol = getTokenSymbol(selectedActivity);
-                    return (
-                      <div className="relative">
-                        <div className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg relative">
-                          {/* Main Token Logo */}
-                          {selectedActivity.type === 'swap' ? (
-                            // For swap: show both tokens overlapping
-                            <div className="w-14 h-14 relative">
-                              <div className="absolute left-0 top-0 w-10 h-10 z-10">
-                                <TokenLogo
-                                  symbol={selectedActivity.fromToken || tokenSymbol}
-                                  name={selectedActivity.fromToken || tokenSymbol}
-                                  size="sm"
-                                />
-                              </div>
-                              <div className="absolute right-0 bottom-0 w-10 h-10">
-                                <TokenLogo
-                                  symbol={selectedActivity.toToken}
-                                  name={selectedActivity.toToken}
-                                  size="sm"
-                                />
-                              </div>
-                              {/* Swap icon badge */}
-                              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-purple-500 flex items-center justify-center border-2 border-slate-900 shadow-lg z-20">
-                                <RefreshCw className="w-3 h-3 text-white" strokeWidth={3} />
-                              </div>
-                            </div>
-                          ) : (
-                            // For send/receive: show single token
-                            <>
-                              <TokenLogo
-                                symbol={tokenSymbol}
-                                name={tokenSymbol}
-                                size="lg"
-                              />
-                              {/* Send/Receive icon badge */}
-                              {selectedActivity.type === 'send' && (
-                                <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center border-2 border-slate-900 shadow-lg">
-                                  <ArrowUpRight className="w-3 h-3 text-white" strokeWidth={3} />
-                                </div>
-                              )}
-                              {selectedActivity.type === 'receive' && (
-                                <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-green-500 flex items-center justify-center border-2 border-slate-900 shadow-lg">
-                                  <ArrowDownLeft className="w-3 h-3 text-white" strokeWidth={3} />
-                                </div>
-                              )}
-                            </>
-                          )}
+                {selectedActivity.type === 'swap' ? (
+                  /* Swap - Overlapping tokens design */
+                  <div className="py-6">
+                    <div className="flex flex-col items-center">
+                      {/* Overlapping Token Logos - First on left, second offset right */}
+                      <div className="relative h-20 w-24 mb-4">
+                        {/* From Token - on top left */}
+                        <div className="absolute top-0 left-0 w-16 h-16 rounded-full shadow-lg z-20 ring-2 ring-slate-900">
+                          <TokenLogo
+                            symbol={selectedActivity.fromToken || getTokenSymbol(selectedActivity)}
+                            name={selectedActivity.fromToken || getTokenSymbol(selectedActivity)}
+                            size="lg"
+                          />
+                        </div>
+                        {/* To Token - below and offset right */}
+                        <div className="absolute bottom-0 right-0 w-16 h-16 rounded-full shadow-lg z-10 ring-2 ring-slate-900">
+                          <TokenLogo
+                            symbol={selectedActivity.toToken}
+                            name={selectedActivity.toToken}
+                            size="lg"
+                          />
                         </div>
                       </div>
-                    );
-                  })()}
-                </div>
 
-                {/* Amount */}
-                <div className="text-center py-2">
-                  {selectedActivity.type === 'swap' ? (
-                    <>
-                      <div className="flex items-center justify-center gap-2">
-                        <div className="text-right">
-                          <p className="text-2xl font-bold text-white">
-                            {formatAmount(selectedActivity.fromAmount, selectedActivity.fromToken)}
-                          </p>
-                          <p className="text-sm text-slate-400 mt-0.5">{selectedActivity.fromToken}</p>
-                        </div>
-                        <div className="text-blue-500">
-                          <ArrowUpRight className="w-6 h-6 rotate-90" />
-                        </div>
-                        <div className="text-left">
-                          <p className="text-2xl font-bold text-green-500">
-                            {formatAmount(selectedActivity.toAmount, selectedActivity.toToken)}
-                          </p>
-                          <p className="text-sm text-slate-400 mt-0.5">{selectedActivity.toToken}</p>
-                        </div>
+                      {/* Token Swap Direction Text */}
+                      <div className="flex items-center gap-2 text-lg font-semibold">
+                        <span className="text-white">{selectedActivity.fromToken}</span>
+                        <span style={{ color: colors.accent }}>→</span>
+                        <span className="text-white">{selectedActivity.toToken}</span>
                       </div>
-                    </>
-                  ) : (
-                    <>
+
+                      {/* Amounts */}
+                      <div className="flex items-center gap-3 mt-3 text-sm text-slate-400">
+                        <span>{formatAmount(selectedActivity.fromAmount, selectedActivity.fromToken)}</span>
+                        <span>→</span>
+                        <span className="text-green-400">{formatAmount(selectedActivity.toAmount, selectedActivity.toToken)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Send/Receive - Centered token with overlapping badge */
+                  <div className="py-6">
+                    <div className="flex flex-col items-center">
+                      {/* Title */}
+                      <h3 className="text-white text-lg font-semibold mb-4">
+                        {selectedActivity.type === 'receive' ? 'Received' : 'Sent'}
+                      </h3>
+
+                      {/* Centered Token Logo with overlapping badge */}
+                      <div className="relative mb-4">
+                        {/* Main Token Logo - Centered */}
+                        <div className="w-16 h-16 rounded-full shadow-lg ring-2 ring-slate-900">
+                          <TokenLogo
+                            symbol={getTokenSymbol(selectedActivity)}
+                            name={getTokenSymbol(selectedActivity)}
+                            size="lg"
+                          />
+                        </div>
+                        {/* Send/Receive icon badge - overlapping bottom right */}
+                        {selectedActivity.type === 'send' && (
+                          <div
+                            className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center border-2 border-slate-900 shadow-lg"
+                            style={{ backgroundColor: colors.primary }}
+                          >
+                            <ArrowUpRight className="w-4 h-4 text-white" strokeWidth={2.5} />
+                          </div>
+                        )}
+                        {selectedActivity.type === 'receive' && (
+                          <div
+                            className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center border-2 border-slate-900 shadow-lg"
+                            style={{ backgroundColor: `${colors.primary}CC` }}
+                          >
+                            <ArrowDownLeft className="w-4 h-4 text-white" strokeWidth={2.5} />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Amount with Token Symbol on same line */}
                       <p className={`text-3xl font-bold ${
-                        selectedActivity.type === 'receive' ? 'text-green-500' : 'text-white'
-                      }`}>
-                        {selectedActivity.type === 'receive' ? '+' : selectedActivity.type === 'send' ? '-' : ''}
-                        {formatAmount(selectedActivity.amount, getTokenSymbol(selectedActivity))}
+                        selectedActivity.type === 'receive' ? 'text-green-500' : ''
+                      }`} style={{ color: selectedActivity.type === 'send' ? colors.primary : undefined }}>
+                        {selectedActivity.type === 'receive' ? '+' : '-'}
+                        {formatAmount(selectedActivity.amount, getTokenSymbol(selectedActivity))} {getTokenSymbol(selectedActivity)}
                       </p>
-                      <p className="text-lg text-slate-400 mt-1">{getTokenSymbol(selectedActivity)}</p>
-                    </>
-                  )}
-                </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Details */}
                 <div className="space-y-2 p-3 rounded-xl bg-slate-900/50 border border-slate-800/30 text-sm">
@@ -762,7 +766,13 @@ export function Activity({ walletId }: ActivityProps) {
                         }
                       }
                     }}
-                    className="w-full h-10 bg-[#ad46ff] hover:bg-[#9d36ef] text-white border-0 shadow-lg shadow-purple-500/20"
+                    className="w-full h-10 text-white border-0 shadow-lg"
+                    style={{
+                      backgroundColor: colors.primary,
+                      boxShadow: `0 4px 14px -3px ${colors.primary}4D`,
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primaryDark}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary}
                   >
                     <ExternalLink className="w-4 h-4 mr-2" />
                     {selectedActivity.network === 'ethereum' ? 'Etherscan' :

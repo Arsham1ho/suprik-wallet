@@ -1,6 +1,7 @@
 import { Home, ArrowLeftRight, Activity, Settings, Orbit } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../utils/i18n/LanguageContext';
+import { useTheme } from '../utils/ThemeContext';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -11,6 +12,7 @@ interface BottomNavProps {
 
 export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
   const { t } = useLanguage();
+  const { colors } = useTheme();
   const [tappedButton, setTappedButton] = useState<string | null>(null);
   
   const navItems = [
@@ -49,10 +51,10 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
                 onNavigate(item.id as any);
               }}
               className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition-all flex-1 relative pointer-events-auto cursor-pointer ${
-                isActive 
-                  ? item.gradient 
-                    ? 'text-transparent bg-clip-text' 
-                    : 'text-purple-500'
+                isActive
+                  ? item.gradient
+                    ? 'text-transparent bg-clip-text'
+                    : 'text-theme-accent'
                   : 'text-slate-500 hover:text-slate-300'
               }`}
               whileHover={{ scale: 1.05 }}
@@ -64,9 +66,9 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
                   <motion.div
                     className="absolute inset-0 rounded-xl"
                     style={{
-                      background: item.gradient 
+                      background: item.gradient
                         ? 'radial-gradient(circle, rgba(139, 92, 246, 0.4) 0%, rgba(236, 72, 153, 0.3) 50%, transparent 70%)'
-                        : 'radial-gradient(circle, rgba(139, 92, 246, 0.4) 0%, transparent 70%)',
+                        : `radial-gradient(circle, ${colors.primary}66 0%, transparent 70%)`,
                     }}
                     initial={{ scale: 0, opacity: 1 }}
                     animate={{ scale: 2.5, opacity: 0 }}
@@ -87,14 +89,14 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
                         style={{
                           width: 4,
                           height: 4,
-                          background: item.gradient 
-                            ? `linear-gradient(135deg, #a78bfa, #ec4899, #3b82f6)` 
-                            : '#8b5cf6',
+                          background: item.gradient
+                            ? `linear-gradient(135deg, #a78bfa, #ec4899, #3b82f6)`
+                            : colors.primary,
                           top: '50%',
                           left: '50%',
                         }}
                         initial={{ scale: 0, x: 0, y: 0, opacity: 1 }}
-                        animate={{ 
+                        animate={{
                           scale: [0, 1, 0],
                           x: Math.cos((i * Math.PI * 2) / 6) * 30,
                           y: Math.sin((i * Math.PI * 2) / 6) * 30,
@@ -160,13 +162,16 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
                     ease: "easeOut"
                   }}
                 >
-                  <Icon className={`w-6 h-6 ${
-                    isActive 
-                      ? item.gradient
-                        ? 'stroke-purple-500'
-                        : 'stroke-[2.5]'
-                      : ''
-                  }`} />
+                  <Icon
+                    className={`w-6 h-6 ${
+                      isActive
+                        ? item.gradient
+                          ? 'stroke-purple-500'
+                          : 'stroke-[2.5]'
+                        : ''
+                    }`}
+                    style={isActive && !item.gradient ? { stroke: colors.accent } : undefined}
+                  />
                 </motion.div>
               </motion.div>
               <span className={`text-xs font-semibold relative z-10 ${

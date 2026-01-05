@@ -5,6 +5,7 @@ import { Check, Plus, ChevronRight, Copy, Key, FileText, Sparkles } from 'lucide
 import { AnimalAvatar } from './AnimalAvatar';
 import { toast } from 'sonner';
 import { copyToClipboard } from '../utils/clipboard';
+import { useTheme } from '../utils/ThemeContext';
 
 interface Account {
   id: string;
@@ -38,6 +39,7 @@ export function AccountSwitcher({
   onImportSeedPhrase,
   onImportPrivateKey,
 }: AccountSwitcherProps) {
+  const { colors } = useTheme();
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   const [showAddOptions, setShowAddOptions] = useState(false);
   // Track if initial animation has played to prevent re-animations
@@ -113,9 +115,13 @@ export function AccountSwitcher({
                   }}
                   className={`w-full p-4 rounded-xl mb-2 transition-all flex items-center justify-between group cursor-pointer ${
                     isActive
-                      ? 'bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30'
+                      ? 'border'
                       : 'bg-slate-900/30 border border-slate-800/30 hover:bg-slate-800/50 hover:border-slate-700/50'
                   }`}
+                  style={isActive ? {
+                    background: `linear-gradient(to right, ${colors.primary}33, ${colors.secondary}33)`,
+                    borderColor: `${colors.primary}4D`,
+                  } : undefined}
                 >
                   <div className="flex items-center gap-3">
                     <AnimalAvatar
@@ -141,7 +147,9 @@ export function AccountSwitcher({
                             e.stopPropagation();
                             handleCopyAddress(account.addresses.solana);
                           }}
-                          className="flex items-center gap-1 text-slate-400 hover:text-purple-400 transition-colors"
+                          className="flex items-center gap-1 text-slate-400 transition-colors"
+                          onMouseEnter={(e) => e.currentTarget.style.color = colors.accent}
+                          onMouseLeave={(e) => e.currentTarget.style.color = ''}
                         >
                           <span className="text-xs font-mono">
                             {truncateAddress(account.addresses.solana)}
@@ -153,7 +161,7 @@ export function AccountSwitcher({
                   </div>
 
                   {!isActive && (
-                    <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-purple-400 transition-colors" />
+                    <ChevronRight className="w-5 h-5 text-slate-500 transition-colors group-hover:text-theme-accent" />
                   )}
                 </motion.div>
               );
@@ -166,7 +174,10 @@ export function AccountSwitcher({
           {!showAddOptions ? (
             <button
               onClick={() => setShowAddOptions(true)}
-              className="w-full p-4 rounded-xl bg-[#ad46ff] hover:bg-[#ad46ff]/90 text-white flex items-center justify-center gap-2 transition-all font-medium"
+              className="w-full p-4 rounded-xl text-white flex items-center justify-center gap-2 transition-all font-medium"
+              style={{ backgroundColor: colors.primary }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primaryDark}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary}
             >
               <Plus className="w-4 h-4" />
               <span>Add Another Account</span>
@@ -182,16 +193,25 @@ export function AccountSwitcher({
                     setShowAddOptions(false);
                     onOpenChange(false);
                   }}
-                  className="w-full p-4 rounded-xl bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30 hover:border-purple-400/50 transition-all flex items-center gap-4 group"
+                  className="w-full p-4 rounded-xl border transition-all flex items-center gap-4 group"
+                  style={{
+                    background: `linear-gradient(to right, ${colors.primary}33, ${colors.secondary}33)`,
+                    borderColor: `${colors.primary}4D`,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = `${colors.primary}80`}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = `${colors.primary}4D`}
                 >
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
+                    style={{ background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.secondary})` }}
+                  >
                     <Sparkles className="w-6 h-6 text-white" />
                   </div>
                   <div className="text-left flex-1">
                     <h4 className="text-white font-semibold">Create New Account</h4>
                     <p className="text-slate-400 text-sm">Generate a new address from your wallet</p>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-purple-400 transition-colors" />
+                  <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-theme-accent transition-colors" />
                 </button>
 
                 {/* Option 2: Import Seed Phrase */}

@@ -163,7 +163,7 @@ const comingSoonNetworks = [
 
 export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
   const { t, formatPrice } = useLanguage();
-  const { gradient } = useTheme();
+  const { gradient, colors } = useTheme();
   const wallet = useWallet();
   const network = useNetwork();
   const [sendOpen, setSendOpen] = useState(false);
@@ -1282,17 +1282,17 @@ Check console for full details!
             }}
             className="flex flex-col items-center gap-2 p-4 rounded-xl relative overflow-hidden"
             style={{
-              backgroundColor: receiveBtnTapped ? 'rgba(168, 85, 247, 0.3)' : 'rgba(15, 23, 42, 0.5)',
-              borderColor: receiveBtnTapped ? 'rgba(168, 85, 247, 0.5)' : 'rgba(51, 65, 85, 0.3)',
+              backgroundColor: receiveBtnTapped ? `${colors.primary}4D` : 'rgba(15, 23, 42, 0.5)',
+              borderColor: receiveBtnTapped ? `${colors.primary}80` : 'rgba(51, 65, 85, 0.3)',
               borderWidth: '1px',
               borderStyle: 'solid',
               transition: 'all 0.3s ease',
             }}
             animate={{
               scale: receiveBtnTapped ? [1, 1.08, 1] : 1,
-              boxShadow: receiveBtnTapped 
-                ? ['0 0 0px rgba(168, 85, 247, 0)', '0 0 25px rgba(168, 85, 247, 0.6)', '0 0 0px rgba(168, 85, 247, 0)']
-                : '0 0 0px rgba(168, 85, 247, 0)',
+              boxShadow: receiveBtnTapped
+                ? [`0 0 0px ${colors.primary}00`, `0 0 25px ${colors.primary}99`, `0 0 0px ${colors.primary}00`]
+                : `0 0 0px ${colors.primary}00`,
             }}
             transition={{ duration: 0.5, ease: "easeOut" }}
             whileHover={{ scale: 1.05, y: -2 }}
@@ -1303,14 +1303,16 @@ Check console for full details!
               {receiveBtnTapped && (
                 <>
                   <motion.div
-                    className="absolute inset-0 rounded-xl border-2 border-purple-400"
+                    className="absolute inset-0 rounded-xl border-2"
+                    style={{ borderColor: colors.accent }}
                     initial={{ scale: 1, opacity: 0.8 }}
                     animate={{ scale: 1.5, opacity: 0 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
                   />
                   <motion.div
-                    className="absolute inset-0 rounded-xl border-2 border-pink-400"
+                    className="absolute inset-0 rounded-xl border-2"
+                    style={{ borderColor: colors.secondary }}
                     initial={{ scale: 1, opacity: 0.8 }}
                     animate={{ scale: 1.8, opacity: 0 }}
                     exit={{ opacity: 0 }}
@@ -1319,7 +1321,7 @@ Check console for full details!
                 </>
               )}
             </AnimatePresence>
-            
+
             <motion.div
               animate={{
                 rotate: receiveBtnTapped ? [0, -15, 15, -15, 0] : 0,
@@ -1328,7 +1330,7 @@ Check console for full details!
               transition={{ duration: 0.5 }}
               className="relative z-10"
             >
-              <QrCode className="w-6 h-6 text-purple-400" />
+              <QrCode className="w-6 h-6" style={{ color: colors.accent }} />
             </motion.div>
             <span className="text-sm text-slate-300 relative z-10">{t.home.receive}</span>
           </motion.button>
@@ -1343,17 +1345,17 @@ Check console for full details!
             }}
             className="flex flex-col items-center gap-2 p-4 rounded-xl relative overflow-hidden"
             style={{
-              backgroundColor: sendBtnTapped ? 'rgba(168, 85, 247, 0.3)' : 'rgba(15, 23, 42, 0.5)',
-              borderColor: sendBtnTapped ? 'rgba(168, 85, 247, 0.5)' : 'rgba(51, 65, 85, 0.3)',
+              backgroundColor: sendBtnTapped ? `${colors.primary}4D` : 'rgba(15, 23, 42, 0.5)',
+              borderColor: sendBtnTapped ? `${colors.primary}80` : 'rgba(51, 65, 85, 0.3)',
               borderWidth: '1px',
               borderStyle: 'solid',
               transition: 'all 0.3s ease',
             }}
             animate={{
               scale: sendBtnTapped ? [1, 1.08, 1] : 1,
-              boxShadow: sendBtnTapped 
-                ? ['0 0 0px rgba(168, 85, 247, 0)', '0 0 25px rgba(168, 85, 247, 0.6)', '0 0 0px rgba(168, 85, 247, 0)']
-                : '0 0 0px rgba(168, 85, 247, 0)',
+              boxShadow: sendBtnTapped
+                ? [`0 0 0px ${colors.primary}00`, `0 0 25px ${colors.primary}99`, `0 0 0px ${colors.primary}00`]
+                : `0 0 0px ${colors.primary}00`,
             }}
             transition={{ duration: 0.5, ease: "easeOut" }}
             whileHover={{ scale: 1.05, y: -2 }}
@@ -1364,14 +1366,16 @@ Check console for full details!
               {sendBtnTapped && (
                 <>
                   <motion.div
-                    className="absolute inset-0 rounded-xl border-2 border-purple-400"
+                    className="absolute inset-0 rounded-xl border-2"
+                    style={{ borderColor: colors.accent }}
                     initial={{ scale: 1, opacity: 0.8 }}
                     animate={{ scale: 1.5, opacity: 0 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
                   />
                   <motion.div
-                    className="absolute inset-0 rounded-xl border-2 border-pink-400"
+                    className="absolute inset-0 rounded-xl border-2"
+                    style={{ borderColor: colors.secondary }}
                     initial={{ scale: 1, opacity: 0.8 }}
                     animate={{ scale: 1.8, opacity: 0 }}
                     exit={{ opacity: 0 }}
@@ -1380,7 +1384,7 @@ Check console for full details!
                 </>
               )}
             </AnimatePresence>
-            
+
             <motion.div
               animate={{
                 rotate: sendBtnTapped ? [0, -15, 15, -15, 0] : 0,
@@ -1389,7 +1393,7 @@ Check console for full details!
               transition={{ duration: 0.5 }}
               className="relative z-10"
             >
-              <SendIcon className="w-6 h-6 text-purple-400" />
+              <SendIcon className="w-6 h-6" style={{ color: colors.accent }} />
             </motion.div>
             <span className="text-sm text-slate-300 relative z-10">{t.home.send}</span>
           </motion.button>
@@ -1404,17 +1408,17 @@ Check console for full details!
             }}
             className="flex flex-col items-center gap-2 p-4 rounded-xl relative overflow-hidden"
             style={{
-              backgroundColor: swapBtnTapped ? 'rgba(168, 85, 247, 0.3)' : 'rgba(15, 23, 42, 0.5)',
-              borderColor: swapBtnTapped ? 'rgba(168, 85, 247, 0.5)' : 'rgba(51, 65, 85, 0.3)',
+              backgroundColor: swapBtnTapped ? `${colors.primary}4D` : 'rgba(15, 23, 42, 0.5)',
+              borderColor: swapBtnTapped ? `${colors.primary}80` : 'rgba(51, 65, 85, 0.3)',
               borderWidth: '1px',
               borderStyle: 'solid',
               transition: 'all 0.3s ease',
             }}
             animate={{
               scale: swapBtnTapped ? [1, 1.08, 1] : 1,
-              boxShadow: swapBtnTapped 
-                ? ['0 0 0px rgba(168, 85, 247, 0)', '0 0 25px rgba(168, 85, 247, 0.6)', '0 0 0px rgba(168, 85, 247, 0)']
-                : '0 0 0px rgba(168, 85, 247, 0)',
+              boxShadow: swapBtnTapped
+                ? [`0 0 0px ${colors.primary}00`, `0 0 25px ${colors.primary}99`, `0 0 0px ${colors.primary}00`]
+                : `0 0 0px ${colors.primary}00`,
             }}
             transition={{ duration: 0.5, ease: "easeOut" }}
             whileHover={{ scale: 1.05, y: -2 }}
@@ -1425,14 +1429,16 @@ Check console for full details!
               {swapBtnTapped && (
                 <>
                   <motion.div
-                    className="absolute inset-0 rounded-xl border-2 border-purple-400"
+                    className="absolute inset-0 rounded-xl border-2"
+                    style={{ borderColor: colors.accent }}
                     initial={{ scale: 1, opacity: 0.8 }}
                     animate={{ scale: 1.5, opacity: 0 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
                   />
                   <motion.div
-                    className="absolute inset-0 rounded-xl border-2 border-pink-400"
+                    className="absolute inset-0 rounded-xl border-2"
+                    style={{ borderColor: colors.secondary }}
                     initial={{ scale: 1, opacity: 0.8 }}
                     animate={{ scale: 1.8, opacity: 0 }}
                     exit={{ opacity: 0 }}
@@ -1441,7 +1447,7 @@ Check console for full details!
                 </>
               )}
             </AnimatePresence>
-            
+
             <motion.div
               animate={{
                 rotate: swapBtnTapped ? [0, -15, 15, -15, 0] : 0,
@@ -1450,7 +1456,7 @@ Check console for full details!
               transition={{ duration: 0.5 }}
               className="relative z-10"
             >
-              <RefreshCw className="w-6 h-6 text-purple-400" />
+              <RefreshCw className="w-6 h-6" style={{ color: colors.accent }} />
             </motion.div>
             <span className="text-sm text-slate-300 relative z-10">{t.nav.swap}</span>
           </motion.button>
@@ -1463,17 +1469,17 @@ Check console for full details!
             }}
             className="flex flex-col items-center gap-2 p-4 rounded-xl relative overflow-hidden"
             style={{
-              backgroundColor: buyBtnTapped ? 'rgba(168, 85, 247, 0.3)' : 'rgba(15, 23, 42, 0.5)',
-              borderColor: buyBtnTapped ? 'rgba(168, 85, 247, 0.5)' : 'rgba(51, 65, 85, 0.3)',
+              backgroundColor: buyBtnTapped ? `${colors.primary}4D` : 'rgba(15, 23, 42, 0.5)',
+              borderColor: buyBtnTapped ? `${colors.primary}80` : 'rgba(51, 65, 85, 0.3)',
               borderWidth: '1px',
               borderStyle: 'solid',
               transition: 'all 0.3s ease',
             }}
             animate={{
               scale: buyBtnTapped ? [1, 1.08, 1] : 1,
-              boxShadow: buyBtnTapped 
-                ? ['0 0 0px rgba(168, 85, 247, 0)', '0 0 25px rgba(168, 85, 247, 0.6)', '0 0 0px rgba(168, 85, 247, 0)']
-                : '0 0 0px rgba(168, 85, 247, 0)',
+              boxShadow: buyBtnTapped
+                ? [`0 0 0px ${colors.primary}00`, `0 0 25px ${colors.primary}99`, `0 0 0px ${colors.primary}00`]
+                : `0 0 0px ${colors.primary}00`,
             }}
             transition={{ duration: 0.5, ease: "easeOut" }}
             whileHover={{ scale: 1.05, y: -2 }}
@@ -1484,14 +1490,16 @@ Check console for full details!
               {buyBtnTapped && (
                 <>
                   <motion.div
-                    className="absolute inset-0 rounded-xl border-2 border-purple-400"
+                    className="absolute inset-0 rounded-xl border-2"
+                    style={{ borderColor: colors.accent }}
                     initial={{ scale: 1, opacity: 0.8 }}
                     animate={{ scale: 1.5, opacity: 0 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
                   />
                   <motion.div
-                    className="absolute inset-0 rounded-xl border-2 border-pink-400"
+                    className="absolute inset-0 rounded-xl border-2"
+                    style={{ borderColor: colors.secondary }}
                     initial={{ scale: 1, opacity: 0.8 }}
                     animate={{ scale: 1.8, opacity: 0 }}
                     exit={{ opacity: 0 }}
@@ -1500,7 +1508,7 @@ Check console for full details!
                 </>
               )}
             </AnimatePresence>
-            
+
             <motion.div
               animate={{
                 rotate: buyBtnTapped ? [0, -15, 15, -15, 0] : 0,
@@ -1509,7 +1517,7 @@ Check console for full details!
               transition={{ duration: 0.5 }}
               className="relative z-10"
             >
-              <DollarSign className="w-6 h-6 text-purple-400" />
+              <DollarSign className="w-6 h-6" style={{ color: colors.accent }} />
             </motion.div>
             <span className="text-sm text-slate-300 relative z-10">Buy</span>
           </motion.button>
@@ -1534,7 +1542,12 @@ Check console for full details!
               </button>
               <button
                 onClick={() => onNavigate('search')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 transition-colors text-sm font-medium"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium text-white"
+                style={{
+                  backgroundColor: colors.primary,
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primaryDark}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary}
               >
                 <Plus className="w-4 h-4" />
                 {t.home.addToken}
@@ -1562,7 +1575,13 @@ Check console for full details!
                       href="https://faucet.solana.com"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block p-2 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 transition-colors text-purple-300"
+                      className="block p-2 rounded-lg transition-colors"
+                      style={{
+                        backgroundColor: `${colors.primary}33`,
+                        color: colors.accent,
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = `${colors.primary}4D`}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = `${colors.primary}33`}
                     >
                       ◎ Solana Devnet Faucet
                     </a>
@@ -1592,7 +1611,7 @@ Check console for full details!
                 const tokenChange = token.amount * token.price * token.change / 100;
                 return (
                   <button
-                    key={`${token.mint}-${token.symbol}`}
+                    key={`${token.mint}-${token.symbol}-${idx}`}
                     onClick={() => setSelectedToken(token)}
                     className="w-full p-3 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
                   >

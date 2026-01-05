@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { PlanetAvatar } from '../PlanetAvatar';
 import { AnimalAvatar } from '../AnimalAvatar';
 import { useNetwork } from '../../utils/NetworkContext';
+import { useTheme } from '../../utils/ThemeContext';
 import { VerifyParabolicInfo } from '../VerifyParabolicInfo';
 import { AccountSwitcher } from '../AccountSwitcher';
 import { AccountManager } from '../../utils/accountManager';
@@ -61,6 +62,7 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
   const [activeAccountAddress, setActiveAccountAddress] = useState<string | null>(null);
   const [activeAccountEmoji, setActiveAccountEmoji] = useState<string | null>(null);
   const { isTestnet, toggleNetwork } = useNetwork();
+  const { colors } = useTheme();
 
   // Scroll to top when page changes
   useEffect(() => {
@@ -365,7 +367,10 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
             className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center"
+                style={{ background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.secondary})` }}
+              >
                 <Palette className="w-5 h-5 text-white" />
               </div>
               <div className="text-left">
@@ -380,25 +385,37 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
         {/* Developer Settings */}
         <div className="space-y-3 mb-6">
           <h3 className="text-slate-400 text-sm px-2">Developer</h3>
-          
-          <div className={`p-4 rounded-xl border transition-all ${
-            isTestnet 
-              ? 'bg-purple-500/10 border-purple-500/30' 
-              : 'bg-slate-900/50 border-slate-800/30'
-          }`}>
+
+          <div
+            className="p-4 rounded-xl border transition-all"
+            style={{
+              backgroundColor: isTestnet ? `${colors.primary}1A` : 'rgba(15, 23, 42, 0.5)',
+              borderColor: isTestnet ? `${colors.primary}4D` : 'rgba(51, 65, 85, 0.3)',
+            }}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                  isTestnet 
-                    ? 'bg-gradient-to-br from-purple-500 to-pink-500' 
-                    : 'bg-slate-800'
-                }`}>
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center"
+                  style={{
+                    background: isTestnet
+                      ? `linear-gradient(to bottom right, ${colors.primary}, ${colors.secondary})`
+                      : '#1e293b',
+                  }}
+                >
                   <Wrench className={`w-5 h-5 ${isTestnet ? 'text-white' : 'text-slate-400'}`} />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="text-white font-medium">Testnet Mode</p>
-                    {isTestnet && <span className="text-xs bg-purple-600 text-white px-2 py-0.5 rounded">Active</span>}
+                    {isTestnet && (
+                      <span
+                        className="text-xs text-white px-2 py-0.5 rounded"
+                        style={{ backgroundColor: colors.primary }}
+                      >
+                        Active
+                      </span>
+                    )}
                   </div>
                   <p className="text-slate-400 text-xs">
                     {isTestnet ? 'Using test network' : 'Enable for testing'}
@@ -413,7 +430,9 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
                   // Trigger a refresh of balances
                   window.dispatchEvent(new Event('walletBalanceUpdated'));
                 }}
-                className="data-[state=checked]:bg-purple-600"
+                style={{
+                  backgroundColor: isTestnet ? colors.primary : undefined,
+                }}
               />
             </div>
           </div>
@@ -426,7 +445,7 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
               className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
             >
               <div className="flex items-center gap-3">
-                <Wallet className="w-5 h-5 text-purple-400" />
+                <Wallet className="w-5 h-5" style={{ color: colors.accent }} />
                 <span className="text-white font-medium">Test Receive Tokens</span>
               </div>
               <ChevronRight className="w-5 h-5 text-slate-600" />
@@ -475,7 +494,10 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
             className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center"
+                style={{ background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.secondary})` }}
+              >
                 <Users className="w-5 h-5 text-white" />
               </div>
               <div className="text-left">

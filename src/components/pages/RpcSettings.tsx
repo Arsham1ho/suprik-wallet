@@ -4,6 +4,7 @@ import { ChevronRight, Wifi, WifiOff, CheckCircle, AlertCircle, Loader2, Server 
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { useNetwork, NetworkMode, getNetworkEndpoints } from '../../utils/NetworkContext';
+import { useTheme } from '../../utils/ThemeContext';
 import { toast } from 'sonner';
 import { Connection } from '@solana/web3.js';
 
@@ -13,6 +14,7 @@ interface RpcSettingsProps {
 
 export function RpcSettings({ onBack }: RpcSettingsProps) {
   const { networkMode, setNetworkMode, customRpcUrl, setCustomRpcUrl } = useNetwork();
+  const { colors } = useTheme();
   const [customRpcInput, setCustomRpcInput] = useState(customRpcUrl);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
@@ -140,10 +142,14 @@ export function RpcSettings({ onBack }: RpcSettingsProps) {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/30"
+          className="mb-6 p-4 rounded-2xl border"
+          style={{
+            background: `linear-gradient(to right, ${colors.primary}1A, ${colors.secondary}1A)`,
+            borderColor: `${colors.primary}4D`,
+          }}
         >
           <div className="flex items-start gap-3">
-            <Wifi className="w-5 h-5 text-purple-400 mt-0.5" />
+            <Wifi className="w-5 h-5 mt-0.5" style={{ color: colors.accent }} />
             <div className="flex-1">
               <p className="text-sm text-slate-400 mb-1">Current RPC Endpoint</p>
               <p className="text-white font-mono text-sm break-all">{getCurrentRpc()}</p>
@@ -173,23 +179,26 @@ export function RpcSettings({ onBack }: RpcSettingsProps) {
                 onClick={() => handleSelectNetwork(option.mode)}
                 className={`w-full p-4 rounded-xl transition-all flex items-center justify-between border ${
                   isActive
-                    ? 'bg-purple-500/20 border-purple-500/50'
+                    ? ''
                     : 'bg-slate-900/50 border-slate-800/30 hover:bg-slate-900/80'
                 }`}
+                style={isActive ? {
+                  backgroundColor: `${colors.primary}33`,
+                  borderColor: `${colors.primary}80`,
+                } : undefined}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    isActive
-                      ? 'bg-gradient-to-br from-purple-500 to-blue-500'
-                      : 'bg-slate-800'
-                  }`}>
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center ${!isActive ? 'bg-slate-800' : ''}`}
+                    style={isActive ? { background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.secondary})` } : undefined}
+                  >
                     <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
                   </div>
                   <div className="text-left">
                     <div className="flex items-center gap-2">
                       <p className="text-white font-medium">{option.name}</p>
                       {isActive && (
-                        <CheckCircle className="w-4 h-4 text-purple-400" />
+                        <CheckCircle className="w-4 h-4" style={{ color: colors.accent }} />
                       )}
                     </div>
                     <p className="text-slate-400 text-sm">{option.description}</p>
@@ -275,7 +284,8 @@ export function RpcSettings({ onBack }: RpcSettingsProps) {
                 <Button
                   onClick={handleSaveCustomRpc}
                   disabled={testing || !customRpcInput.trim()}
-                  className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                  className="flex-1 text-white"
+                  style={{ background: `linear-gradient(to right, ${colors.primary}, ${colors.secondary})` }}
                 >
                   Save & Use
                 </Button>
@@ -289,16 +299,20 @@ export function RpcSettings({ onBack }: RpcSettingsProps) {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="mt-8 p-4 rounded-xl bg-blue-500/5 border border-blue-500/20"
+          className="mt-8 p-4 rounded-xl border"
+          style={{
+            backgroundColor: `${colors.primary}0D`,
+            borderColor: `${colors.primary}33`,
+          }}
         >
-          <h4 className="text-blue-400 font-medium mb-2 flex items-center gap-2">
+          <h4 className="font-medium mb-2 flex items-center gap-2" style={{ color: colors.accent }}>
             <Server className="w-4 h-4" />
             Developer Tips
           </h4>
           <ul className="text-sm text-slate-400 space-y-2">
-            <li>• <strong>Localhost:</strong> Start your local validator with <code className="text-purple-400">solana-test-validator</code></li>
-            <li>• <strong>Helius:</strong> Get faster RPC at <code className="text-purple-400">helius.dev</code></li>
-            <li>• <strong>QuickNode:</strong> Premium endpoints at <code className="text-purple-400">quicknode.com</code></li>
+            <li>• <strong>Localhost:</strong> Start your local validator with <code style={{ color: colors.accent }}>solana-test-validator</code></li>
+            <li>• <strong>Helius:</strong> Get faster RPC at <code style={{ color: colors.accent }}>helius.dev</code></li>
+            <li>• <strong>QuickNode:</strong> Premium endpoints at <code style={{ color: colors.accent }}>quicknode.com</code></li>
           </ul>
         </motion.div>
       </div>

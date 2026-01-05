@@ -1,4 +1,4 @@
-import { ArrowLeft, Info, Github, Twitter, Globe, Mail, Heart, Shield, Zap, Users } from 'lucide-react';
+import { ArrowLeft, Info, Globe, Mail, Heart, Shield, Zap, Users, Send, Instagram } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '../ui/button';
 import { Separator } from '../ui/separator';
@@ -28,10 +28,10 @@ export function AboutSuprik({ onBack }: AboutSuprikProps) {
   ];
 
   const links = [
-    { icon: Globe, label: 'Website', url: 'https://suprik-wallet.app', color: 'text-blue-400' },
-    { icon: Github, label: 'GitHub', url: 'https://github.com/suprik-wallet', color: 'text-purple-400' },
-    { icon: Twitter, label: 'Twitter', url: 'https://twitter.com/suprik_wallet', color: 'text-sky-400' },
-    { icon: Mail, label: 'Contact', url: 'mailto:support@suprik-wallet.app', color: 'text-green-400' },
+    { icon: Globe, label: 'Website', url: 'https://www.suprik.com', color: 'text-blue-400' },
+    { icon: Instagram, label: 'Instagram', url: 'https://instagram.com/suprik_wallet', color: 'text-pink-400' },
+    { icon: Send, label: 'Telegram', url: 'https://t.me/suprik_wallet', color: 'text-sky-400' },
+    { icon: Mail, label: 'Contact', url: 'mailto:support@suprik.com', color: 'text-green-400' },
   ];
 
   return (

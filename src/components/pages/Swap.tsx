@@ -48,6 +48,7 @@ import { SwapModeIndicator } from "../SwapModeIndicator";
 import type { BiometricSettings } from "../../utils/biometric";
 import { useWallet } from "../../utils/WalletContext";
 import { useNetwork } from "../../utils/NetworkContext";
+import { useTheme } from "../../utils/ThemeContext";
 import { AccountManager } from "../../utils/accountManager";
 import { decryptWithPassword } from "../../utils/wallet";
 import {
@@ -60,6 +61,7 @@ import {
   resolveMintAddressAsync,
 } from "../../utils/jupiterSwap";
 import { saveSwapToHistory } from "../../utils/transactionHistory";
+import { playSwapExchange } from "../../utils/sounds";
 
 interface SwapProps {
   tokens: Token[];
@@ -151,6 +153,7 @@ const SYMBOL_ALIASES: Record<string, string[]> = {
 export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
   const wallet = useWallet();
   const network = useNetwork();
+  const { colors, gradient } = useTheme();
 
   // Use ref to store latest tokens to avoid dependency issues
   const tokensRef = useRef(tokens);
@@ -239,7 +242,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         setBiometricSettings({
           enabled: true,
           autoLockMinutes: settings.autoLockMinutes || 5,
-          requireForTransactions: true,
+          requireForTransactions: settings.requireBiometricForTransactions || false,
         });
       } else {
         setBiometricSettings(null);
@@ -977,60 +980,32 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     [allCoins]
   );
 
-  // Function to play success sound - Enhanced celebratory sound!
+  // Function to play success sound - uses sound from sounds.ts
   const playSuccessSound = useCallback(() => {
-    try {
-      const audioContext = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
-
-      // Create a pleasant success sound (three-tone ascending chime with echo)
-      const playTone = (
-        frequency: number,
-        startTime: number,
-        duration: number,
-        volume: number = 0.25
-      ) => {
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-
-        oscillator.frequency.value = frequency;
-        oscillator.type = "sine";
-
-        gainNode.gain.setValueAtTime(0, startTime);
-        gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.01);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
-
-        oscillator.start(startTime);
-        oscillator.stop(startTime + duration);
-      };
-
-      const now = audioContext.currentTime;
-
-      // Main melody - ascending success tones
-      playTone(659.25, now, 0.12, 0.25); // E5
-      playTone(830.61, now + 0.12, 0.12, 0.28); // G#5
-      playTone(1046.5, now + 0.24, 0.25, 0.3); // C6
-
-      // Harmonics for richness
-      playTone(1318.51, now + 0.24, 0.2, 0.15); // E6 (harmonic)
-
-      // Subtle echo
-      playTone(1046.5, now + 0.4, 0.15, 0.1); // C6 echo
-    } catch (error) {
-      console.log("Could not play sound:", error);
-    }
+    playSwapExchange(); // Two-way swoosh like tokens exchanging
   }, []);
 
   // Calculate exchange rate - memoized (must be before handleSwap)
+  // Prefer Jupiter quote rate when available, fall back to token prices
   const exchangeRate = useMemo(
-    () =>
-      fromTokenData && toTokenData
-        ? (fromTokenData.price / toTokenData.price).toFixed(6)
-        : "0",
-    [fromTokenData, toTokenData]
+    () => {
+      // If we have Jupiter quote with valid amounts, calculate rate from quote
+      if (jupiterQuote && fromAmount && parseFloat(fromAmount) > 0) {
+        const inputAmt = parseFloat(fromAmount);
+        const outputAmt = jupiterQuote.outputAmount;
+        if (outputAmt > 0 && inputAmt > 0) {
+          return (outputAmt / inputAmt).toFixed(6);
+        }
+      }
+
+      // Fallback to token prices
+      if (!fromTokenData || !toTokenData) return "0";
+      // Prevent division by zero or invalid prices
+      if (!toTokenData.price || toTokenData.price <= 0) return "0";
+      if (!fromTokenData.price || fromTokenData.price <= 0) return "0";
+      return (fromTokenData.price / toTokenData.price).toFixed(6);
+    },
+    [fromTokenData, toTokenData, jupiterQuote, fromAmount]
   );
 
   // Calculate estimated fee (0.5% of swap in USD) - memoized
@@ -1225,21 +1200,23 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         console.log("✅ [Swap] Jupiter swap successful!");
         console.log("✅ [Swap] Signature:", result.signature);
 
-        // Save swap to local history
+        // Save swap to local history (only on mainnet, not testnet)
         // Include mint addresses for symbol resolution in case symbol is "TOKEN"
-        saveSwapToHistory({
-          signature: result.signature || `swap_${Date.now()}`,
-          fromToken: fromTokenData?.symbol || '',
-          toToken: toTokenData?.symbol || '',
-          fromAmount: parseFloat(fromAmount) || 0,
-          toAmount: parseFloat(toAmount) || 0,
-          rate: fromTokenData && toTokenData ? fromTokenData.price / toTokenData.price : undefined,
-          fee: jupiterQuote?.fee ? jupiterQuote.fee * (fromTokenData?.price || 0) : undefined,
-          feeAmount: jupiterQuote?.fee,
-          walletAddress: wallet.addresses?.solana || '',
-          fromMint: fromTokenData?.mint || jupiterQuote?.inputMint,
-          toMint: toTokenData?.mint || jupiterQuote?.outputMint,
-        });
+        if (!network.isTestnet) {
+          saveSwapToHistory({
+            signature: result.signature || `swap_${Date.now()}`,
+            fromToken: fromTokenData?.symbol || '',
+            toToken: toTokenData?.symbol || '',
+            fromAmount: parseFloat(fromAmount) || 0,
+            toAmount: parseFloat(toAmount) || 0,
+            rate: fromTokenData && toTokenData ? fromTokenData.price / toTokenData.price : undefined,
+            fee: jupiterQuote?.fee ? jupiterQuote.fee * (fromTokenData?.price || 0) : undefined,
+            feeAmount: jupiterQuote?.fee,
+            walletAddress: wallet.addresses?.solana || '',
+            fromMint: fromTokenData?.mint || jupiterQuote?.inputMint,
+            toMint: toTokenData?.mint || jupiterQuote?.outputMint,
+          });
+        }
 
         // Play success sound
         playSuccessSound();
@@ -1842,7 +1819,9 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             <div className="flex items-center justify-between text-sm mb-3">
               <span className="text-slate-400">Rate</span>
               <span className="text-white">
-                1 {fromTokenData?.symbol} ≈ {exchangeRate} {toTokenData?.symbol}
+                {exchangeRate === "0" || parseFloat(exchangeRate) === 0
+                  ? "Price unavailable"
+                  : `1 ${fromTokenData?.symbol} ≈ ${exchangeRate} ${toTokenData?.symbol}`}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm mb-3">
@@ -1899,8 +1878,11 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             className={`w-full h-14 mt-6 text-white disabled:opacity-50 shadow-lg transition-all ${
               !network.isTestnet && !hasEnoughSolForFees
                 ? 'bg-gradient-to-r from-red-600 to-red-700 shadow-red-500/30'
-                : 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 shadow-purple-500/30'
+                : `bg-gradient-to-r ${gradient} hover:opacity-90`
             }`}
+            style={{
+              boxShadow: !network.isTestnet && !hasEnoughSolForFees ? undefined : `0 10px 25px -5px ${colors.primary}50`,
+            }}
           >
             {isSwapping ? (
               <div className="flex items-center gap-2">
@@ -2098,14 +2080,18 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
                 }}
                 className={`w-full bg-slate-900/50 rounded-xl p-4 text-left transition-colors ${
                   slippageMode === "custom" && slippage === value
-                    ? "ring-2 ring-purple-600"
+                    ? "ring-2"
                     : "hover:bg-slate-800/50"
                 }`}
+                style={{
+                  ringColor: slippageMode === "custom" && slippage === value ? colors.primary : undefined,
+                  boxShadow: slippageMode === "custom" && slippage === value ? `0 0 0 2px ${colors.primary}` : undefined,
+                }}
               >
                 <div className="flex items-center justify-between">
                   <span className="text-white">{value}%</span>
                   {slippageMode === "custom" && slippage === value && (
-                    <div className="w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center">
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: colors.primary }}>
                       <div className="w-2 h-2 rounded-full bg-white" />
                     </div>
                   )}
@@ -2118,9 +2104,12 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               className={`bg-slate-900/50 rounded-xl p-4 ${
                 slippageMode === "custom" &&
                 !["0.5", "1", "2", "5", "10"].includes(slippage)
-                  ? "ring-2 ring-purple-600"
+                  ? "ring-2"
                   : ""
               }`}
+              style={{
+                boxShadow: slippageMode === "custom" && !["0.5", "1", "2", "5", "10"].includes(slippage) ? `0 0 0 2px ${colors.primary}` : undefined,
+              }}
             >
               <div className="flex items-center justify-between">
                 <span className="text-white">Custom</span>
@@ -2152,7 +2141,10 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           <div className="p-4 border-t border-slate-800/50 mt-auto shrink-0">
             <Button
               onClick={() => setShowSlippageSettings(false)}
-              className="w-full h-14 bg-purple-600 hover:bg-purple-700 text-white rounded-xl"
+              className="w-full h-14 text-white rounded-xl transition-colors"
+              style={{ backgroundColor: colors.primary }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primaryDark}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary}
             >
               Done
             </Button>
@@ -2233,7 +2225,10 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           <div className="p-4 border-t border-slate-800/50 mt-auto shrink-0">
             <Button
               onClick={() => setShowPriorityFeeSettings(false)}
-              className="w-full h-14 bg-purple-600 hover:bg-purple-700 text-white rounded-xl"
+              className="w-full h-14 text-white rounded-xl transition-colors"
+              style={{ backgroundColor: colors.primary }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primaryDark}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary}
             >
               Done
             </Button>
@@ -2311,7 +2306,10 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           <div className="p-4 border-t border-slate-800/50 mt-auto shrink-0">
             <Button
               onClick={() => setShowTipSettings(false)}
-              className="w-full h-14 bg-purple-600 hover:bg-purple-700 text-white rounded-xl"
+              className="w-full h-14 text-white rounded-xl transition-colors"
+              style={{ backgroundColor: colors.primary }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primaryDark}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary}
             >
               Done
             </Button>

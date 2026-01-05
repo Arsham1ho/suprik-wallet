@@ -1,3 +1,5 @@
+import { useTheme } from '../utils/ThemeContext';
+
 interface AnimalAvatarProps {
   size?: 'xs' | 'sm' | 'md' | 'lg';
   className?: string;
@@ -6,13 +8,14 @@ interface AnimalAvatarProps {
   selectedEmoji?: string | null;
 }
 
-export function AnimalAvatar({ 
-  size = 'md', 
-  className = '', 
+export function AnimalAvatar({
+  size = 'md',
+  className = '',
   walletId,
   profilePicture,
   selectedEmoji
 }: AnimalAvatarProps) {
+  const { colors } = useTheme();
   const sizeClasses = {
     xs: 'w-6 h-6 text-sm',
     sm: 'w-10 h-10 text-2xl',
@@ -79,18 +82,20 @@ export function AnimalAvatar({
   // اگر عکس پروفایل وجود دارد، آن را نمایش بده
   if (profilePicture) {
     return (
-      <img 
-        src={profilePicture} 
-        alt="Profile" 
-        className={`${sizeClasses[size]} ${borderSizes[size]} rounded-full object-cover border-purple-500/30 ${className}`}
+      <img
+        src={profilePicture}
+        alt="Profile"
+        className={`${sizeClasses[size]} ${borderSizes[size]} rounded-full object-cover ${className}`}
+        style={{ borderColor: `${colors.primary}4D` }}
       />
     );
   }
 
   // در غیر این صورت اموجی حیوان را نمایش بده
   return (
-    <div 
-      className={`${sizeClasses[size]} ${borderSizes[size]} rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center border-purple-500/30 relative overflow-hidden ${className}`}
+    <div
+      className={`${sizeClasses[size]} ${borderSizes[size]} rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center relative overflow-hidden ${className}`}
+      style={{ borderColor: `${colors.primary}4D` }}
     >
       {/* Shine effect */}
       <div className="absolute top-0 left-0 w-1/2 h-1/2 bg-gradient-to-br from-white/20 to-transparent rounded-full blur-sm"></div>

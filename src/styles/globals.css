@@ -96,6 +96,313 @@
   --sidebar-ring: oklch(0.439 0 0);
 }
 
+/* Light mode styles */
+.light-mode,
+[data-theme="light"] {
+  --background: #f8fafc;
+  --foreground: #1e293b;
+  --card: #ffffff;
+  --card-foreground: #1e293b;
+  --popover: #ffffff;
+  --popover-foreground: #1e293b;
+  --primary: #1e293b;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #1e293b;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #e2e8f0;
+  --accent-foreground: #1e293b;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --input-background: #ffffff;
+  --ring: #94a3b8;
+}
+
+/* Light mode html/body - Base styles */
+.light-mode,
+.light-mode html,
+.light-mode body,
+[data-theme="light"],
+[data-theme="light"] html,
+[data-theme="light"] body {
+  background-color: #f1f5f9 !important;
+  color: #1e293b !important;
+}
+
+/* Light mode root and containers */
+.light-mode #root,
+[data-theme="light"] #root {
+  background-color: #f1f5f9 !important;
+}
+
+.light-mode .wallet-container,
+[data-theme="light"] .wallet-container {
+  background-color: #f1f5f9 !important;
+}
+
+.light-mode .wallet-outer,
+[data-theme="light"] .wallet-outer {
+  background-color: #e2e8f0 !important;
+}
+
+/* Light mode background overrides */
+.light-mode .bg-black,
+[data-theme="light"] .bg-black {
+  background-color: #f1f5f9 !important;
+}
+
+.light-mode .bg-slate-950,
+[data-theme="light"] .bg-slate-950 {
+  background-color: #f8fafc !important;
+}
+
+.light-mode .bg-slate-900,
+[data-theme="light"] .bg-slate-900 {
+  background-color: #ffffff !important;
+}
+
+.light-mode .bg-slate-900\/80,
+[data-theme="light"] .bg-slate-900\/80 {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.light-mode .bg-slate-900\/50,
+[data-theme="light"] .bg-slate-900\/50 {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.light-mode .bg-slate-800,
+[data-theme="light"] .bg-slate-800 {
+  background-color: #f8fafc !important;
+}
+
+.light-mode .bg-slate-800\/50,
+[data-theme="light"] .bg-slate-800\/50 {
+  background-color: rgba(248, 250, 252, 0.8) !important;
+}
+
+.light-mode .bg-slate-800\/80,
+[data-theme="light"] .bg-slate-800\/80 {
+  background-color: rgba(248, 250, 252, 0.9) !important;
+}
+
+.light-mode .bg-slate-700,
+[data-theme="light"] .bg-slate-700 {
+  background-color: #e2e8f0 !important;
+}
+
+/* Light mode text colors */
+.light-mode .text-white,
+[data-theme="light"] .text-white {
+  color: #1e293b !important;
+}
+
+.light-mode .text-slate-100,
+[data-theme="light"] .text-slate-100 {
+  color: #334155 !important;
+}
+
+.light-mode .text-slate-200,
+[data-theme="light"] .text-slate-200 {
+  color: #475569 !important;
+}
+
+.light-mode .text-slate-300,
+[data-theme="light"] .text-slate-300 {
+  color: #64748b !important;
+}
+
+.light-mode .text-slate-400,
+[data-theme="light"] .text-slate-400 {
+  color: #64748b !important;
+}
+
+.light-mode .text-slate-500,
+[data-theme="light"] .text-slate-500 {
+  color: #475569 !important;
+}
+
+/* Light mode border colors */
+.light-mode .border-slate-900,
+[data-theme="light"] .border-slate-900 {
+  border-color: #e2e8f0 !important;
+}
+
+.light-mode .border-slate-800,
+[data-theme="light"] .border-slate-800 {
+  border-color: #e2e8f0 !important;
+}
+
+.light-mode .border-slate-800\/50,
+[data-theme="light"] .border-slate-800\/50 {
+  border-color: rgba(226, 232, 240, 0.8) !important;
+}
+
+.light-mode .border-slate-700,
+[data-theme="light"] .border-slate-700 {
+  border-color: #cbd5e1 !important;
+}
+
+.light-mode .border-slate-600,
+[data-theme="light"] .border-slate-600 {
+  border-color: #94a3b8 !important;
+}
+
+/* Light mode divide colors */
+.light-mode .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+[data-theme="light"] .divide-slate-800 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #e2e8f0 !important;
+}
+
+/* Light mode input backgrounds */
+.light-mode .bg-slate-950\/50,
+[data-theme="light"] .bg-slate-950\/50 {
+  background-color: #ffffff !important;
+}
+
+.light-mode input,
+[data-theme="light"] input {
+  background-color: #ffffff !important;
+  color: #1e293b !important;
+  border-color: #cbd5e1 !important;
+}
+
+.light-mode input::placeholder,
+[data-theme="light"] input::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Light mode cards and modals */
+.light-mode .backdrop-blur-xl,
+[data-theme="light"] .backdrop-blur-xl {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.light-mode .backdrop-blur-sm,
+[data-theme="light"] .backdrop-blur-sm {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Light mode gradients - keep some gradients but adjust */
+.light-mode .from-slate-900,
+[data-theme="light"] .from-slate-900 {
+  --tw-gradient-from: #ffffff !important;
+}
+
+.light-mode .to-slate-900,
+[data-theme="light"] .to-slate-900 {
+  --tw-gradient-to: #f8fafc !important;
+}
+
+.light-mode .via-slate-900,
+[data-theme="light"] .via-slate-900 {
+  --tw-gradient-via: #f8fafc !important;
+}
+
+/* Light mode shadows */
+.light-mode .shadow-lg,
+[data-theme="light"] .shadow-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+}
+
+.light-mode .shadow-xl,
+[data-theme="light"] .shadow-xl {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Light mode ring colors */
+.light-mode .ring-slate-800,
+[data-theme="light"] .ring-slate-800 {
+  --tw-ring-color: #e2e8f0 !important;
+}
+
+/* Light mode hover states */
+.light-mode .hover\:bg-slate-800:hover,
+[data-theme="light"] .hover\:bg-slate-800:hover {
+  background-color: #e2e8f0 !important;
+}
+
+.light-mode .hover\:bg-slate-700:hover,
+[data-theme="light"] .hover\:bg-slate-700:hover {
+  background-color: #cbd5e1 !important;
+}
+
+.light-mode .hover\:border-slate-700:hover,
+[data-theme="light"] .hover\:border-slate-700:hover {
+  border-color: #94a3b8 !important;
+}
+
+.light-mode .hover\:border-slate-600:hover,
+[data-theme="light"] .hover\:border-slate-600:hover {
+  border-color: #64748b !important;
+}
+
+.light-mode .hover\:text-white:hover,
+[data-theme="light"] .hover\:text-white:hover {
+  color: #1e293b !important;
+}
+
+/* Light mode scrollbar */
+.light-mode ::-webkit-scrollbar-track,
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+.light-mode ::-webkit-scrollbar-thumb,
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+/* Light mode specific component overrides */
+.light-mode .bg-gradient-to-b.from-black,
+[data-theme="light"] .bg-gradient-to-b.from-black {
+  background: linear-gradient(to bottom, #f1f5f9, #f8fafc) !important;
+}
+
+.light-mode .bg-gradient-to-t.from-black,
+[data-theme="light"] .bg-gradient-to-t.from-black {
+  background: linear-gradient(to top, #f1f5f9, transparent) !important;
+}
+
+/* Keep colored elements visible in light mode */
+.light-mode .text-green-400,
+[data-theme="light"] .text-green-400 {
+  color: #16a34a !important;
+}
+
+.light-mode .text-red-400,
+[data-theme="light"] .text-red-400 {
+  color: #dc2626 !important;
+}
+
+.light-mode .text-yellow-400,
+[data-theme="light"] .text-yellow-400 {
+  color: #ca8a04 !important;
+}
+
+.light-mode .text-blue-400,
+[data-theme="light"] .text-blue-400 {
+  color: #2563eb !important;
+}
+
+.light-mode .text-purple-400,
+[data-theme="light"] .text-purple-400 {
+  color: #9333ea !important;
+}
+
+.light-mode .bg-green-500\/10,
+[data-theme="light"] .bg-green-500\/10 {
+  background-color: rgba(34, 197, 94, 0.15) !important;
+}
+
+.light-mode .bg-red-500\/10,
+[data-theme="light"] .bg-red-500\/10 {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

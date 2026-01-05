@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useWallet } from '../../utils/WalletContext';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
+import { useTheme } from '../../utils/ThemeContext';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { AccountManager } from '../../utils/accountManager';
 import QRCode from 'qrcode';
@@ -40,6 +41,7 @@ interface NetworkOption {
 export function Receive({ onBack, walletId }: ReceiveProps) {
   const wallet = useWallet();
   const { t } = useLanguage();
+  const { colors } = useTheme();
   const [selectedNetwork, setSelectedNetwork] = useState<NetworkOption | null>(null);
   const [qrCode, setQrCode] = useState<string>('');
   const [copied, setCopied] = useState(false);
@@ -278,7 +280,10 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white w-full flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+        <div
+          className="animate-spin rounded-full h-8 w-8 border-b-2"
+          style={{ borderColor: colors.primary }}
+        ></div>
       </div>
     );
   }
@@ -312,8 +317,22 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
                     className={`receive-network-btn w-full p-4 rounded-xl border transition-all ${
                       network.comingSoon
                         ? 'border-slate-800 bg-slate-900/30 opacity-50'
-                        : 'border-purple-500/50 hover:border-purple-500 bg-gradient-to-r from-purple-500/10 to-blue-500/10'
+                        : ''
                     }`}
+                    style={!network.comingSoon ? {
+                      borderColor: `${colors.primary}80`,
+                      background: `linear-gradient(to right, ${colors.primary}1A, ${colors.secondary}1A)`,
+                    } : undefined}
+                    onMouseEnter={(e) => {
+                      if (!network.comingSoon) {
+                        e.currentTarget.style.borderColor = colors.primary;
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!network.comingSoon) {
+                        e.currentTarget.style.borderColor = `${colors.primary}80`;
+                      }
+                    }}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -342,7 +361,7 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
                       </div>
 
                       {!network.comingSoon && (
-                        <ChevronRight className="w-5 h-5 text-purple-400 flex-shrink-0" />
+                        <ChevronRight className="w-5 h-5 flex-shrink-0" style={{ color: colors.accent }} />
                       )}
                     </div>
                   </button>
@@ -381,7 +400,10 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
                   </div>
                 ) : (
                   <div className="w-[280px] h-[280px] flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+                    <div
+                      className="animate-spin rounded-full h-8 w-8 border-b-2"
+                      style={{ borderColor: colors.primary }}
+                    ></div>
                   </div>
                 )}
               </div>
@@ -408,8 +430,11 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
                 </Button>
                 <Button
                   onClick={handleCopyAddress}
-                  className="h-14 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white rounded-xl"
+                  className="h-14 text-white rounded-xl"
                   size="lg"
+                  style={{
+                    background: `linear-gradient(to right, ${colors.primary}, ${colors.primaryDark})`,
+                  }}
                 >
                   {copied ? (
                     <>
@@ -468,8 +493,11 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
                   className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
                   whileTap={{ scale: 0.95 }}
                 >
-                  <div className="w-12 h-12 rounded-full bg-purple-600/20 flex items-center justify-center">
-                    <Download className="w-6 h-6 text-purple-400" />
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: `${colors.primary}33` }}
+                  >
+                    <Download className="w-6 h-6" style={{ color: colors.accent }} />
                   </div>
                   <span className="text-sm">Download QR</span>
                 </motion.button>

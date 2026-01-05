@@ -4,6 +4,7 @@ import { Lock, Eye, EyeOff, AlertCircle, Fingerprint } from "lucide-react";
 import { GradientButton } from "./GradientButton";
 import { WalletStorage } from "../utils/wallet";
 import { useWallet } from "../utils/WalletContext";
+import { useTheme } from "../utils/ThemeContext";
 import { toast } from "sonner";
 import {
   authenticateBiometric,
@@ -25,6 +26,7 @@ export function UnlockWallet({
   onSignOut,
 }: UnlockWalletProps) {
   const wallet = useWallet();
+  const { colors } = useTheme();
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -284,11 +286,20 @@ export function UnlockWallet({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         >
-          <div className="w-20 h-20 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center shadow-lg shadow-purple-500/50 mx-auto">
+          <div
+            className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg mx-auto"
+            style={{
+              background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.secondary})`,
+              boxShadow: `0 10px 25px -5px ${colors.primary}80`,
+            }}
+          >
             <Lock className="w-10 h-10 text-white" />
           </div>
           <div className="relative">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto"></div>
+            <div
+              className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto"
+              style={{ borderColor: colors.primary }}
+            ></div>
           </div>
           <p className="text-white font-medium">Unlocking your wallet...</p>
           <p className="text-slate-400 text-sm">Please wait</p>
@@ -297,7 +308,10 @@ export function UnlockWallet({
           <button
             type="button"
             onClick={() => setAutoUnlocking(false)}
-            className="text-sm text-slate-400 hover:text-purple-400 transition-colors mt-4"
+            className="text-sm text-slate-400 transition-colors mt-4"
+            style={{ color: undefined }}
+            onMouseEnter={(e) => e.currentTarget.style.color = colors.accent}
+            onMouseLeave={(e) => e.currentTarget.style.color = ''}
           >
             Use password instead
           </button>
@@ -330,7 +344,13 @@ export function UnlockWallet({
           animate={{ scale: 1 }}
           transition={{ delay: 0.1 }}
         >
-          <div className="w-20 h-20 bg-gradient-to-br from-purple-600 to-blue-600 rounded-full flex items-center justify-center shadow-lg shadow-purple-500/50">
+          <div
+            className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg"
+            style={{
+              background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.secondary})`,
+              boxShadow: `0 10px 25px -5px ${colors.primary}80`,
+            }}
+          >
             <Lock className="w-10 h-10 text-white" />
           </div>
           <div className="text-center">
@@ -371,13 +391,23 @@ export function UnlockWallet({
                 <div className="relative">
                   {/* Glow effect */}
                   {authenticatingBiometric && (
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full blur-xl opacity-50 animate-pulse" />
+                    <div
+                      className="absolute inset-0 rounded-full blur-xl opacity-50 animate-pulse"
+                      style={{
+                        background: `linear-gradient(to right, ${colors.primary}, ${colors.accent})`,
+                      }}
+                    />
                   )}
 
                   {/* Fingerprint icon container */}
-                  <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-purple-600 via-purple-500 to-pink-500 p-1">
+                  <div
+                    className="relative w-24 h-24 rounded-full p-1"
+                    style={{
+                      background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.primaryDark}, ${colors.accent})`,
+                    }}
+                  >
                     <div className="w-full h-full rounded-full bg-black flex items-center justify-center">
-                      <Fingerprint className="w-12 h-12 text-purple-400" />
+                      <Fingerprint className="w-12 h-12" style={{ color: colors.accent }} />
                     </div>
                   </div>
                 </div>
@@ -392,7 +422,12 @@ export function UnlockWallet({
                   type="button"
                   onClick={handleFingerprintAuth}
                   disabled={authenticatingBiometric}
-                  className="w-full h-12 bg-[#ad46ff] hover:bg-[#9d36ef] disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                  className="w-full h-12 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                  style={{
+                    backgroundColor: authenticatingBiometric ? undefined : colors.primary,
+                  }}
+                  onMouseEnter={(e) => !authenticatingBiometric && (e.currentTarget.style.backgroundColor = colors.primaryDark)}
+                  onMouseLeave={(e) => !authenticatingBiometric && (e.currentTarget.style.backgroundColor = colors.primary)}
                 >
                   {authenticatingBiometric ? (
                     <>
@@ -412,7 +447,9 @@ export function UnlockWallet({
               <button
                 type="button"
                 onClick={() => setUseFingerprintAuth(false)}
-                className="text-sm text-slate-400 hover:text-purple-400 transition-colors w-full text-center"
+                className="text-sm text-slate-400 transition-colors w-full text-center"
+                onMouseEnter={(e) => e.currentTarget.style.color = colors.accent}
+                onMouseLeave={(e) => e.currentTarget.style.color = ''}
               >
                 Use password instead
               </button>
@@ -443,7 +480,18 @@ export function UnlockWallet({
                       setPassword(e.target.value);
                       setError("");
                     }}
-                    className="w-full bg-slate-950/50 border border-slate-800/50 rounded-lg px-4 py-3 pr-12 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all"
+                    className="w-full bg-slate-950/50 border-2 rounded-lg px-4 py-3 pr-12 text-white focus:outline-none transition-all"
+                    style={{
+                      borderColor: `${colors.primary}40`,
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = colors.primary;
+                      e.currentTarget.style.boxShadow = `0 0 0 3px ${colors.primary}30`;
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = `${colors.primary}40`;
+                      e.currentTarget.style.boxShadow = 'none';
+                    }}
                     placeholder="Enter your password"
                     autoFocus
                     autoComplete="current-password"
@@ -491,7 +539,9 @@ export function UnlockWallet({
                 <button
                   type="button"
                   onClick={() => setUseFingerprintAuth(true)}
-                  className="text-sm text-slate-400 hover:text-purple-400 transition-colors w-full text-center flex items-center justify-center gap-2"
+                  className="text-sm text-slate-400 transition-colors w-full text-center flex items-center justify-center gap-2"
+                  onMouseEnter={(e) => e.currentTarget.style.color = colors.accent}
+                  onMouseLeave={(e) => e.currentTarget.style.color = ''}
                 >
                   <Fingerprint className="w-4 h-4" />
                   Use {biometricType} instead
@@ -504,7 +554,9 @@ export function UnlockWallet({
             <button
               type="button"
               onClick={handleForgotPassword}
-              className="text-sm text-slate-400 hover:text-purple-400 transition-colors"
+              className="text-sm text-slate-400 transition-colors"
+              onMouseEnter={(e) => e.currentTarget.style.color = colors.accent}
+              onMouseLeave={(e) => e.currentTarget.style.color = ''}
             >
               Forgot password?
             </button>
@@ -512,7 +564,9 @@ export function UnlockWallet({
             <button
               type="button"
               onClick={onSignOut}
-              className="text-sm text-slate-400 hover:text-purple-400 transition-colors"
+              className="text-sm text-slate-400 transition-colors"
+              onMouseEnter={(e) => e.currentTarget.style.color = colors.accent}
+              onMouseLeave={(e) => e.currentTarget.style.color = ''}
             >
               Import different wallet
             </button>

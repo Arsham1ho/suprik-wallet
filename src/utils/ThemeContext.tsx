@@ -2,6 +2,123 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 
 // Theme storage key
 const THEME_STORAGE_KEY = 'suprik_theme';
+const ACCENT_COLOR_STORAGE_KEY = 'suprik_accent_color';
+const LIGHT_MODE_STORAGE_KEY = 'suprik_light_mode';
+
+// Accent color options for wallet theme
+export interface AccentColorOption {
+  id: string;
+  name: string;
+  primary: string;
+  primaryDark: string;
+  secondary: string;
+  accent: string;
+  gradient: string;
+  previewClass: string;
+}
+
+export const accentColorOptions: AccentColorOption[] = [
+  {
+    id: 'purple',
+    name: 'Purple',
+    primary: '#9333ea',
+    primaryDark: '#7e22ce',
+    secondary: '#2563eb',
+    accent: '#a855f7',
+    gradient: 'from-purple-600 to-blue-600',
+    previewClass: 'bg-purple-500',
+  },
+  {
+    id: 'orange',
+    name: 'Orange',
+    primary: '#f97316',
+    primaryDark: '#ea580c',
+    secondary: '#fb923c',
+    accent: '#fdba74',
+    gradient: 'from-orange-500 to-orange-600',
+    previewClass: 'bg-orange-500',
+  },
+  {
+    id: 'blue',
+    name: 'Blue',
+    primary: '#3b82f6',
+    primaryDark: '#2563eb',
+    secondary: '#60a5fa',
+    accent: '#93c5fd',
+    gradient: 'from-blue-500 to-blue-600',
+    previewClass: 'bg-blue-500',
+  },
+  {
+    id: 'green',
+    name: 'Green',
+    primary: '#22c55e',
+    primaryDark: '#16a34a',
+    secondary: '#4ade80',
+    accent: '#86efac',
+    gradient: 'from-green-500 to-emerald-600',
+    previewClass: 'bg-green-500',
+  },
+  {
+    id: 'pink',
+    name: 'Pink',
+    primary: '#ec4899',
+    primaryDark: '#db2777',
+    secondary: '#f472b6',
+    accent: '#f9a8d4',
+    gradient: 'from-pink-500 to-pink-600',
+    previewClass: 'bg-pink-500',
+  },
+  {
+    id: 'cyan',
+    name: 'Cyan',
+    primary: '#06b6d4',
+    primaryDark: '#0891b2',
+    secondary: '#22d3ee',
+    accent: '#67e8f9',
+    gradient: 'from-cyan-500 to-cyan-600',
+    previewClass: 'bg-cyan-500',
+  },
+  {
+    id: 'red',
+    name: 'Red',
+    primary: '#ef4444',
+    primaryDark: '#dc2626',
+    secondary: '#f87171',
+    accent: '#fca5a5',
+    gradient: 'from-red-500 to-red-600',
+    previewClass: 'bg-red-500',
+  },
+  {
+    id: 'yellow',
+    name: 'Gold',
+    primary: '#eab308',
+    primaryDark: '#ca8a04',
+    secondary: '#facc15',
+    accent: '#fde047',
+    gradient: 'from-yellow-500 to-amber-600',
+    previewClass: 'bg-yellow-500',
+  },
+];
+
+// Get accent color from localStorage
+export function getStoredAccentColor(walletId?: string): string {
+  try {
+    const key = walletId ? `${ACCENT_COLOR_STORAGE_KEY}_${walletId}` : ACCENT_COLOR_STORAGE_KEY;
+    return localStorage.getItem(key) || 'purple';
+  } catch {
+    return 'purple';
+  }
+}
+
+// Save accent color to localStorage
+export function saveStoredAccentColor(accentColorId: string, walletId?: string): void {
+  try {
+    const key = walletId ? `${ACCENT_COLOR_STORAGE_KEY}_${walletId}` : ACCENT_COLOR_STORAGE_KEY;
+    localStorage.setItem(key, accentColorId);
+  } catch (e) {
+    console.warn('[Theme] Failed to save accent color:', e);
+  }
+}
 
 // Get theme from localStorage
 export function getStoredTheme(walletId?: string): string {
@@ -31,118 +148,109 @@ interface ThemeColors {
   gradient: string;
 }
 
+// Get light mode from localStorage
+export function getStoredLightMode(): boolean {
+  try {
+    return localStorage.getItem(LIGHT_MODE_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+// Save light mode to localStorage
+export function saveStoredLightMode(isLightMode: boolean): void {
+  try {
+    localStorage.setItem(LIGHT_MODE_STORAGE_KEY, isLightMode ? 'true' : 'false');
+  } catch (e) {
+    console.warn('[Theme] Failed to save light mode:', e);
+  }
+}
+
 interface ThemeContextType {
   theme: string;
   setTheme: (theme: string) => void;
   gradient: string;
   colors: ThemeColors;
+  accentColor: string;
+  setAccentColor: (accentColorId: string) => void;
+  isLightMode: boolean;
+  setLightMode: (isLight: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const themeGradients: Record<string, string> = {
-  classic: 'from-purple-600 to-blue-600',
-  midnight: 'from-blue-900 to-indigo-900',
-  sunset: 'from-orange-500 to-pink-600',
-  forest: 'from-emerald-600 to-teal-600',
-  ocean: 'from-cyan-500 to-blue-500',
-  aurora: 'from-purple-500 via-pink-500 to-blue-500',
-  fire: 'from-red-600 to-yellow-500',
-  neon: 'from-green-400 to-cyan-400',
-};
-
-const themeColors: Record<string, ThemeColors> = {
-  classic: {
-    primary: '#9333ea',      // purple-600
-    primaryDark: '#7e22ce',  // purple-700
-    secondary: '#2563eb',    // blue-600
-    accent: '#a855f7',       // purple-500
-    gradient: 'from-purple-600 to-blue-600'
-  },
-  midnight: {
-    primary: '#1e3a8a',      // blue-900
-    primaryDark: '#1e40af',  // blue-800
-    secondary: '#3730a3',    // indigo-900
-    accent: '#4f46e5',       // indigo-600
-    gradient: 'from-blue-900 to-indigo-900'
-  },
-  sunset: {
-    primary: '#f97316',      // orange-500
-    primaryDark: '#ea580c',  // orange-600
-    secondary: '#db2777',    // pink-600
-    accent: '#fb923c',       // orange-400
-    gradient: 'from-orange-500 to-pink-600'
-  },
-  forest: {
-    primary: '#059669',      // emerald-600
-    primaryDark: '#047857',  // emerald-700
-    secondary: '#0d9488',    // teal-600
-    accent: '#10b981',       // emerald-500
-    gradient: 'from-emerald-600 to-teal-600'
-  },
-  ocean: {
-    primary: '#06b6d4',      // cyan-500
-    primaryDark: '#0891b2',  // cyan-600
-    secondary: '#3b82f6',    // blue-500
-    accent: '#22d3ee',       // cyan-400
-    gradient: 'from-cyan-500 to-blue-500'
-  },
-  aurora: {
-    primary: '#a855f7',      // purple-500
-    primaryDark: '#9333ea',  // purple-600
-    secondary: '#ec4899',    // pink-500
-    accent: '#c084fc',       // purple-400
-    gradient: 'from-purple-500 via-pink-500 to-blue-500'
-  },
-  fire: {
-    primary: '#dc2626',      // red-600
-    primaryDark: '#b91c1c',  // red-700
-    secondary: '#eab308',    // yellow-500
-    accent: '#f87171',       // red-400
-    gradient: 'from-red-600 to-yellow-500'
-  },
-  neon: {
-    primary: '#4ade80',      // green-400
-    primaryDark: '#22c55e',  // green-500
-    secondary: '#22d3ee',    // cyan-400
-    accent: '#86efac',       // green-300
-    gradient: 'from-green-400 to-cyan-400'
-  }
-};
-
 export function ThemeProvider({ children, walletId }: { children: ReactNode; walletId?: string }) {
   const [theme, setThemeState] = useState('classic');
+  const [accentColor, setAccentColorState] = useState('purple');
+  const [isLightMode, setLightModeState] = useState(false);
 
   useEffect(() => {
     // Load theme from localStorage (instant, no server call)
     const savedTheme = getStoredTheme(walletId);
+    const savedAccentColor = getStoredAccentColor(walletId);
+    const savedLightMode = getStoredLightMode();
     setThemeState(savedTheme);
-    applyThemeToDocument(savedTheme);
+    setAccentColorState(savedAccentColor);
+    setLightModeState(savedLightMode);
+    applyAccentColorToDocument(savedAccentColor);
+    applyLightModeToDocument(savedLightMode);
   }, [walletId]);
 
   const setTheme = (newTheme: string) => {
     setThemeState(newTheme);
-    applyThemeToDocument(newTheme);
     // Save to localStorage (client-side persistence)
     saveStoredTheme(newTheme, walletId);
   };
 
-  const applyThemeToDocument = (themeId: string) => {
-    document.documentElement.setAttribute('data-theme', themeId);
-    
-    // Apply CSS variables
-    const colors = themeColors[themeId] || themeColors.classic;
-    document.documentElement.style.setProperty('--color-primary', colors.primary);
-    document.documentElement.style.setProperty('--color-primary-dark', colors.primaryDark);
-    document.documentElement.style.setProperty('--color-secondary', colors.secondary);
-    document.documentElement.style.setProperty('--color-accent', colors.accent);
+  const setAccentColor = (accentColorId: string) => {
+    setAccentColorState(accentColorId);
+    applyAccentColorToDocument(accentColorId);
+    // Save to localStorage (client-side persistence)
+    saveStoredAccentColor(accentColorId, walletId);
   };
 
-  const gradient = themeGradients[theme] || themeGradients.classic;
-  const colors = themeColors[theme] || themeColors.classic;
+  const setLightMode = (isLight: boolean) => {
+    setLightModeState(isLight);
+    applyLightModeToDocument(isLight);
+    // Save to localStorage (client-side persistence)
+    saveStoredLightMode(isLight);
+  };
+
+  const applyAccentColorToDocument = (accentColorId: string) => {
+    const accentOption = accentColorOptions.find(c => c.id === accentColorId) || accentColorOptions[0];
+
+    document.documentElement.setAttribute('data-accent', accentColorId);
+
+    // Apply CSS variables for accent color
+    document.documentElement.style.setProperty('--color-primary', accentOption.primary);
+    document.documentElement.style.setProperty('--color-primary-dark', accentOption.primaryDark);
+    document.documentElement.style.setProperty('--color-secondary', accentOption.secondary);
+    document.documentElement.style.setProperty('--color-accent', accentOption.accent);
+  };
+
+  const applyLightModeToDocument = (isLight: boolean) => {
+    if (isLight) {
+      document.documentElement.classList.add('light-mode');
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.classList.remove('light-mode');
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  };
+
+  // Get gradient based on accent color
+  const accentOption = accentColorOptions.find(c => c.id === accentColor) || accentColorOptions[0];
+  const gradient = accentOption.gradient;
+  const colors: ThemeColors = {
+    primary: accentOption.primary,
+    primaryDark: accentOption.primaryDark,
+    secondary: accentOption.secondary,
+    accent: accentOption.accent,
+    gradient: accentOption.gradient,
+  };
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, gradient, colors }}>
+    <ThemeContext.Provider value={{ theme, setTheme, gradient, colors, accentColor, setAccentColor, isLightMode, setLightMode }}>
       {children}
     </ThemeContext.Provider>
   );

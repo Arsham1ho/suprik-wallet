@@ -26,7 +26,7 @@ import {
   getBiometricTypeName,
   type BiometricSettings,
 } from "../../utils/biometric";
-import { SecureStorage, WalletStorage } from "../../utils/wallet";
+import { SecureStorage, WalletStorage, decryptWithPassword } from "../../utils/wallet";
 import { useWallet } from "../../utils/WalletContext";
 import { exportPrivateKey } from "../../utils/web3/walletManager";
 import { AccountManager } from "../../utils/accountManager";
@@ -80,10 +80,25 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
   const [loadingPrivateKey, setLoadingPrivateKey] = useState(false);
   const [copiedPrivateKey, setCopiedPrivateKey] = useState(false);
 
+  // Track active account address to detect account switches (reactive from WalletContext)
+  const currentSolanaAddress = wallet.addresses?.solana;
+
   useEffect(() => {
+    // Reset all sensitive states when account changes
+    console.log("[SecuritySettings] Account changed, resetting states. Current address:", currentSolanaAddress);
+    setPhraseConfirmed(false);
+    setPhraseVisible(false);
+    setPrivateKey(null);
+    setPrivateKeyConfirmed(false);
+    setPrivateKeyVisible(false);
+    setCopiedPrivateKey(false);
+    setCopiedWord(null);
+    // Clear the seed phrase so the user has to re-authenticate for each account
+    setWalletInfo((prev: WalletInfo | null) => prev ? { ...prev, seedPhrase: null } : null);
+
     loadData();
     checkBiometric();
-  }, [walletId]);
+  }, [walletId, currentSolanaAddress]);
 
   const checkBiometric = async () => {
     const available = await isBiometricAvailable();
@@ -120,7 +135,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
           biometric: settings.biometricEnabled ? {
             enabled: true,
             autoLockMinutes: settings.autoLockMinutes || 5,
-            requireForTransactions: false,
+            requireForTransactions: settings.requireBiometricForTransactions || false,
           } : undefined,
         });
       } catch (settingsError) {
@@ -143,10 +158,11 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
     try {
       const updatedSettings = { ...userSettings, ...newSettings };
 
-      // Save to localStorage
+      // Save to localStorage - include requireBiometricForTransactions
       saveUserSettings({
         biometricEnabled: newSettings.biometric?.enabled,
         autoLockMinutes: newSettings.biometric?.autoLockMinutes,
+        requireBiometricForTransactions: newSettings.biometric?.requireForTransactions ?? false,
       }, walletId);
 
       setUserSettings(updatedSettings as UserSettings);
@@ -440,63 +456,86 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
     setLoadingPhrase(true);
     try {
       console.log(
-        "[SecuritySettings] 🔍 Loading recovery phrase from WalletContext..."
+        "[SecuritySettings] 🔍 Loading recovery phrase for account..."
       );
 
-      // Check if wallet is already unlocked (from WalletContext)
-      if (wallet.isUnlocked && wallet.mnemonic) {
-        console.log(
-          "[SecuritySettings] ✅ Wallet already unlocked, using mnemonic from context"
-        );
-        setWalletInfo({
-          ...walletInfo,
-          seedPhrase: wallet.mnemonic,
-        });
-        setPhraseConfirmed(true);
-        setLoadingPhrase(false);
-        return;
-      }
+      // Get the current active account to check if it has its own mnemonic
+      const activeAccount = AccountManager.getActiveAccount();
+      console.log("[SecuritySettings] Active account:", activeAccount?.id, activeAccount?.name);
+      console.log("[SecuritySettings] Account flags - isImportedSeedPhrase:", activeAccount?.isImportedSeedPhrase, "hasEncryptedMnemonic:", !!activeAccount?.encryptedMnemonic);
 
-      // If not unlocked, try OAuth password first
+      // Get the password first
+      let password: string | null = null;
+
+      // Try OAuth password first
       const authMethod = localStorage.getItem(`${walletId}_auth_method`);
       if (authMethod === "social") {
-        console.log(
-          "[SecuritySettings] 🔑 OAuth wallet detected, trying auto-unlock..."
-        );
-        const oauthPassword = await WalletStorage.getOAuthPassword();
+        console.log("[SecuritySettings] 🔑 OAuth wallet detected, trying auto-unlock...");
+        password = await WalletStorage.getOAuthPassword();
+      }
 
-        if (oauthPassword) {
-          const mnemonic = await SecureStorage.retrieveMnemonic(oauthPassword);
-          if (mnemonic) {
-            console.log(
-              "[SecuritySettings] ✅ Mnemonic retrieved with OAuth password"
-            );
-            setWalletInfo({
-              ...walletInfo,
-              seedPhrase: mnemonic,
-            });
-            setPhraseConfirmed(true);
-            setLoadingPhrase(false);
-            return;
-          }
+      // If no OAuth password, check if wallet is unlocked
+      if (!password && wallet.isUnlocked) {
+        password = wallet.getPassword();
+      }
+
+      // If still no password, prompt for it
+      if (!password) {
+        password = prompt("Enter your wallet password to view recovery phrase:");
+        if (!password) {
+          toast.error("Password required to view recovery phrase");
+          setLoadingPhrase(false);
+          return;
         }
       }
 
-      // If OAuth failed or not OAuth wallet, prompt for password
-      const password = prompt(
-        "Enter your wallet password to view recovery phrase:"
-      );
+      let mnemonic: string | null = null;
 
-      if (!password) {
-        toast.error("Password required to view recovery phrase");
-        setLoadingPhrase(false);
-        return;
+      // Check if this is an imported account with its own encrypted mnemonic
+      if (activeAccount?.encryptedMnemonic) {
+        console.log("[SecuritySettings] 📦 Account has its own encrypted mnemonic, decrypting...");
+        try {
+          // Use the decryptWithPassword function which has the correct PBKDF2 iterations (600000)
+          mnemonic = await decryptWithPassword(activeAccount.encryptedMnemonic, password);
+          if (mnemonic) {
+            console.log("[SecuritySettings] ✅ Account-specific mnemonic decrypted successfully");
+          } else {
+            throw new Error("Decryption returned null");
+          }
+        } catch (decryptError) {
+          console.error("[SecuritySettings] ❌ Failed to decrypt account mnemonic:", decryptError);
+          // Don't fall back to global mnemonic for imported accounts - show error instead
+          toast.error("Failed to decrypt this account's recovery phrase. The password may be different.");
+          setLoadingPhrase(false);
+          return;
+        }
       }
 
-      const mnemonic = await SecureStorage.retrieveMnemonic(password);
+      // If no account-specific mnemonic (derived account), use the global wallet mnemonic
+      if (!mnemonic) {
+        // Only use global mnemonic if this is NOT an imported account
+        if (activeAccount?.isImportedSeedPhrase) {
+          console.log("[SecuritySettings] ⚠️ Imported account without encrypted mnemonic - cannot show recovery phrase");
+          toast.error("This imported account's recovery phrase was not stored. Please re-import the account.");
+          setLoadingPhrase(false);
+          return;
+        }
+
+        console.log("[SecuritySettings] 📦 Using global wallet mnemonic (derived account)...");
+
+        // Try from context first
+        if (wallet.isUnlocked && wallet.mnemonic) {
+          mnemonic = wallet.mnemonic;
+          console.log("[SecuritySettings] ✅ Using mnemonic from WalletContext");
+        } else {
+          // Retrieve from storage
+          mnemonic = await SecureStorage.retrieveMnemonic(password);
+          console.log("[SecuritySettings] ✅ Retrieved mnemonic from SecureStorage");
+        }
+      }
 
       if (!mnemonic) {
-        toast.error("Incorrect password. Please try again.");
+        toast.error("Incorrect password or no recovery phrase available.");
         setLoadingPhrase(false);
         return;
       }
@@ -625,7 +664,15 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
     );
   }
 
-  const seedWords = walletInfo?.seedPhrase?.split(" ") || [];
+  // Check if this is a private key import (not a seed phrase)
+  const activeAccount = AccountManager.getActiveAccount();
+  const isPrivateKeyImport = activeAccount?.isPrivateKeyImport || false;
+  // Only consider it a truly imported seed phrase if it has its own encrypted mnemonic
+  // Otherwise, it's a derived account that shares the main wallet's recovery phrase
+  const isImportedWithOwnPhrase = activeAccount?.isImportedSeedPhrase && activeAccount?.encryptedMnemonic;
+  const seedWords = isPrivateKeyImport ? [] : (walletInfo?.seedPhrase?.split(" ") || []);
+
+  console.log("[SecuritySettings] Active account:", activeAccount?.name, "isImportedSeedPhrase:", activeAccount?.isImportedSeedPhrase, "hasEncryptedMnemonic:", !!activeAccount?.encryptedMnemonic);
 
   return (
     <div className="min-h-screen bg-black text-white pb-20">
@@ -684,15 +731,32 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
             <div className="flex items-center gap-2 mb-3">
               <Shield className="w-5 h-5 text-orange-400" />
               <h4 className="text-orange-400 font-medium">
-                Secret Recovery Phrase
+                {isPrivateKeyImport ? 'Private Key Import' : 'Secret Recovery Phrase'}
               </h4>
             </div>
             <p className="text-slate-300 text-sm mb-4">
-              Your 12-word recovery phrase is the master key to your wallet.
-              Never share it with anyone.
+              {isPrivateKeyImport
+                ? 'This account was imported using a private key. No recovery phrase is available. Use the Private Key section below to export your key.'
+                : isImportedWithOwnPhrase
+                  ? 'This account was imported with its own recovery phrase, different from your main wallet.'
+                  : activeAccount?.isImportedSeedPhrase && !activeAccount?.encryptedMnemonic
+                    ? 'This account was imported but the recovery phrase was not stored. Please delete and re-import this account to access its recovery phrase.'
+                    : 'Your 12-word recovery phrase is the master key to your wallet. Never share it with anyone.'}
             </p>
 
-            {!phraseConfirmed ? (
+            {isPrivateKeyImport ? (
+              <div className="bg-blue-950/20 border border-blue-900/30 rounded-lg p-3">
+                <p className="text-blue-200 text-xs">
+                  💡 Private key imports don't have a recovery phrase. Your private key is shown in the "Private Key" section below.
+                </p>
+              </div>
+            ) : activeAccount?.isImportedSeedPhrase && !activeAccount?.encryptedMnemonic ? (
+              <div className="bg-yellow-950/20 border border-yellow-900/30 rounded-lg p-3">
+                <p className="text-yellow-200 text-xs">
+                  ⚠️ This imported account's recovery phrase was not saved during import. To view it, please delete this account and re-import it using the seed phrase.
+                </p>
+              </div>
+            ) : !phraseConfirmed ? (
               <div className="space-y-3">
                 <div className="bg-slate-900/50 rounded-lg p-3 text-sm text-yellow-300 border border-yellow-900/30">
                   ⚠️ Make sure you're in a private location before revealing

@@ -99,7 +99,7 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
     strong: { bg: 'bg-green-500', text: 'text-green-400', label: 'Strong' },
   };
 
-  const handleContinue = async () => {
+  const handleContinue = async (useBiometric?: boolean) => {
     if (step === 'intro') {
       setStep('phrase');
     } else if (step === 'phrase' && saved) {
@@ -119,14 +119,15 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
       if (biometricAvailable) {
         setStep('biometric');
       } else {
-        await createWallet();
+        await createWallet(false);
       }
     } else if (step === 'biometric') {
-      await createWallet();
+      // Use the passed value to avoid React state timing issues
+      await createWallet(useBiometric ?? enableBiometric);
     }
   };
 
-  const createWallet = async () => {
+  const createWallet = async (shouldEnableBiometric: boolean = false) => {
     setLoading(true);
     try {
       // Derive wallet ID from mnemonic
@@ -174,7 +175,7 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
       }
 
       // Register biometric if user opted in
-      if (enableBiometric && biometricAvailable) {
+      if (shouldEnableBiometric && biometricAvailable) {
         const biometricResult = await registerBiometric(walletId);
 
         if (biometricResult.success) {
@@ -578,10 +579,7 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
 
               <div className="space-y-3 pt-2">
                 <GradientButton
-                  onClick={() => {
-                    setEnableBiometric(true);
-                    handleContinue();
-                  }}
+                  onClick={() => handleContinue(true)}
                   disabled={loading}
                   className="w-full h-12"
                 >
@@ -590,10 +588,7 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
 
                 <Button
                   variant="ghost"
-                  onClick={() => {
-                    setEnableBiometric(false);
-                    handleContinue();
-                  }}
+                  onClick={() => handleContinue(false)}
                   disabled={loading}
                   className="w-full h-12 text-slate-400 hover:text-white hover:bg-slate-900/50"
                 >

@@ -15,9 +15,20 @@ import { HDKey } from 'micro-ed25519-hdkey';
  * to ensure the address shown in Receive page matches the address used for transactions.
  */
 export async function deriveSolanaKeypair(mnemonic: string, accountIndex: number = 0) {
+  console.log('[Transaction] 🔑 deriveSolanaKeypair called, mnemonic length:', mnemonic?.length, 'accountIndex:', accountIndex);
+
   // Validate mnemonic before attempting derivation
   if (!mnemonic || typeof mnemonic !== 'string' || mnemonic.trim().length === 0) {
-    throw new Error('Wallet is locked or session expired. Please unlock your wallet and try again.');
+    console.error('[Transaction] ❌ deriveSolanaKeypair called with invalid mnemonic:', typeof mnemonic, mnemonic ? 'has value' : 'empty/null');
+    throw new Error('Wallet session not found. Please lock and unlock your wallet to continue.');
+  }
+
+  // Check if mnemonic looks valid (should be 12 or 24 words)
+  const wordCount = mnemonic.trim().split(/\s+/).length;
+  console.log('[Transaction] 📝 Mnemonic word count:', wordCount);
+  if (wordCount !== 12 && wordCount !== 24) {
+    console.error('[Transaction] ❌ Invalid mnemonic word count:', wordCount, 'Expected 12 or 24');
+    throw new Error('Invalid wallet data. Please lock and unlock your wallet to continue.');
   }
 
   try {
@@ -45,7 +56,8 @@ export async function deriveSolanaKeypair(mnemonic: string, accountIndex: number
   } catch (error: any) {
     // Provide a user-friendly error message for mnemonic issues
     if (error.message?.includes('mnemonic') || error.message?.includes('Invalid')) {
-      throw new Error('Wallet session expired. Please lock and unlock your wallet to continue.');
+      console.error('[Transaction] ❌ Mnemonic validation failed:', error.message);
+      throw new Error('Invalid wallet data. Please lock and unlock your wallet to continue.');
     }
     throw error;
   }
@@ -697,7 +709,7 @@ export async function sendERC20TokenTransaction(params: {
 
     // Wait for confirmation
     await tx.wait();
-    
+
     return {
       success: true,
       hash: tx.hash,
@@ -706,6 +718,271 @@ export async function sendERC20TokenTransaction(params: {
     return {
       success: false,
       hash: '',
+      error: error.message || 'Transaction failed'
+    };
+  }
+}
+
+/**
+ * Send SOL transaction using a private key directly (for private key imports)
+ */
+export async function sendSolanaTransactionWithPrivateKey(params: {
+  privateKeyBase58: string;
+  toAddress: string;
+  amount: number; // in SOL
+  isTestnet?: boolean;
+}): Promise<{ signature: string; success: boolean; error?: string }> {
+  try {
+    const { privateKeyBase58, toAddress, amount, isTestnet = false } = params;
+
+    console.log('[Transaction] 🔑 Sending SOL with private key, amount:', amount, 'isTestnet:', isTestnet);
+
+    // Import Solana web3.js dynamically
+    const { Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL, Keypair } = await import('@solana/web3.js');
+    const bs58 = await import('bs58');
+
+    // Decode the private key from base58
+    const privateKeyBytes = bs58.default.decode(privateKeyBase58);
+    const keypair = Keypair.fromSecretKey(privateKeyBytes);
+    const fromPubkey = keypair.publicKey;
+
+    console.log('[Transaction] 📍 From address:', fromPubkey.toBase58());
+
+    // Connect to Solana
+    const connection = await getSolanaConnection(isTestnet);
+
+    // Check balance
+    const balance = await connection.getBalance(fromPubkey, 'confirmed');
+    const lamports = Math.round(amount * LAMPORTS_PER_SOL);
+
+    // Get fee estimate
+    const { blockhash } = await connection.getLatestBlockhash('confirmed');
+    const testTransaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey,
+        toPubkey: new PublicKey(toAddress),
+        lamports,
+      })
+    );
+    testTransaction.recentBlockhash = blockhash;
+    testTransaction.feePayer = fromPubkey;
+
+    const feeEstimate = await connection.getFeeForMessage(
+      testTransaction.compileMessage(),
+      'confirmed'
+    );
+    const estimatedFee = feeEstimate.value || 5000;
+
+    // Check if we have enough balance
+    const totalRequired = lamports + estimatedFee;
+    if (balance < totalRequired) {
+      return {
+        success: false,
+        signature: '',
+        error: `Insufficient balance. Need ${(totalRequired / LAMPORTS_PER_SOL).toFixed(6)} SOL but have ${(balance / LAMPORTS_PER_SOL).toFixed(6)} SOL`
+      };
+    }
+
+    // Create transaction
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey,
+        toPubkey: new PublicKey(toAddress),
+        lamports,
+      })
+    );
+
+    // Get recent blockhash
+    const { blockhash: finalBlockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+    transaction.recentBlockhash = finalBlockhash;
+    transaction.feePayer = fromPubkey;
+
+    // Sign transaction
+    transaction.sign(keypair);
+
+    // Send transaction
+    const signature = await connection.sendRawTransaction(transaction.serialize());
+
+    // Wait for confirmation
+    await connection.confirmTransaction({
+      signature,
+      blockhash: finalBlockhash,
+      lastValidBlockHeight,
+    }, 'confirmed');
+
+    console.log('[Transaction] ✅ SOL transaction successful:', signature);
+
+    return {
+      success: true,
+      signature,
+    };
+  } catch (error: any) {
+    console.error('[Transaction] ❌ SOL transaction failed:', error);
+    return {
+      success: false,
+      signature: '',
+      error: error.message || 'Transaction failed'
+    };
+  }
+}
+
+/**
+ * Send SPL token transaction using a private key directly (for private key imports)
+ */
+export async function sendSPLTokenTransactionWithPrivateKey(params: {
+  privateKeyBase58: string;
+  toAddress: string;
+  amount: number;
+  tokenMint: string;
+  decimals: number;
+  isTestnet?: boolean;
+}): Promise<{ signature: string; success: boolean; error?: string }> {
+  try {
+    const { privateKeyBase58, toAddress, amount, tokenMint, decimals, isTestnet = false } = params;
+
+    console.log('[Transaction] 🔑 Sending SPL token with private key, amount:', amount, 'mint:', tokenMint);
+
+    // TESTNET MODE: Simulate transaction
+    if (isTestnet) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const randomBytes = crypto.getRandomValues(new Uint8Array(8));
+      const randomHex = Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('');
+      const mockSignature = `testnet_spl_pk_${Date.now()}_${randomHex}`;
+      return { success: true, signature: mockSignature };
+    }
+
+    const { Transaction, PublicKey, Keypair, LAMPORTS_PER_SOL } = await import('@solana/web3.js');
+    const bs58 = await import('bs58');
+    const {
+      getAssociatedTokenAddress,
+      createTransferInstruction,
+      createTransferCheckedInstruction,
+      createAssociatedTokenAccountInstruction,
+      TOKEN_PROGRAM_ID,
+      TOKEN_2022_PROGRAM_ID,
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+      getMint,
+      getAccount,
+    } = await import('@solana/spl-token');
+
+    // Decode the private key from base58
+    const privateKeyBytes = bs58.default.decode(privateKeyBase58);
+    const keypair = Keypair.fromSecretKey(privateKeyBytes);
+    const fromPubkey = keypair.publicKey;
+
+    console.log('[Transaction] 📍 From address:', fromPubkey.toBase58());
+
+    // Connect to Solana mainnet
+    const connection = await getSolanaConnection(false);
+
+    // Get token accounts
+    const mintPubkey = new PublicKey(tokenMint);
+    const toPubkey = new PublicKey(toAddress);
+
+    // Detect the correct token program
+    const mintInfo = await connection.getAccountInfo(mintPubkey);
+    if (!mintInfo) {
+      throw new Error('Token mint account not found');
+    }
+
+    const tokenProgramId = mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID)
+      ? TOKEN_2022_PROGRAM_ID
+      : TOKEN_PROGRAM_ID;
+
+    // Get actual decimals from mint
+    let actualDecimals = decimals;
+    try {
+      const mintData = await getMint(connection, mintPubkey, 'confirmed', tokenProgramId);
+      actualDecimals = mintData.decimals;
+    } catch {
+      console.warn('[Transaction] Could not fetch mint decimals, using provided value');
+    }
+
+    const fromTokenAccount = await getAssociatedTokenAddress(
+      mintPubkey, fromPubkey, false, tokenProgramId, ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+
+    const toTokenAccount = await getAssociatedTokenAddress(
+      mintPubkey, toPubkey, false, tokenProgramId, ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+
+    // Check if recipient token account exists
+    const toTokenAccountInfo = await connection.getAccountInfo(toTokenAccount);
+    const needsTokenAccount = !toTokenAccountInfo;
+
+    // Check SOL balance if we need to create token account
+    if (needsTokenAccount) {
+      const solBalance = await connection.getBalance(fromPubkey);
+      const rentExemptBalance = await connection.getMinimumBalanceForRentExemption(165);
+      const minRequired = rentExemptBalance + 10000;
+
+      if (solBalance < minRequired) {
+        return {
+          success: false,
+          signature: '',
+          error: `Insufficient SOL to create recipient token account. Need ${(minRequired / LAMPORTS_PER_SOL).toFixed(6)} SOL`
+        };
+      }
+    }
+
+    // Calculate transfer amount
+    const transferAmount = BigInt(Math.round(amount * Math.pow(10, actualDecimals)));
+
+    // Check source token account balance
+    const fromTokenAccountInfo = await connection.getAccountInfo(fromTokenAccount);
+    if (!fromTokenAccountInfo) {
+      throw new Error('No tokens found in your wallet for this token');
+    }
+
+    const tokenAccountData = await getAccount(connection, fromTokenAccount, 'confirmed', tokenProgramId);
+    if (tokenAccountData.amount < transferAmount) {
+      throw new Error(`Insufficient token balance. You have ${Number(tokenAccountData.amount) / Math.pow(10, actualDecimals)} but tried to send ${amount}`);
+    }
+
+    // Create transaction
+    const transaction = new Transaction();
+
+    if (needsTokenAccount) {
+      transaction.add(
+        createAssociatedTokenAccountInstruction(
+          fromPubkey, toTokenAccount, toPubkey, mintPubkey, tokenProgramId, ASSOCIATED_TOKEN_PROGRAM_ID
+        )
+      );
+    }
+
+    // Add transfer instruction
+    const isToken2022 = tokenProgramId.equals(TOKEN_2022_PROGRAM_ID);
+    if (isToken2022) {
+      transaction.add(createTransferCheckedInstruction(
+        fromTokenAccount, mintPubkey, toTokenAccount, fromPubkey, transferAmount, actualDecimals, [], tokenProgramId
+      ));
+    } else {
+      transaction.add(createTransferInstruction(
+        fromTokenAccount, toTokenAccount, fromPubkey, transferAmount, [], tokenProgramId
+      ));
+    }
+
+    // Get recent blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = fromPubkey;
+
+    // Sign and send
+    transaction.sign(keypair);
+    const signature = await connection.sendRawTransaction(transaction.serialize());
+
+    await connection.confirmTransaction({
+      signature, blockhash, lastValidBlockHeight,
+    }, 'confirmed');
+
+    console.log('[Transaction] ✅ SPL token transaction successful:', signature);
+
+    return { success: true, signature };
+  } catch (error: any) {
+    console.error('[Transaction] ❌ SPL token transaction failed:', error);
+    return {
+      success: false,
+      signature: '',
       error: error.message || 'Transaction failed'
     };
   }

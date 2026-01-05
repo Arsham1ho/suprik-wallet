@@ -27,7 +27,7 @@ export function GradientButton({
   const variantClasses = {
     default: `bg-gradient-to-r ${gradient} hover:opacity-90`,
     solid: `bg-gradient-to-r ${gradient}`,
-    outline: `border-2 border-purple-500 bg-transparent hover:bg-gradient-to-r hover:${gradient}`,
+    outline: `border-2 border-theme-accent bg-transparent hover:bg-gradient-to-r hover:${gradient}`,
   };
 
   return (

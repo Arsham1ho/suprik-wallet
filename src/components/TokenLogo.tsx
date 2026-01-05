@@ -31,7 +31,7 @@ const failedLogos = new Set<string>(); // Track logos that failed to load
 // Token logo mapping - Direct CDN URLs for major tokens
 const TOKEN_LOGO_MAP: Record<string, string> = {
   // Major coins
-  'SOL': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
+  'SOL': 'https://assets.coingecko.com/coins/images/4128/large/solana.png',
   'USDC': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png',
   'USDT': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png',
   'ETH': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png',
@@ -98,6 +98,9 @@ const TOKEN_LOGO_MAP: Record<string, string> = {
   'PAI': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
   'PARAB': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
   'PARAI': 'https://cdn.prod.website-files.com/687ec91a26cd45a89c4d995b/687eca46ea37b541b558369a_PAI_LOGI.png',
+
+  // Suprana
+  'SUPRA': 'https://assets.coingecko.com/coins/images/36611/large/suprana.jpg',
 };
 
 // Generate a consistent color based on symbol for fallback

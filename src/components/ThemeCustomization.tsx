@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Check, Image as ImageIcon, X } from 'lucide-react';
+import { Check, Image as ImageIcon, X, Palette, Sun, Moon } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { useLanguage } from '../utils/i18n/LanguageContext';
-import { useTheme } from '../utils/ThemeContext';
+import { useTheme, accentColorOptions } from '../utils/ThemeContext';
 import chartGrowthImg from 'figma:asset/cf0c640acfd7594fc19f2f68c33b585fb257787d.png';
 import circuitBoardImg from 'figma:asset/33819ceff9748d2e7acb552e77a691621fc959ae.png';
 import galaxyImg from 'figma:asset/5b4b9e5bc3dce63bd529dad0b6d15398841deffb.png';
@@ -19,69 +19,11 @@ interface ThemeCustomizationProps {
   onThemeChange?: (theme: string) => void;
 }
 
-interface Theme {
-  id: string;
-  name: string;
-  gradient: string;
-  preview: string;
-}
-
 interface BalanceBackgroundImage {
   id: string;
   name: string;
   url: string;
 }
-
-const themes: Theme[] = [
-  {
-    id: 'classic',
-    name: 'Classic Purple',
-    gradient: 'from-purple-600 to-blue-600',
-    preview: 'bg-gradient-to-r from-purple-600 to-blue-600',
-  },
-  {
-    id: 'midnight',
-    name: 'Midnight Blue',
-    gradient: 'from-blue-900 to-indigo-900',
-    preview: 'bg-gradient-to-r from-blue-900 to-indigo-900',
-  },
-  {
-    id: 'sunset',
-    name: 'Sunset Orange',
-    gradient: 'from-orange-500 to-pink-600',
-    preview: 'bg-gradient-to-r from-orange-500 to-pink-600',
-  },
-  {
-    id: 'forest',
-    name: 'Forest Green',
-    gradient: 'from-emerald-600 to-teal-600',
-    preview: 'bg-gradient-to-r from-emerald-600 to-teal-600',
-  },
-  {
-    id: 'ocean',
-    name: 'Ocean Blue',
-    gradient: 'from-cyan-500 to-blue-500',
-    preview: 'bg-gradient-to-r from-cyan-500 to-blue-500',
-  },
-  {
-    id: 'aurora',
-    name: 'Aurora',
-    gradient: 'from-purple-500 via-pink-500 to-blue-500',
-    preview: 'bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500',
-  },
-  {
-    id: 'fire',
-    name: 'Fire',
-    gradient: 'from-red-600 to-yellow-500',
-    preview: 'bg-gradient-to-r from-red-600 to-yellow-500',
-  },
-  {
-    id: 'neon',
-    name: 'Neon',
-    gradient: 'from-green-400 to-cyan-400',
-    preview: 'bg-gradient-to-r from-green-400 to-cyan-400',
-  },
-];
 
 const balanceBackgrounds: BalanceBackgroundImage[] = [
   {
@@ -201,39 +143,19 @@ const balanceBackgrounds: BalanceBackgroundImage[] = [
   }
 ];
 
-// Theme to background mapping - each theme has a default background
-const themeBackgroundMapping: { [key: string]: string } = {
-  'classic': 'cosmic-atom',      // Classic Purple → Cosmic Atom
-  'midnight': 'galaxy',          // Midnight Blue → Galaxy
-  'sunset': 'chart-growth',      // Sunset Orange → Chart Growth
-  'forest': 'circuit-board',     // Forest Green → Circuit Board
-  'ocean': 'tech-atom',          // Ocean Blue → Tech Atom
-  'aurora': 'atom',              // Aurora → Atom
-  'fire': 'bitcoin-stack',       // Fire → Bitcoin Stack
-  'neon': 'nft-world'            // Neon → NFT World
-};
-
 export function ThemeCustomization({ onThemeChange }: ThemeCustomizationProps) {
-  const { t } = useLanguage();
-  const { setTheme } = useTheme();
+  useLanguage(); // Keep hook for potential future translations
+  const { accentColor, setAccentColor, isLightMode, setLightMode } = useTheme();
   const [selectedBackground, setSelectedBackground] = useState<string>(() => {
     return localStorage.getItem('balanceBackground') || 'circuit-board';
   });
 
-  // Theme selection is now client-side only (saved via ThemeContext to localStorage)
-  const handleThemeSelect = (themeId: string) => {
-    // Update theme in context (saves to localStorage automatically)
-    setTheme(themeId);
-
-    // Auto-update balance background based on theme
-    const newBackground = themeBackgroundMapping[themeId] || 'atom';
-    setSelectedBackground(newBackground);
-    localStorage.setItem('balanceBackground', newBackground);
-
-    toast.success(t.messages.success.settingsUpdated);
+  const handleAccentColorSelect = (colorId: string) => {
+    setAccentColor(colorId);
+    toast.success('Wallet theme updated!');
 
     if (onThemeChange) {
-      onThemeChange(themeId);
+      onThemeChange(colorId);
     }
   };
 
@@ -241,6 +163,11 @@ export function ThemeCustomization({ onThemeChange }: ThemeCustomizationProps) {
     setSelectedBackground(backgroundId);
     localStorage.setItem('balanceBackground', backgroundId);
     toast.success('Balance background updated!');
+  };
+
+  const handleLightModeToggle = () => {
+    setLightMode(!isLightMode);
+    toast.success(isLightMode ? 'Dark mode enabled!' : 'Light mode enabled!');
   };
 
   return (
@@ -317,7 +244,193 @@ export function ThemeCustomization({ onThemeChange }: ThemeCustomizationProps) {
         </div>
       </div>
 
-      {/* Theme Selection - REMOVED */}
+      {/* Accent Color Selection */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 px-2">
+          <Palette className="w-4 h-4 text-slate-400" />
+          <p className="text-slate-400 text-sm">Wallet Theme Color</p>
+        </div>
+
+        {/* Color swatches in a horizontal scrollable row */}
+        <div className="flex gap-3 overflow-x-auto pb-2 px-1 scrollbar-hide">
+          {accentColorOptions.map((color) => {
+            const isSelected = accentColor === color.id;
+            return (
+              <motion.button
+                key={color.id}
+                onClick={() => handleAccentColorSelect(color.id)}
+                className="flex flex-col items-center gap-2 flex-shrink-0"
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                {/* Color circle with ring indicator */}
+                <div
+                  className={`relative w-12 h-12 rounded-full transition-all duration-300 ${
+                    isSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-black' : ''
+                  }`}
+                  style={{
+                    background: `linear-gradient(135deg, ${color.primary}, ${color.primaryDark})`,
+                    boxShadow: isSelected
+                      ? `0 0 24px ${color.primary}80, 0 4px 12px ${color.primary}40`
+                      : `0 2px 8px ${color.primary}30`,
+                  }}
+                >
+                  {/* Inner shine effect */}
+                  <div
+                    className="absolute inset-0 rounded-full opacity-60"
+                    style={{
+                      background: `radial-gradient(circle at 30% 30%, ${color.accent}80, transparent 60%)`,
+                    }}
+                  />
+
+                  {/* Checkmark for selected */}
+                  {isSelected && (
+                    <motion.div
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="absolute inset-0 flex items-center justify-center"
+                    >
+                      <div className="w-6 h-6 bg-white/90 rounded-full flex items-center justify-center shadow-lg">
+                        <Check className="w-4 h-4 text-black" />
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+
+                {/* Color name */}
+                <span
+                  className={`text-xs font-medium transition-colors ${
+                    isSelected ? 'text-white' : 'text-slate-400'
+                  }`}
+                >
+                  {color.name}
+                </span>
+              </motion.button>
+            );
+          })}
+        </div>
+
+        {/* Preview card showing the selected color in action */}
+        <motion.div
+          layout
+          className="rounded-xl p-4 border border-slate-800/50"
+          style={{
+            background: `linear-gradient(135deg, ${
+              accentColorOptions.find(c => c.id === accentColor)?.primary || '#9333ea'
+            }15, transparent)`,
+          }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{
+                  background: `linear-gradient(135deg, ${
+                    accentColorOptions.find(c => c.id === accentColor)?.primary || '#9333ea'
+                  }, ${
+                    accentColorOptions.find(c => c.id === accentColor)?.primaryDark || '#7e22ce'
+                  })`,
+                }}
+              >
+                <Palette className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-white text-sm font-medium">Theme Preview</p>
+                <p className="text-slate-400 text-xs">
+                  {accentColorOptions.find(c => c.id === accentColor)?.name || 'Purple'} accent
+                </p>
+              </div>
+            </div>
+            <motion.div
+              className="px-4 py-2 rounded-lg text-white text-sm font-medium"
+              style={{
+                background: `linear-gradient(135deg, ${
+                  accentColorOptions.find(c => c.id === accentColor)?.primary || '#9333ea'
+                }, ${
+                  accentColorOptions.find(c => c.id === accentColor)?.primaryDark || '#7e22ce'
+                })`,
+              }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              Button
+            </motion.div>
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Light/Dark Mode Toggle */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 px-2">
+          {isLightMode ? <Sun className="w-4 h-4 text-slate-400" /> : <Moon className="w-4 h-4 text-slate-400" />}
+          <p className="text-slate-400 text-sm">Display Mode</p>
+        </div>
+
+        <motion.button
+          onClick={handleLightModeToggle}
+          className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
+            isLightMode
+              ? 'bg-amber-50 border-amber-300'
+              : 'bg-slate-900/80 border-slate-700 hover:border-slate-600'
+          }`}
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                isLightMode
+                  ? 'bg-amber-400'
+                  : 'bg-slate-800'
+              }`}
+            >
+              {isLightMode ? (
+                <Sun className="w-5 h-5 text-white" />
+              ) : (
+                <Moon className="w-5 h-5 text-slate-300" />
+              )}
+            </div>
+            <div className="text-left">
+              <p className={`font-medium ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                {isLightMode ? 'Light Mode' : 'Dark Mode'}
+              </p>
+              <p className={`text-xs ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
+                {isLightMode ? 'Bright and clear interface' : 'Easy on the eyes'}
+              </p>
+            </div>
+          </div>
+
+          {/* Toggle Switch */}
+          <div
+            className={`relative w-14 h-8 rounded-full transition-colors ${
+              isLightMode ? 'bg-amber-400' : 'bg-slate-700'
+            }`}
+          >
+            <motion.div
+              className="absolute top-1 w-6 h-6 bg-white rounded-full shadow-md flex items-center justify-center"
+              animate={{ left: isLightMode ? '28px' : '4px' }}
+              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+            >
+              {isLightMode ? (
+                <Sun className="w-3 h-3 text-amber-500" />
+              ) : (
+                <Moon className="w-3 h-3 text-slate-500" />
+              )}
+            </motion.div>
+          </div>
+        </motion.button>
+
+        {/* Info */}
+        <div className={`border rounded-xl p-3 ${
+          isLightMode
+            ? 'bg-amber-100/50 border-amber-200'
+            : 'bg-blue-500/10 border-blue-500/20'
+        }`}>
+          <p className={`text-xs ${isLightMode ? 'text-amber-800' : 'text-blue-200'}`}>
+            {isLightMode ? '☀️' : '🌙'} {isLightMode ? 'Light mode is currently active. Some pages may not fully support light mode yet.' : 'Dark mode reduces eye strain in low-light conditions.'}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

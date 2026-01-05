@@ -256,6 +256,20 @@ export default function App() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [walletId, biometricSettings]);
 
+  // Listen for wallet session lost event (when in-memory session is cleared)
+  useEffect(() => {
+    const handleSessionLost = () => {
+      console.log('[App] 🔒 Wallet session lost event received - showing unlock screen');
+      toast.error('Session expired. Please unlock your wallet.');
+      setNeedsUnlock(true);
+      setIsAuthenticated(false);
+      setCurrentPage('unlock');
+    };
+
+    window.addEventListener('walletSessionLost', handleSessionLost);
+    return () => window.removeEventListener('walletSessionLost', handleSessionLost);
+  }, []);
+
   const checkBiometricLock = async (wId: string) => {
     try {
       setCheckingLock(true);
@@ -511,7 +525,21 @@ export default function App() {
                     {currentPage === 'app' && isAuthenticated && walletId && (
                       <>
                         {checkingLock ? (
-                          <div className="min-h-screen bg-black flex items-center justify-center">
+                          <div
+                            className="bg-black z-50"
+                            style={{
+                              position: 'fixed',
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              width: '100vw',
+                              height: '100dvh',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-theme-accent"></div>
                           </div>
                         ) : isLocked ? (

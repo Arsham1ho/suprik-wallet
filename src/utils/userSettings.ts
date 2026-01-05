@@ -10,6 +10,7 @@ export interface UserSettings {
   currency: string;
   theme: string;
   biometricEnabled: boolean;
+  requireBiometricForTransactions: boolean; // Ask for biometric before send/swap
   hideBalance: boolean;
   notifications: boolean;
   autoLockMinutes: number;
@@ -25,6 +26,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   currency: 'USD',
   theme: 'cosmic',
   biometricEnabled: false,
+  requireBiometricForTransactions: false, // Default to NOT requiring biometric for transactions
   hideBalance: false,
   notifications: true,
   autoLockMinutes: 5,

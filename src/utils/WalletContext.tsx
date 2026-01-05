@@ -160,6 +160,28 @@ export function WalletProvider({
     setCurrentAccount(savedAccount);
   }, []);
 
+  // Detect when app returns from background and session might be lost
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isUnlocked) {
+        // Check if session is still valid when app becomes visible
+        const sessionValid = secureSession.isValid();
+        console.log('[WalletContext] 🔄 App visible, session valid:', sessionValid, 'isUnlocked:', isUnlocked);
+
+        if (!sessionValid) {
+          console.warn('[WalletContext] ⚠️ Session lost while app was in background! Locking wallet.');
+          setIsUnlocked(false);
+          setAddresses(null);
+          // Dispatch event so App.tsx can show unlock screen
+          window.dispatchEvent(new CustomEvent('walletSessionLost'));
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isUnlocked]);
+
   // Listen for account switch events
   useEffect(() => {
     const handleAccountSwitch = async (event: CustomEvent) => {

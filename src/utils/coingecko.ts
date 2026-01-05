@@ -277,6 +277,13 @@ const DIRECT_COINGECKO_IDS = new Set([
   'frax', 'frax-share', 'liquity-usd', 'liquity', 'trueusd', 'paypal-usd',
   'worldcoin-wld', 'arkham', 'render-token', 'injective-protocol', 'sei-network',
   'celestia', 'starknet', 'tron',
+  // Solana ecosystem tokens that may come as CoinGecko IDs
+  'helium', 'raydium', 'orca', 'pyth-network', 'jupiter-exchange-solana', 'bonk',
+  'dogwifhat', 'jito-governance-token', 'msol', 'marinade', 'serum', 'step-finance',
+  'saber', 'genesysgo-shadow', 'kin', 'gst', 'stepn', 'popcat', 'book-of-meme',
+  'cat-in-a-dogs-world', 'wormhole', 'official-trump', 'fartcoin', 'ai16z',
+  'pudgy-penguins', 'peanut-the-squirrel', 'goatseus-maximus', 'gigachad-2',
+  'moo-deng', 'just-a-chill-guy', 'spx6900', 'grass', 'brett', 'parabolic-ai',
 ]);
 
 /**

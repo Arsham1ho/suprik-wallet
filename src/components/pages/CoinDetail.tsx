@@ -117,36 +117,52 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         }
       }
 
-      console.log('[CoinDetail] Fetching coin details for:', token.mint, 'Symbol:', token.symbol);
+      console.log('[CoinDetail] Fetching coin details for:', {
+        mint: token.mint,
+        symbol: token.symbol,
+        name: token.name,
+        existingPrice: token.price,
+        existingChange: token.change,
+        mintLength: token.mint?.length
+      });
 
       // Start with token's existing price as fallback (from Search page or Home)
       const fallbackPrice = token.price || 0;
       const fallbackChange = token.change || 0;
 
-      let price = fallbackPrice;
-      let change24h = fallbackChange;
+      let price = 0;
+      let change24h = 0;
       let marketCap = 0;
       let chartData: Array<{ time: string; price: number }> = [];
 
-      // PRIMARY: Get CoinGecko ID (uses dynamic lookup with caching)
-      const coinGeckoId = await getCoinGeckoId(token.mint, token.name);
-      console.log(`[CoinDetail] CoinGecko ID for ${token.symbol}: ${coinGeckoId || 'not found'}`);
+      // Check if mint is a Solana address (44 chars) or a CoinGecko ID
+      const isSolanaMint = token.mint && token.mint.length >= 32 && token.mint.length <= 50;
+      const isLikelyCoinGeckoId = token.mint && token.mint.length < 30 && !token.mint.includes('1111');
 
-      // PRIMARY: Use CoinGecko for price + 24h change
-      if (coinGeckoId) {
-        const priceData = await getTokenPrice(token.mint, token.name);
-        if (priceData && priceData.price > 0) {
-          price = priceData.price;
-          change24h = priceData.change24h;
-          marketCap = priceData.marketCap;
-          console.log(`[CoinDetail] ✅ CoinGecko: ${token.symbol} = $${price.toFixed(6)}, 24h: ${change24h.toFixed(2)}%`);
-        } else {
-          console.log(`[CoinDetail] CoinGecko returned no price, using fallback: $${fallbackPrice}`);
+      // For Solana tokens, try Jupiter first (no rate limits, most reliable for Solana)
+      if (isSolanaMint && price === 0) {
+        try {
+          console.log(`[CoinDetail] Trying Jupiter v2 for ${token.symbol}...`);
+          const jupResponse = await fetch(
+            `https://api.jup.ag/price/v2?ids=${token.mint}`,
+            { signal: AbortSignal.timeout(5000) }
+          );
+
+          if (jupResponse.ok) {
+            const jupData = await jupResponse.json();
+            const priceData = jupData.data?.[token.mint];
+            if (priceData?.price) {
+              price = parseFloat(priceData.price);
+              console.log(`[CoinDetail] ✅ Jupiter v2: ${token.symbol} = $${price}`);
+            }
+          }
+        } catch (jupError) {
+          console.warn('[CoinDetail] Jupiter v2 failed:', jupError);
         }
       }
 
-      // FALLBACK: DexScreener for tokens not on CoinGecko
-      if (price === 0) {
+      // Try DexScreener for Solana tokens (good fallback, no rate limits)
+      if (isSolanaMint && price === 0) {
         try {
           console.log(`[CoinDetail] Trying DexScreener for ${token.symbol}...`);
           const dexResponse = await fetch(
@@ -158,9 +174,9 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
             const dexData = await dexResponse.json();
             const pair = dexData.pairs?.[0];
             if (pair) {
-              price = parseFloat(pair.priceUsd) || price;
-              change24h = pair.priceChange?.h24 || change24h;
-              marketCap = pair.marketCap || marketCap;
+              price = parseFloat(pair.priceUsd) || 0;
+              change24h = pair.priceChange?.h24 || 0;
+              marketCap = pair.marketCap || 0;
               console.log(`[CoinDetail] ✅ DexScreener: ${token.symbol} = $${price}, 24h: ${change24h}%`);
             }
           }
@@ -169,26 +185,65 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         }
       }
 
-      // LAST FALLBACK: Jupiter Price API
+      // Try CoinGecko for price + 24h change (may be rate limited)
       if (price === 0) {
+        // Get CoinGecko ID
+        let coinGeckoId = await getCoinGeckoId(token.symbol, token.name);
+        if (!coinGeckoId) {
+          console.log(`[CoinDetail] Symbol not found, trying mint: ${token.mint}`);
+          coinGeckoId = await getCoinGeckoId(token.mint, token.name);
+        }
+        // If mint looks like a CoinGecko ID, use it directly
+        if (!coinGeckoId && isLikelyCoinGeckoId) {
+          coinGeckoId = token.mint.toLowerCase();
+          console.log(`[CoinDetail] Using mint as CoinGecko ID: ${coinGeckoId}`);
+        }
+
+        if (coinGeckoId) {
+          console.log(`[CoinDetail] CoinGecko ID for ${token.symbol}: ${coinGeckoId}`);
+          let priceData = await getTokenPrice(token.symbol, token.name);
+          if (!priceData || priceData.price === 0) {
+            priceData = await getTokenPrice(token.mint, token.name);
+          }
+          if (priceData && priceData.price > 0) {
+            price = priceData.price;
+            change24h = priceData.change24h;
+            marketCap = priceData.marketCap;
+            console.log(`[CoinDetail] ✅ CoinGecko: ${token.symbol} = $${price.toFixed(6)}, 24h: ${change24h.toFixed(2)}%`);
+          }
+        }
+      }
+
+      // Fallback: CoinCap API for non-Solana tokens (free, no rate limits)
+      if (price === 0 && !isSolanaMint) {
         try {
-          console.log(`[CoinDetail] Trying Jupiter for ${token.symbol}...`);
-          const jupResponse = await fetch(
-            `https://api.jup.ag/price/v2?ids=${token.mint}`,
+          // CoinCap uses lowercase IDs like "bitcoin", "ethereum", "tron"
+          const coinCapId = token.mint.toLowerCase().replace(/-/g, '');
+          console.log(`[CoinDetail] Trying CoinCap for ${token.symbol} (${coinCapId})...`);
+          const coinCapResponse = await fetch(
+            `https://api.coincap.io/v2/assets/${coinCapId}`,
             { signal: AbortSignal.timeout(5000) }
           );
 
-          if (jupResponse.ok) {
-            const jupData = await jupResponse.json();
-            const priceData = jupData.data?.[token.mint];
-            if (priceData?.price) {
-              price = parseFloat(priceData.price);
-              console.log(`[CoinDetail] ✅ Jupiter: ${token.symbol} = $${price}`);
+          if (coinCapResponse.ok) {
+            const coinCapData = await coinCapResponse.json();
+            if (coinCapData.data?.priceUsd) {
+              price = parseFloat(coinCapData.data.priceUsd);
+              change24h = parseFloat(coinCapData.data.changePercent24Hr) || 0;
+              marketCap = parseFloat(coinCapData.data.marketCapUsd) || 0;
+              console.log(`[CoinDetail] ✅ CoinCap: ${token.symbol} = $${price.toFixed(6)}, 24h: ${change24h.toFixed(2)}%`);
             }
           }
-        } catch (jupError) {
-          console.warn('[CoinDetail] Jupiter API failed');
+        } catch (coinCapError) {
+          console.warn('[CoinDetail] CoinCap failed:', coinCapError);
         }
+      }
+
+      // If we still have no price, try the fallback from Home page
+      if (price === 0 && fallbackPrice > 0) {
+        price = fallbackPrice;
+        change24h = fallbackChange;
+        console.log(`[CoinDetail] ⚠️ Using Home page price: $${price}`);
       }
 
       // Fetch chart data - CoinGecko primary, Jupiter fallback
@@ -206,6 +261,18 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
           }
           console.log(`[CoinDetail] 📊 Calculated change from chart: ${change24h.toFixed(2)}%`);
         }
+      }
+
+      // If still no price, use the fallback from the token (Home page price)
+      if (price === 0 && fallbackPrice > 0) {
+        price = fallbackPrice;
+        change24h = fallbackChange;
+        console.log(`[CoinDetail] ⚠️ Using fallback price from Home: $${price}`);
+      }
+
+      // Log final result
+      if (price === 0) {
+        console.warn(`[CoinDetail] ❌ Could not fetch price for ${token.symbol} (${token.mint}) from any source`);
       }
 
       const details: CoinDetails = {
@@ -532,11 +599,24 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
   const paddedMin = minPrice - priceRange * 0.05;
   const paddedRange = paddedMax - paddedMin;
 
-  const chartPath = chartData.map((point, idx) => {
-    const x = chartData.length > 1 ? (idx / (chartData.length - 1)) * 100 : 50;
-    const y = paddedRange > 0 ? 100 - ((point.price - paddedMin) / paddedRange) * 100 : 50;
-    return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
-  }).join(' ');
+  const chartPath = (() => {
+    if (chartData.length === 0) return 'M 0 50 L 100 50'; // Default flat line when no data
+
+    const validPoints = chartData.filter(point =>
+      point && typeof point.price === 'number' && !isNaN(point.price) && isFinite(point.price)
+    );
+
+    if (validPoints.length === 0) return 'M 0 50 L 100 50'; // Fallback if no valid points
+
+    return validPoints.map((point, idx) => {
+      const x = validPoints.length > 1 ? (idx / (validPoints.length - 1)) * 100 : 50;
+      const y = paddedRange > 0 ? 100 - ((point.price - paddedMin) / paddedRange) * 100 : 50;
+      // Ensure x and y are valid numbers
+      const safeX = isNaN(x) || !isFinite(x) ? 50 : x;
+      const safeY = isNaN(y) || !isFinite(y) ? 50 : y;
+      return `${idx === 0 ? 'M' : 'L'} ${safeX} ${safeY}`;
+    }).join(' ');
+  })();
 
   // Handle chart hover with improved positioning
   const handleChartHover = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -873,35 +953,35 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
                 {/* Chart gradient fill */}
                 <motion.path
                   key={`fill-${selectedPeriod}`}
-                  d={`${chartPath} L 100 100 L 0 100 Z`}
+                  d={`${chartPath || 'M 0 50 L 100 50'} L 100 100 L 0 100 Z`}
                   fill={`url(#chartGradient-${token.symbol})`}
                   initial={{ opacity: 0 }}
-                  animate={{ 
+                  animate={{
                     opacity: 1,
-                    d: `${chartPath} L 100 100 L 0 100 Z`
+                    d: `${chartPath || 'M 0 50 L 100 50'} L 100 100 L 0 100 Z`
                   }}
-                  transition={{ 
+                  transition={{
                     opacity: { duration: 0.5, ease: "easeInOut" },
                     d: { duration: 0.6, ease: "easeInOut" }
                   }}
                 />
-                
+
                 {/* Chart line */}
                 <motion.path
                   key={`line-${selectedPeriod}`}
-                  d={chartPath}
+                  d={chartPath || 'M 0 50 L 100 50'}
                   stroke={change24h >= 0 ? '#10b981' : '#ef4444'}
                   strokeWidth="0.8"
                   fill="none"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   initial={{ pathLength: 0, opacity: 0 }}
-                  animate={{ 
-                    pathLength: 1, 
+                  animate={{
+                    pathLength: 1,
                     opacity: 1,
-                    d: chartPath
+                    d: chartPath || 'M 0 50 L 100 50'
                   }}
-                  transition={{ 
+                  transition={{
                     pathLength: { duration: 0.8, ease: "easeInOut" },
                     opacity: { duration: 0.5, ease: "easeInOut" },
                     d: { duration: 0.6, ease: "easeInOut" }

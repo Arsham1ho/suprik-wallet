@@ -32,7 +32,7 @@ export interface WalletAddresses {
 // Known correct logos for major tokens (override any API/on-chain data)
 // These are authoritative and won't be overwritten by potentially incorrect metadata
 const VERIFIED_TOKEN_LOGOS: Record<string, string> = {
-  'SOL': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
+  'SOL': 'https://assets.coingecko.com/coins/images/4128/large/solana.png',
   'USDC': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png',
   'USDT': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png',
   'ETH': 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png',
