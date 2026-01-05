@@ -36,6 +36,7 @@ import { PlanetAvatar } from '../PlanetAvatar';
 import { AnimalAvatar } from '../AnimalAvatar';
 import { useNetwork } from '../../utils/NetworkContext';
 import { useTheme } from '../../utils/ThemeContext';
+import { useLanguage } from '../../utils/i18n/LanguageContext';
 import { VerifyParabolicInfo } from '../VerifyParabolicInfo';
 import { AccountSwitcher } from '../AccountSwitcher';
 import { AccountManager } from '../../utils/accountManager';
@@ -63,6 +64,7 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
   const [activeAccountEmoji, setActiveAccountEmoji] = useState<string | null>(null);
   const { isTestnet, toggleNetwork } = useNetwork();
   const { colors } = useTheme();
+  const { t } = useLanguage();
 
   // Scroll to top when page changes
   useEffect(() => {
@@ -220,7 +222,7 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
             >
               <ChevronRight className="w-5 h-5 rotate-180" />
             </Button>
-            <h1 className="text-2xl font-bold">Theme Customization</h1>
+            <h1 className="text-2xl font-bold">{t.theme.title}</h1>
           </div>
           <ThemeCustomization walletId={walletId} />
         </div>
@@ -241,7 +243,7 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
             >
               <ChevronRight className="w-5 h-5 rotate-180" />
             </Button>
-            <h1 className="text-2xl font-bold">Address Book</h1>
+            <h1 className="text-2xl font-bold">{t.addressBook.title}</h1>
           </div>
           <AddressBook walletId={walletId} />
         </div>
@@ -304,13 +306,13 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
       <div className="px-4 py-6 w-full max-w-2xl mx-auto">
         {/* Header */}
         <h1 className="text-2xl mb-8">
-          Settings
+          {t.settings.title}
         </h1>
 
         {/* Account */}
         <div className="space-y-3 mb-6">
-          <h3 className="text-slate-400 text-sm px-2">General</h3>
-          
+          <h3 className="text-slate-400 text-sm px-2">{t.settings.general}</h3>
+
           <button
             onClick={() => setCurrentPage('account')}
             className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
@@ -323,8 +325,8 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
                 selectedEmoji={activeAccountEmoji}
               />
               <div className="text-left">
-                <p className="text-white font-medium">Account Settings</p>
-                <p className="text-slate-400 text-sm">Profile, username & accounts</p>
+                <p className="text-white font-medium">{t.settings.accountSettings}</p>
+                <p className="text-slate-400 text-sm">{t.settings.accountSettingsDesc}</p>
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
@@ -339,8 +341,8 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
                 <Globe className="w-5 h-5 text-white" />
               </div>
               <div className="text-left">
-                <p className="text-white font-medium">Language & Currency</p>
-                <p className="text-slate-400 text-sm">Customize your experience</p>
+                <p className="text-white font-medium">{t.settings.preferences}</p>
+                <p className="text-slate-400 text-sm">{t.settings.preferencesDesc}</p>
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
@@ -355,8 +357,8 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
                 <Shield className="w-5 h-5 text-white" />
               </div>
               <div className="text-left">
-                <p className="text-white font-medium">Security & Privacy</p>
-                <p className="text-slate-400 text-sm">Recovery phrase, password & logs</p>
+                <p className="text-white font-medium">{t.settings.security}</p>
+                <p className="text-slate-400 text-sm">{t.settings.securityDesc}</p>
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
@@ -374,8 +376,8 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
                 <Palette className="w-5 h-5 text-white" />
               </div>
               <div className="text-left">
-                <p className="text-white font-medium">Theme Customization</p>
-                <p className="text-slate-400 text-sm">Choose app colors & style</p>
+                <p className="text-white font-medium">{t.theme.title}</p>
+                <p className="text-slate-400 text-sm">{t.settings.themeDesc}</p>
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
@@ -384,7 +386,7 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
 
         {/* Developer Settings */}
         <div className="space-y-3 mb-6">
-          <h3 className="text-slate-400 text-sm px-2">Developer</h3>
+          <h3 className="text-slate-400 text-sm px-2">{t.settings.developer}</h3>
 
           <div
             className="p-4 rounded-xl border transition-all"
@@ -407,18 +409,18 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="text-white font-medium">Testnet Mode</p>
+                    <p className="text-white font-medium">{t.settings.testnetMode}</p>
                     {isTestnet && (
                       <span
                         className="text-xs text-white px-2 py-0.5 rounded"
                         style={{ backgroundColor: colors.primary }}
                       >
-                        Active
+                        {t.common.active}
                       </span>
                     )}
                   </div>
                   <p className="text-slate-400 text-xs">
-                    {isTestnet ? 'Using test network' : 'Enable for testing'}
+                    {isTestnet ? t.settings.usingTestNetwork : t.settings.enableForTesting}
                   </p>
                 </div>
               </div>
@@ -426,7 +428,7 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
                 checked={isTestnet}
                 onCheckedChange={() => {
                   toggleNetwork();
-                  toast.success(isTestnet ? 'Switched to Mainnet' : 'Switched to Testnet');
+                  toast.success(isTestnet ? t.settings.switchedToMainnet : t.settings.switchedToTestnet);
                   // Trigger a refresh of balances
                   window.dispatchEvent(new Event('walletBalanceUpdated'));
                 }}
@@ -446,7 +448,7 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
             >
               <div className="flex items-center gap-3">
                 <Wallet className="w-5 h-5" style={{ color: colors.accent }} />
-                <span className="text-white font-medium">Test Receive Tokens</span>
+                <span className="text-white font-medium">{t.settings.testReceiveTokens}</span>
               </div>
               <ChevronRight className="w-5 h-5 text-slate-600" />
             </motion.button>
@@ -461,8 +463,8 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
                 <Server className="w-5 h-5 text-white" />
               </div>
               <div className="text-left">
-                <p className="text-white font-medium">RPC Settings</p>
-                <p className="text-slate-400 text-sm">Configure network endpoints</p>
+                <p className="text-white font-medium">{t.settings.rpcSettings}</p>
+                <p className="text-slate-400 text-sm">{t.settings.rpcSettingsDesc}</p>
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
@@ -471,8 +473,8 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
 
         {/* Support & Info */}
         <div className="space-y-3 mb-6">
-          <h3 className="text-slate-400 text-sm px-2">Support</h3>
-          
+          <h3 className="text-slate-400 text-sm px-2">{t.settings.support}</h3>
+
           <button
             onClick={() => setCurrentPage('helpSupport')}
             className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
@@ -482,8 +484,8 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
                 <HelpCircle className="w-5 h-5 text-white" />
               </div>
               <div className="text-left">
-                <p className="text-white font-medium">Help & Support</p>
-                <p className="text-slate-400 text-sm">Get assistance and support</p>
+                <p className="text-white font-medium">{t.settings.helpSupport}</p>
+                <p className="text-slate-400 text-sm">{t.settings.helpSupportDesc}</p>
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
@@ -501,8 +503,8 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
                 <Users className="w-5 h-5 text-white" />
               </div>
               <div className="text-left">
-                <p className="text-white font-medium">Invite Friends</p>
-                <p className="text-slate-400 text-sm">Share Suprik with others</p>
+                <p className="text-white font-medium">{t.settings.inviteFriends}</p>
+                <p className="text-slate-400 text-sm">{t.settings.inviteFriendsDesc}</p>
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
@@ -517,8 +519,8 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
                 <Info className="w-5 h-5 text-white" />
               </div>
               <div className="text-left">
-                <p className="text-white font-medium">About Suprik</p>
-                <p className="text-slate-400 text-sm">Version, features & links</p>
+                <p className="text-white font-medium">{t.settings.about}</p>
+                <p className="text-slate-400 text-sm">{t.settings.aboutDesc}</p>
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />
@@ -532,14 +534,14 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
               if (onLockWallet) {
                 onLockWallet();
               } else {
-                toast.error('Lock function not available');
+                toast.error(t.messages.error.generic);
               }
             }}
             variant="outline"
             className="w-full h-12 border-slate-800 bg-slate-900/50 hover:bg-slate-800/50 text-white backdrop-blur-sm transition-all"
           >
             <LogOut className="w-4 h-4 mr-2" />
-            Lock Wallet
+            {t.settings.lockWallet}
           </Button>
 
           <Button
@@ -550,23 +552,23 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
                 localStorage.removeItem('accessToken');
                 localStorage.removeItem('biometricEnabled');
                 sessionStorage.clear();
-                
-                toast.success('Successfully signed out');
-                
+
+                toast.success(t.settings.signedOut);
+
                 // Wait a moment for toast to show, then sign out
                 setTimeout(() => {
                   onSignOut();
                 }, 500);
               } catch (error) {
                 console.error('Sign out error:', error);
-                toast.error('Failed to sign out');
+                toast.error(t.messages.error.generic);
               }
             }}
             variant="outline"
             className="w-full h-12 border-red-900/30 bg-red-950/30 hover:bg-red-900/40 text-red-400 hover:text-red-300 backdrop-blur-sm transition-all"
           >
             <LogOut className="w-4 h-4 mr-2" />
-            Sign Out
+            {t.settings.signOut}
           </Button>
         </div>
 

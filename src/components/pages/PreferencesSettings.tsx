@@ -21,10 +21,10 @@ interface UserSettings {
 
 const languages = [
   { code: 'en', name: 'English', flag: '🇺🇸' },
-  { code: 'fa', name: 'فارسی (Persian)', flag: '🇮🇷' },
   { code: 'es', name: 'Español', flag: '🇪🇸' },
   { code: 'fr', name: 'Français', flag: '🇫🇷' },
   { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
+  { code: 'fa', name: 'فارسی (Persian)', flag: '🇮🇷' },
   { code: 'zh', name: '中文 (Chinese)', flag: '🇨🇳' },
   { code: 'ja', name: '日本語 (Japanese)', flag: '🇯🇵' },
   { code: 'ko', name: '한국어 (Korean)', flag: '🇰🇷' },

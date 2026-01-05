@@ -118,6 +118,7 @@ export interface Translations {
   // Settings
   settings: {
     settings: string;
+    title: string;
     account: string;
     security: string;
     preferences: string;
@@ -129,7 +130,31 @@ export interface Translations {
     walletAddress: string;
     connectedAccounts: string;
     manageAccounts: string;
-    
+
+    // Main settings page
+    general: string;
+    accountSettings: string;
+    accountSettingsDesc: string;
+    preferencesDesc: string;
+    securityDesc: string;
+    themeDesc: string;
+    developer: string;
+    testnetMode: string;
+    usingTestNetwork: string;
+    enableForTesting: string;
+    switchedToMainnet: string;
+    switchedToTestnet: string;
+    testReceiveTokens: string;
+    rpcSettings: string;
+    rpcSettingsDesc: string;
+    helpSupport: string;
+    helpSupportDesc: string;
+    inviteFriendsDesc: string;
+    aboutDesc: string;
+    lockWallet: string;
+    signOut: string;
+    signedOut: string;
+
     // Security
     seedPhrase: string;
     showSeedPhrase: string;
@@ -137,7 +162,7 @@ export interface Translations {
     deleteWallet: string;
     warning: string;
     securityWarning: string;
-    
+
     // Preferences
     displayLanguage: string;
     primaryCurrency: string;
@@ -146,7 +171,7 @@ export interface Translations {
     currentSettings: string;
     language: string;
     currency: string;
-    
+
     // About
     version: string;
     website: string;
@@ -177,6 +202,8 @@ export interface Translations {
     filter: string;
     sort: string;
     all: string;
+    active: string;
+    generic: string;
   };
   
   // Messages
@@ -193,6 +220,7 @@ export interface Translations {
       transactionFailed: string;
       loadingFailed: string;
       saveFailed: string;
+      generic: string;
     };
   };
   
@@ -213,6 +241,7 @@ export interface Translations {
   
   // Theme
   theme: {
+    title: string;
     themeCustomization: string;
     chooseTheme: string;
     gradients: string;
@@ -229,6 +258,7 @@ export interface Translations {
   
   // Address Book
   addressBook: {
+    title: string;
     addressBook: string;
     myContacts: string;
     noContacts: string;
@@ -306,6 +336,7 @@ export interface Translations {
 // Import additional translations
 import { additionalTranslations } from './additionalTranslations';
 import { remainingTranslations } from './remainingTranslations';
+import { moreTranslations } from './moreTranslations';
 
 export const translations: Record<string, Translations> = {
   en: {
@@ -411,10 +442,11 @@ export const translations: Record<string, Translations> = {
     },
     settings: {
       settings: 'Settings',
+      title: 'Settings',
       account: 'Account',
-      security: 'Security',
-      preferences: 'Preferences',
-      about: 'About Saturn',
+      security: 'Security & Privacy',
+      preferences: 'Language & Currency',
+      about: 'About Suprik',
       inviteFriends: 'Invite Friends',
       logout: 'Logout',
       profile: 'Profile',
@@ -422,6 +454,28 @@ export const translations: Record<string, Translations> = {
       walletAddress: 'Wallet Address',
       connectedAccounts: 'Connected Accounts',
       manageAccounts: 'Manage Accounts',
+      general: 'General',
+      accountSettings: 'Account Settings',
+      accountSettingsDesc: 'Profile, username & accounts',
+      preferencesDesc: 'Customize your experience',
+      securityDesc: 'Recovery phrase, password & logs',
+      themeDesc: 'Choose app colors & style',
+      developer: 'Developer',
+      testnetMode: 'Testnet Mode',
+      usingTestNetwork: 'Using test network',
+      enableForTesting: 'Enable for testing',
+      switchedToMainnet: 'Switched to Mainnet',
+      switchedToTestnet: 'Switched to Testnet',
+      testReceiveTokens: 'Test Receive Tokens',
+      rpcSettings: 'RPC Settings',
+      rpcSettingsDesc: 'Configure network endpoints',
+      helpSupport: 'Help & Support',
+      helpSupportDesc: 'Get assistance and support',
+      inviteFriendsDesc: 'Share Suprik with others',
+      aboutDesc: 'Version, features & links',
+      lockWallet: 'Lock Wallet',
+      signOut: 'Sign Out',
+      signedOut: 'Successfully signed out',
       seedPhrase: 'Seed Phrase',
       showSeedPhrase: 'Show Seed Phrase',
       deleteFunds: 'Delete Funds',
@@ -462,6 +516,8 @@ export const translations: Record<string, Translations> = {
       filter: 'Filter',
       sort: 'Sort',
       all: 'All',
+      active: 'Active',
+      generic: 'Something',
     },
     messages: {
       success: {
@@ -476,6 +532,7 @@ export const translations: Record<string, Translations> = {
         transactionFailed: 'Transaction failed',
         loadingFailed: 'Failed to load data',
         saveFailed: 'Failed to save',
+        generic: 'Something went wrong',
       },
     },
     nft: {
@@ -492,6 +549,7 @@ export const translations: Record<string, Translations> = {
       viewOnExplorer: 'View on Explorer',
     },
     theme: {
+      title: 'Theme Customization',
       themeCustomization: 'Theme Customization',
       chooseTheme: 'Choose your theme',
       gradients: 'Gradients',
@@ -506,6 +564,7 @@ export const translations: Record<string, Translations> = {
       custom: 'Custom',
     },
     addressBook: {
+      title: 'Address Book',
       addressBook: 'Address Book',
       myContacts: 'My Contacts',
       noContacts: 'No contacts yet',
@@ -675,10 +734,11 @@ export const translations: Record<string, Translations> = {
     },
     settings: {
       settings: 'تنظیمات',
+      title: 'تنظیمات',
       account: 'حساب کاربری',
-      security: 'امنیت',
-      preferences: 'تنظیمات شخصی',
-      about: 'درباره Saturn',
+      security: 'امنیت و حریم خصوصی',
+      preferences: 'زبان و ارز',
+      about: 'درباره Suprik',
       inviteFriends: 'دعوت از دوستان',
       logout: 'خروج',
       profile: 'پروفایل',
@@ -686,6 +746,28 @@ export const translations: Record<string, Translations> = {
       walletAddress: 'آدرس کیف پول',
       connectedAccounts: 'حساب‌های متصل',
       manageAccounts: 'مدیریت حساب‌ها',
+      general: 'عمومی',
+      accountSettings: 'تنظیمات حساب',
+      accountSettingsDesc: 'پروفایل، نام کاربری و حساب‌ها',
+      preferencesDesc: 'تجربه خود را شخصی‌سازی کنید',
+      securityDesc: 'عبارت بازیابی، رمز عبور و گزارش‌ها',
+      themeDesc: 'رنگ‌ها و استایل برنامه را انتخاب کنید',
+      developer: 'توسعه‌دهنده',
+      testnetMode: 'حالت تست‌نت',
+      usingTestNetwork: 'استفاده از شبکه تست',
+      enableForTesting: 'فعال برای تست',
+      switchedToMainnet: 'به Mainnet تغییر یافت',
+      switchedToTestnet: 'به Testnet تغییر یافت',
+      testReceiveTokens: 'تست دریافت توکن',
+      rpcSettings: 'تنظیمات RPC',
+      rpcSettingsDesc: 'پیکربندی نقاط اتصال شبکه',
+      helpSupport: 'راهنما و پشتیبانی',
+      helpSupportDesc: 'دریافت کمک و پشتیبانی',
+      inviteFriendsDesc: 'Suprik را با دیگران به اشتراک بگذارید',
+      aboutDesc: 'نسخه، ویژگی‌ها و لینک‌ها',
+      lockWallet: 'قفل کیف پول',
+      signOut: 'خروج از حساب',
+      signedOut: 'با موفقیت خارج شدید',
       seedPhrase: 'عبارت بازیابی',
       showSeedPhrase: 'نمایش عبارت بازیابی',
       deleteFunds: 'حذف موجودی',
@@ -726,6 +808,8 @@ export const translations: Record<string, Translations> = {
       filter: 'فیلتر',
       sort: 'مرتب‌سازی',
       all: 'همه',
+      active: 'فعال',
+      generic: 'چیزی',
     },
     messages: {
       success: {
@@ -740,6 +824,7 @@ export const translations: Record<string, Translations> = {
         transactionFailed: 'تراکنش ناموفق بود',
         loadingFailed: 'بارگذاری ناموفق بود',
         saveFailed: 'ذخیره ناموفق بود',
+        generic: 'مشکلی پیش آمد',
       },
     },
     nft: {
@@ -756,6 +841,7 @@ export const translations: Record<string, Translations> = {
       viewOnExplorer: 'مشاهده در Explorer',
     },
     theme: {
+      title: 'شخصی‌سازی تم',
       themeCustomization: 'شخصی‌سازی تم',
       chooseTheme: 'تم خود را انتخاب کنید',
       gradients: 'رنگ‌بندی‌ها',
@@ -770,6 +856,7 @@ export const translations: Record<string, Translations> = {
       custom: 'سفارشی',
     },
     addressBook: {
+      title: 'دفترچه آدرس',
       addressBook: 'دفترچه آدرس',
       myContacts: 'مخاطبین من',
       noContacts: 'هنوز مخاطبی ندارید',
@@ -940,10 +1027,11 @@ export const translations: Record<string, Translations> = {
     },
     settings: {
       settings: 'Ajustes',
+      title: 'Ajustes',
       account: 'Cuenta',
-      security: 'Seguridad',
-      preferences: 'Preferencias',
-      about: 'Acerca de Saturn',
+      security: 'Seguridad y Privacidad',
+      preferences: 'Idioma y Moneda',
+      about: 'Acerca de Suprik',
       inviteFriends: 'Invitar amigos',
       logout: 'Cerrar sesión',
       profile: 'Perfil',
@@ -951,6 +1039,28 @@ export const translations: Record<string, Translations> = {
       walletAddress: 'Dirección de cartera',
       connectedAccounts: 'Cuentas conectadas',
       manageAccounts: 'Administrar cuentas',
+      general: 'General',
+      accountSettings: 'Ajustes de cuenta',
+      accountSettingsDesc: 'Perfil, usuario y cuentas',
+      preferencesDesc: 'Personaliza tu experiencia',
+      securityDesc: 'Frase de recuperación, contraseña y registros',
+      themeDesc: 'Elige colores y estilo de la app',
+      developer: 'Desarrollador',
+      testnetMode: 'Modo Testnet',
+      usingTestNetwork: 'Usando red de prueba',
+      enableForTesting: 'Activar para pruebas',
+      switchedToMainnet: 'Cambiado a Mainnet',
+      switchedToTestnet: 'Cambiado a Testnet',
+      testReceiveTokens: 'Probar recibir tokens',
+      rpcSettings: 'Ajustes RPC',
+      rpcSettingsDesc: 'Configurar endpoints de red',
+      helpSupport: 'Ayuda y Soporte',
+      helpSupportDesc: 'Obtener asistencia y soporte',
+      inviteFriendsDesc: 'Comparte Suprik con otros',
+      aboutDesc: 'Versión, funciones y enlaces',
+      lockWallet: 'Bloquear cartera',
+      signOut: 'Cerrar sesión',
+      signedOut: 'Sesión cerrada exitosamente',
       seedPhrase: 'Frase de recuperación',
       showSeedPhrase: 'Mostrar frase de recuperación',
       deleteFunds: 'Eliminar fondos',
@@ -991,6 +1101,8 @@ export const translations: Record<string, Translations> = {
       filter: 'Filtrar',
       sort: 'Ordenar',
       all: 'Todos',
+      active: 'Activo',
+      generic: 'Algo',
     },
     messages: {
       success: {
@@ -1005,6 +1117,7 @@ export const translations: Record<string, Translations> = {
         transactionFailed: 'La transacción falló',
         loadingFailed: 'Error al cargar los datos',
         saveFailed: 'Error al guardar',
+        generic: 'Algo salió mal',
       },
     },
     nft: {
@@ -1021,6 +1134,7 @@ export const translations: Record<string, Translations> = {
       viewOnExplorer: 'Ver en explorador',
     },
     theme: {
+      title: 'Personalización de tema',
       themeCustomization: 'Personalización de tema',
       chooseTheme: 'Elige tu tema',
       gradients: 'Degradados',
@@ -1035,6 +1149,7 @@ export const translations: Record<string, Translations> = {
       custom: 'Personalizado',
     },
     addressBook: {
+      title: 'Libreta de direcciones',
       addressBook: 'Libreta de direcciones',
       myContacts: 'Mis contactos',
       noContacts: 'Aún no tienes contactos',
@@ -1103,4 +1218,4 @@ export const translations: Record<string, Translations> = {
 };
 
 // Merge all translations into one object
-Object.assign(translations, additionalTranslations, remainingTranslations);
+Object.assign(translations, additionalTranslations, remainingTranslations, moreTranslations);

@@ -140,6 +140,57 @@ export async function enhanceToken(
     }
   }
 
+  // If price is still 0, try Raydium API (good for new pump.fun tokens)
+  if (price === 0 && mint.length > 32) {
+    try {
+      const response = await fetch(`https://api-v3.raydium.io/mint/price?mints=${mint}`);
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data?.[mint]) {
+          price = parseFloat(data.data[mint]);
+          console.log(`[TokenEnhancer] ✅ Raydium API: ${symbol} = $${price}`);
+        }
+      }
+    } catch (error) {
+      console.error(`[TokenEnhancer] ⚠️ Raydium API failed for ${symbol}:`, error);
+    }
+  }
+
+  // If price is still 0, try pump.fun API for pump.fun tokens
+  if (price === 0 && mint.length > 32) {
+    try {
+      const response = await fetch(`https://frontend-api.pump.fun/coins/${mint}`);
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.usd_market_cap && data.total_supply) {
+          // Calculate price from market cap and supply
+          const marketCap = parseFloat(data.usd_market_cap);
+          const supply = parseFloat(data.total_supply) / 1e6; // pump.fun tokens have 6 decimals
+          if (supply > 0) {
+            price = marketCap / supply;
+            console.log(`[TokenEnhancer] ✅ Pump.fun API: ${symbol} = $${price}`);
+          }
+        }
+        // Get logo from pump.fun if available
+        if (!logoUrl && data.image_uri) {
+          logoUrl = data.image_uri;
+          console.log(`[TokenEnhancer] 🖼️ Got logo from pump.fun`);
+        }
+        // Get name from pump.fun if available
+        if (data.name) {
+          tokenName = data.name;
+        }
+        if (data.symbol) {
+          tokenSymbol = data.symbol;
+        }
+      }
+    } catch (error) {
+      console.error(`[TokenEnhancer] ⚠️ Pump.fun API failed for ${symbol}:`, error);
+    }
+  }
+
   return { price, logoUrl, change24h, name: tokenName, symbol: tokenSymbol };
 }
 

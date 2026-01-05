@@ -157,9 +157,7 @@ export function LanguageProvider({
 
   return (
     <LanguageContext.Provider value={value}>
-      <div dir={isRTL ? 'rtl' : 'ltr'}>
-        {children}
-      </div>
+      {children}
     </LanguageContext.Provider>
   );
 }

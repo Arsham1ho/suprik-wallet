@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Image as ImageIcon, X, Palette, Sun, Moon } from 'lucide-react';
+import { Check, Image as ImageIcon, X, Palette, ChevronDown } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { useLanguage } from '../utils/i18n/LanguageContext';
@@ -32,6 +32,21 @@ const balanceBackgrounds: BalanceBackgroundImage[] = [
     url: ''
   },
   {
+    id: 'purple-smoke',
+    name: 'Purple Smoke',
+    url: purpleSmokeImg
+  },
+  {
+    id: 'aurora-sky',
+    name: 'Aurora Sky',
+    url: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080'
+  },
+  {
+    id: 'chart-growth',
+    name: 'Chart Growth',
+    url: chartGrowthImg
+  },
+  {
     id: 'cosmic-atom',
     name: 'Cosmic Atom',
     url: cosmicAtomImg
@@ -55,11 +70,6 @@ const balanceBackgrounds: BalanceBackgroundImage[] = [
     id: 'circuit-board',
     name: 'Circuit Board',
     url: circuitBoardImg
-  },
-  {
-    id: 'chart-growth',
-    name: 'Chart Growth',
-    url: chartGrowthImg
   },
   {
     id: 'digital-money',
@@ -122,19 +132,9 @@ const balanceBackgrounds: BalanceBackgroundImage[] = [
     url: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080'
   },
   {
-    id: 'aurora-sky',
-    name: 'Aurora Sky',
-    url: 'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080'
-  },
-  {
     id: 'ocean-waves',
     name: 'Ocean Waves',
     url: 'https://images.unsplash.com/photo-1505118380757-91f5f5632de0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080'
-  },
-  {
-    id: 'purple-smoke',
-    name: 'Purple Smoke',
-    url: purpleSmokeImg
   },
   {
     id: 'neon-atom',
@@ -145,10 +145,16 @@ const balanceBackgrounds: BalanceBackgroundImage[] = [
 
 export function ThemeCustomization({ onThemeChange }: ThemeCustomizationProps) {
   useLanguage(); // Keep hook for potential future translations
-  const { accentColor, setAccentColor, isLightMode, setLightMode } = useTheme();
+  const { accentColor, setAccentColor } = useTheme();
   const [selectedBackground, setSelectedBackground] = useState<string>(() => {
     return localStorage.getItem('balanceBackground') || 'circuit-board';
   });
+  const [showAllBackgrounds, setShowAllBackgrounds] = useState(false);
+
+  // Show only 4 backgrounds in preview mode, or all when expanded
+  const displayedBackgrounds = showAllBackgrounds
+    ? balanceBackgrounds
+    : balanceBackgrounds.slice(0, 4);
 
   const handleAccentColorSelect = (colorId: string) => {
     setAccentColor(colorId);
@@ -165,11 +171,6 @@ export function ThemeCustomization({ onThemeChange }: ThemeCustomizationProps) {
     toast.success('Balance background updated!');
   };
 
-  const handleLightModeToggle = () => {
-    setLightMode(!isLightMode);
-    toast.success(isLightMode ? 'Dark mode enabled!' : 'Light mode enabled!');
-  };
-
   return (
     <div className="space-y-6">
       {/* Balance Background Selection */}
@@ -178,68 +179,97 @@ export function ThemeCustomization({ onThemeChange }: ThemeCustomizationProps) {
           <ImageIcon className="w-4 h-4 text-slate-400" />
           <p className="text-slate-400 text-sm">Balance Card Background</p>
         </div>
-        
-        <div className="grid grid-cols-2 gap-3">
-          {balanceBackgrounds.map((bg) => (
-            <motion.button
-              key={bg.id}
-              onClick={() => handleBackgroundSelect(bg.id)}
-              className={`relative rounded-xl overflow-hidden border-2 transition-all ${
-                selectedBackground === bg.id
-                  ? 'border-white shadow-lg shadow-purple-500/20'
-                  : 'border-slate-800 hover:border-slate-700'
-              }`}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              {/* Background Preview */}
-              <div className="h-24 relative bg-gradient-to-br from-purple-600 to-blue-600">
-                {bg.id === 'none' ? (
-                  // None option - show gradient only with X icon
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-12 h-12 rounded-full bg-slate-800/60 flex items-center justify-center">
-                      <X className="w-6 h-6 text-slate-400" />
+
+        <div className="relative">
+          <div className="grid grid-cols-2 gap-3">
+            {displayedBackgrounds.map((bg, index) => (
+              <button
+                key={bg.id}
+                onClick={() => handleBackgroundSelect(bg.id)}
+                className={`relative rounded-xl overflow-hidden border-2 transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                  selectedBackground === bg.id
+                    ? 'border-white shadow-lg shadow-purple-500/20'
+                    : 'border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                {/* Background Preview */}
+                <div className="h-24 relative bg-gradient-to-br from-purple-600 to-blue-600">
+                  {bg.id === 'none' ? (
+                    // None option - show gradient only with X icon
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-12 h-12 rounded-full bg-slate-800/60 flex items-center justify-center">
+                        <X className="w-6 h-6 text-slate-400" />
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <>
+                  ) : (
+                    <>
+                      <div
+                        className="absolute inset-0 opacity-50"
+                        style={{
+                          backgroundImage: `url(${bg.url})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center'
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-black/40" />
+                    </>
+                  )}
+
+                  {selectedBackground === bg.id && (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute top-2 right-2 w-6 h-6 bg-white rounded-full flex items-center justify-center"
+                    >
+                      <Check className="w-4 h-4 text-black" />
+                    </motion.div>
+                  )}
+
+                  {/* "See All" overlay on Chart Growth (4th item) when collapsed */}
+                  {!showAllBackgrounds && index === 3 && (
                     <div
-                      className="absolute inset-0 opacity-50"
-                      style={{
-                        backgroundImage: `url(${bg.url})`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center'
+                      className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center cursor-pointer z-10"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowAllBackgrounds(true);
                       }}
-                    />
-                    <div className="absolute inset-0 bg-black/40" />
-                  </>
-                )}
+                    >
+                      <div className="text-center">
+                        <p className="text-white font-medium text-sm">See All</p>
+                        <p className="text-slate-300 text-xs">+{balanceBackgrounds.length - 4} more</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
-                {selectedBackground === bg.id && (
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="absolute top-2 right-2 w-6 h-6 bg-white rounded-full flex items-center justify-center"
-                  >
-                    <Check className="w-4 h-4 text-black" />
-                  </motion.div>
-                )}
-              </div>
-
-              {/* Background Name */}
-              <div className="bg-slate-900/80 backdrop-blur-sm p-3">
-                <p className="text-white text-sm font-medium text-center">
-                  {bg.name}
-                </p>
-              </div>
-            </motion.button>
-          ))}
+                {/* Background Name */}
+                <div className="bg-slate-900/80 backdrop-blur-sm p-3">
+                  <p className="text-white text-sm font-medium text-center">
+                    {bg.name}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* Show Less button when expanded */}
+        {showAllBackgrounds && (
+          <motion.button
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            onClick={() => setShowAllBackgrounds(false)}
+            className="w-full flex items-center justify-center gap-1 py-2 text-sm text-purple-400 hover:text-purple-300 transition-colors"
+          >
+            <ChevronDown className="w-4 h-4 rotate-180" />
+            Show Less
+          </motion.button>
+        )}
 
         {/* Info */}
         <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3">
           <p className="text-blue-200 text-xs">
-            🖼️ Choose a background image for your Total Balance card on the home screen.
+            Choose a background image for your Total Balance card on the home screen.
           </p>
         </div>
       </div>
@@ -357,79 +387,6 @@ export function ThemeCustomization({ onThemeChange }: ThemeCustomizationProps) {
             </motion.div>
           </div>
         </motion.div>
-      </div>
-
-      {/* Light/Dark Mode Toggle */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 px-2">
-          {isLightMode ? <Sun className="w-4 h-4 text-slate-400" /> : <Moon className="w-4 h-4 text-slate-400" />}
-          <p className="text-slate-400 text-sm">Display Mode</p>
-        </div>
-
-        <motion.button
-          onClick={handleLightModeToggle}
-          className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
-            isLightMode
-              ? 'bg-amber-50 border-amber-300'
-              : 'bg-slate-900/80 border-slate-700 hover:border-slate-600'
-          }`}
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.99 }}
-        >
-          <div className="flex items-center gap-3">
-            <div
-              className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                isLightMode
-                  ? 'bg-amber-400'
-                  : 'bg-slate-800'
-              }`}
-            >
-              {isLightMode ? (
-                <Sun className="w-5 h-5 text-white" />
-              ) : (
-                <Moon className="w-5 h-5 text-slate-300" />
-              )}
-            </div>
-            <div className="text-left">
-              <p className={`font-medium ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
-                {isLightMode ? 'Light Mode' : 'Dark Mode'}
-              </p>
-              <p className={`text-xs ${isLightMode ? 'text-slate-600' : 'text-slate-400'}`}>
-                {isLightMode ? 'Bright and clear interface' : 'Easy on the eyes'}
-              </p>
-            </div>
-          </div>
-
-          {/* Toggle Switch */}
-          <div
-            className={`relative w-14 h-8 rounded-full transition-colors ${
-              isLightMode ? 'bg-amber-400' : 'bg-slate-700'
-            }`}
-          >
-            <motion.div
-              className="absolute top-1 w-6 h-6 bg-white rounded-full shadow-md flex items-center justify-center"
-              animate={{ left: isLightMode ? '28px' : '4px' }}
-              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-            >
-              {isLightMode ? (
-                <Sun className="w-3 h-3 text-amber-500" />
-              ) : (
-                <Moon className="w-3 h-3 text-slate-500" />
-              )}
-            </motion.div>
-          </div>
-        </motion.button>
-
-        {/* Info */}
-        <div className={`border rounded-xl p-3 ${
-          isLightMode
-            ? 'bg-amber-100/50 border-amber-200'
-            : 'bg-blue-500/10 border-blue-500/20'
-        }`}>
-          <p className={`text-xs ${isLightMode ? 'text-amber-800' : 'text-blue-200'}`}>
-            {isLightMode ? '☀️' : '🌙'} {isLightMode ? 'Light mode is currently active. Some pages may not fully support light mode yet.' : 'Dark mode reduces eye strain in low-light conditions.'}
-          </p>
-        </div>
       </div>
     </div>
   );

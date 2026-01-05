@@ -54,11 +54,14 @@ import { decryptWithPassword } from "../../utils/wallet";
 import {
   getJupiterSwapQuote,
   executeJupiterSwap,
+  getUltraSwapOrder,
+  executeUltraSwap,
   POPULAR_SWAP_PAIRS,
   getTokenDecimals,
   getDecimalsForMint,
   resolveMintAddress,
   resolveMintAddressAsync,
+  UltraOrderResponse,
 } from "../../utils/jupiterSwap";
 import { saveSwapToHistory } from "../../utils/transactionHistory";
 import { playSwapExchange } from "../../utils/sounds";
@@ -213,6 +216,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
   // Jupiter state (best DEX aggregator)
   const [useJupiter, setUseJupiter] = useState(true); // Default to real swaps
   const [jupiterQuote, setJupiterQuote] = useState<any>(null);
+  const [ultraOrderResponse, setUltraOrderResponse] = useState<UltraOrderResponse | null>(null);
   const [loadingQuote, setLoadingQuote] = useState(false);
   const [priceImpact, setPriceImpact] = useState<number | null>(null);
   const [route, setRoute] = useState<string | null>(null);
@@ -473,6 +477,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     ) => {
       if (!amount || parseFloat(amount) <= 0) {
         setJupiterQuote(null);
+        setUltraOrderResponse(null);
         setPriceImpact(null);
         setRoute(null);
         return;
@@ -518,15 +523,59 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         const effectiveSlippage = slippageMode === "auto" ? 3 : parseFloat(slippage);
         console.log("🔄 [Swap] Slippage mode:", slippageMode, "Effective slippage:", effectiveSlippage + "%");
 
-        const quote = await getJupiterSwapQuote({
-          inputMint,
-          outputMint,
-          amount: amountNum,
-          slippage: effectiveSlippage,
-          isTestnet: network.isTestnet, // Use network context
-          inputDecimals,
-          outputDecimals,
-        });
+        // Get wallet address for Ultra API taker parameter
+        const walletData = localStorage.getItem('wallet_data');
+        const walletAddress = walletData ? JSON.parse(walletData)?.addresses?.solana : null;
+
+        // Try Ultra API first (recommended), fall back to legacy if needed
+        let quote;
+        let orderResponse;
+
+        if (walletAddress) {
+          try {
+            console.log("🔄 [Swap] Using Jupiter Ultra API...");
+            const ultraResult = await getUltraSwapOrder({
+              inputMint,
+              outputMint,
+              amount: amountNum,
+              takerAddress: walletAddress,
+              slippage: effectiveSlippage,
+              isTestnet: network.isTestnet,
+              inputDecimals,
+              outputDecimals,
+            });
+            quote = ultraResult.quote;
+            orderResponse = ultraResult.orderResponse;
+            setUltraOrderResponse(orderResponse);
+            console.log("✅ [Swap] Ultra API order received!");
+          } catch (ultraError: any) {
+            console.warn("⚠️ [Swap] Ultra API failed, falling back to legacy:", ultraError.message);
+            // Fall back to legacy API
+            quote = await getJupiterSwapQuote({
+              inputMint,
+              outputMint,
+              amount: amountNum,
+              slippage: effectiveSlippage,
+              isTestnet: network.isTestnet,
+              inputDecimals,
+              outputDecimals,
+            });
+            setUltraOrderResponse(null);
+          }
+        } else {
+          // No wallet address available, use legacy API
+          console.log("🔄 [Swap] No wallet address, using legacy API...");
+          quote = await getJupiterSwapQuote({
+            inputMint,
+            outputMint,
+            amount: amountNum,
+            slippage: effectiveSlippage,
+            isTestnet: network.isTestnet,
+            inputDecimals,
+            outputDecimals,
+          });
+          setUltraOrderResponse(null);
+        }
 
         if (quote) {
           setJupiterQuote(quote);
@@ -536,9 +585,10 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           // Update toAmount with Jupiter quote
           setToAmount(quote.outputAmount.toFixed(6));
 
-          console.log("✅ [Swap] Jupiter quote received!");
+          console.log("✅ [Swap] Quote received!");
           console.log("✅ [Swap] Output amount:", quote.outputAmount);
           console.log("✅ [Swap] Price impact:", quote.priceImpact + "%");
+          console.log("✅ [Swap] Using Ultra:", !!orderResponse);
         } else {
           throw new Error("No quote available");
         }
@@ -1185,20 +1235,34 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         // Get the account index for derivation
         const accountIndexToUse = activeAccount?.accountIndex ?? 0;
 
-        // Execute swap directly on client using network mode
-        const result = await executeJupiterSwap({
-          mnemonic: mnemonicToUse,
-          quoteResponse: jupiterQuote,
-          accountIndex: accountIndexToUse,
-          isTestnet: network.isTestnet, // Use network context
-        });
+        // Execute swap - use Ultra API if order response is available, otherwise legacy
+        let result;
+        if (ultraOrderResponse && ultraOrderResponse.transaction) {
+          console.log("🚀 [Swap] Executing via Jupiter Ultra API...");
+          result = await executeUltraSwap({
+            mnemonic: mnemonicToUse,
+            quoteResponse: jupiterQuote,
+            orderResponse: ultraOrderResponse,
+            accountIndex: accountIndexToUse,
+            isTestnet: network.isTestnet,
+          });
+        } else {
+          console.log("🔄 [Swap] Executing via legacy Jupiter API...");
+          result = await executeJupiterSwap({
+            mnemonic: mnemonicToUse,
+            quoteResponse: jupiterQuote,
+            accountIndex: accountIndexToUse,
+            isTestnet: network.isTestnet,
+          });
+        }
 
         if (!result.success) {
           throw new Error(result.error || "Failed to execute swap");
         }
 
-        console.log("✅ [Swap] Jupiter swap successful!");
+        console.log("✅ [Swap] Swap successful!");
         console.log("✅ [Swap] Signature:", result.signature);
+        console.log("✅ [Swap] Used Ultra API:", !!ultraOrderResponse);
 
         // Save swap to local history (only on mainnet, not testnet)
         // Include mint addresses for symbol resolution in case symbol is "TOKEN"
@@ -1256,6 +1320,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         setFromAmount("");
         setToAmount("");
         setJupiterQuote(null);
+        setUltraOrderResponse(null);
         setPriceImpact(null);
         setRoute(null);
 

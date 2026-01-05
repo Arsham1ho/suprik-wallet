@@ -13,9 +13,12 @@ import { deriveSolanaKeypair, getSolanaConnection } from './transactions';
 // Configuration
 // ===========================
 
-// Jupiter API endpoints (lite-api - free public API)
-// Note: api.jup.ag/swap/v1 requires paid API key
-// lite-api.jup.ag is the free tier (until Dec 31, 2025)
+// Jupiter API endpoints
+// Ultra API - new simplified API (recommended)
+const JUPITER_ULTRA_ORDER_URL = 'https://api.jup.ag/ultra/v1/order';
+const JUPITER_ULTRA_EXECUTE_URL = 'https://api.jup.ag/ultra/v1/execute';
+
+// Legacy Swap API endpoints (lite-api - free public API, fallback)
 const JUPITER_QUOTE_URL = 'https://lite-api.jup.ag/swap/v1/quote';
 const JUPITER_SWAP_URL = 'https://lite-api.jup.ag/swap/v1/swap';
 
@@ -69,6 +72,45 @@ export interface SwapResult {
   platformFee?: number;
   error?: string;
   pending?: boolean; // Transaction sent but confirmation pending
+}
+
+// Ultra API Types
+export interface UltraOrderResponse {
+  requestId: string;
+  inputMint: string;
+  outputMint: string;
+  inAmount: string;
+  outAmount: string;
+  otherAmountThreshold: string;
+  swapMode: string;
+  slippageBps: number;
+  priceImpactPct: string;
+  routePlan: any[];
+  transaction?: string; // Base64 encoded unsigned transaction
+  swapType?: string;
+  prioritizationFeeLamports?: number;
+  dynamicSlippageReport?: any;
+  totalFees?: {
+    signatureFee: number;
+    openOrdersDeposits: number[];
+    ataDeposits: number[];
+    totalFeeAndDeposits: number;
+    minimumSOLForTransaction: number;
+  };
+  // Referral fee fields - returned when referralAccount is provided
+  feeMint?: string;
+  feeBps?: number;
+  feeAccount?: string;
+}
+
+export interface UltraExecuteResponse {
+  status: 'Success' | 'Failed' | 'Pending';
+  signature?: string;
+  error?: string;
+  code?: string;
+  slot?: number;
+  inputAmountResult?: string;
+  outputAmountResult?: string;
 }
 
 // ===========================
@@ -1181,4 +1223,411 @@ export async function getFeeTokenAccountAddress(
   const ata = await getAssociatedTokenAddress(mint, feeWallet);
 
   return ata.toBase58();
+}
+
+// ===========================
+// Jupiter Ultra API (Recommended)
+// ===========================
+
+/**
+ * Get swap order from Jupiter Ultra API
+ * This is the new simplified API with better landing rates
+ * Fee collection uses referralAccount + referralFee parameters
+ */
+export async function getUltraSwapOrder(params: {
+  inputMint: string;
+  outputMint: string;
+  amount: number;
+  takerAddress: string;
+  slippage?: number;
+  isTestnet?: boolean;
+  inputDecimals?: number;
+  outputDecimals?: number;
+}): Promise<{ quote: SwapQuote; orderResponse: UltraOrderResponse }> {
+  const {
+    inputMint,
+    outputMint,
+    amount,
+    takerAddress,
+    slippage = 1,
+    isTestnet = false,
+    inputDecimals = 9,
+    outputDecimals = 9,
+  } = params;
+
+  console.log('[Jupiter Ultra] Getting swap order...');
+  console.log('[Jupiter Ultra] Input:', inputMint);
+  console.log('[Jupiter Ultra] Output:', outputMint);
+  console.log('[Jupiter Ultra] Amount (UI):', amount);
+  console.log('[Jupiter Ultra] Taker:', takerAddress);
+  console.log('[Jupiter Ultra] Platform Fee:', PLATFORM_FEE_BPS, 'bps');
+
+  // TESTNET MODE: Return mock
+  if (isTestnet) {
+    console.log('[Jupiter Ultra] TESTNET MODE: Using simulated order');
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const mockExchangeRate = inputMint.includes('So1111') && outputMint.includes('EPjFW') ? 185 : 0.997;
+    const outputAmount = amount * mockExchangeRate;
+    const platformFee = outputAmount * (PLATFORM_FEE_BPS / 10000);
+
+    const mockQuote: SwapQuote = {
+      inputMint,
+      outputMint,
+      inputAmount: amount,
+      outputAmount: outputAmount - platformFee,
+      minOutputAmount: (outputAmount - platformFee) * (1 - slippage / 100),
+      priceImpact: 0.1,
+      fee: platformFee,
+      feePercent: PLATFORM_FEE_BPS / 100,
+      route: ['Simulated Mode (Ultra)'],
+      exchangeRate: mockExchangeRate,
+      platformFee,
+    };
+
+    const mockOrder: UltraOrderResponse = {
+      requestId: `mock_${Date.now()}`,
+      inputMint,
+      outputMint,
+      inAmount: Math.floor(amount * Math.pow(10, inputDecimals)).toString(),
+      outAmount: Math.floor((outputAmount - platformFee) * Math.pow(10, outputDecimals)).toString(),
+      otherAmountThreshold: Math.floor((outputAmount - platformFee) * (1 - slippage / 100) * Math.pow(10, outputDecimals)).toString(),
+      swapMode: 'ExactIn',
+      slippageBps: Math.floor(slippage * 100),
+      priceImpactPct: '0.1',
+      routePlan: [],
+      swapType: 'mock',
+    };
+
+    return { quote: mockQuote, orderResponse: mockOrder };
+  }
+
+  // MAINNET MODE: Use Jupiter Ultra API
+  const lamportsAmount = Math.floor(amount * Math.pow(10, inputDecimals));
+
+  if (lamportsAmount <= 0 || !isFinite(lamportsAmount)) {
+    throw new Error('Invalid amount');
+  }
+
+  // Build order URL with referral fee parameters
+  const orderParams = new URLSearchParams({
+    inputMint,
+    outputMint,
+    amount: lamportsAmount.toString(),
+    taker: takerAddress,
+  });
+
+  // Add referral fee if we have a referral account configured
+  if (JUPITER_REFERRAL_ACCOUNT) {
+    orderParams.append('referralAccount', JUPITER_REFERRAL_ACCOUNT);
+    orderParams.append('referralFee', PLATFORM_FEE_BPS.toString());
+    console.log('[Jupiter Ultra] Referral fee enabled:', PLATFORM_FEE_BPS, 'bps');
+  }
+
+  const orderUrl = `${JUPITER_ULTRA_ORDER_URL}?${orderParams.toString()}`;
+  console.log('[Jupiter Ultra] Fetching order from:', orderUrl);
+  console.log('[Jupiter Ultra] Referral Account:', JUPITER_REFERRAL_ACCOUNT);
+  console.log('[Jupiter Ultra] Referral Fee BPS:', PLATFORM_FEE_BPS);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const response = await fetch(orderUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Jupiter Ultra] Order API error:', response.status, errorText);
+      throw new Error(`Order API error: ${response.status} - ${errorText}`);
+    }
+
+    const orderResponse: UltraOrderResponse = await response.json();
+
+    if (!orderResponse || !orderResponse.outAmount) {
+      console.error('[Jupiter Ultra] Invalid order response:', orderResponse);
+      throw new Error('Invalid order response from Jupiter Ultra');
+    }
+
+    console.log('[Jupiter Ultra] Order received successfully!');
+    console.log('[Jupiter Ultra] Request ID:', orderResponse.requestId);
+    console.log('[Jupiter Ultra] OutAmount (raw):', orderResponse.outAmount);
+
+    // Log fee-related fields to verify referral fee is being applied
+    console.log('[Jupiter Ultra] === REFERRAL FEE DEBUG ===');
+    console.log('[Jupiter Ultra] feeMint:', orderResponse.feeMint || 'NOT RETURNED');
+    console.log('[Jupiter Ultra] feeBps:', orderResponse.feeBps || 'NOT RETURNED');
+    console.log('[Jupiter Ultra] feeAccount:', orderResponse.feeAccount || 'NOT RETURNED');
+    console.log('[Jupiter Ultra] Full response keys:', Object.keys(orderResponse));
+
+    // WARNING: If fee fields are missing, the referral token account may not be initialized
+    if (!orderResponse.feeMint || !orderResponse.feeBps) {
+      console.warn('[Jupiter Ultra] ⚠️ WARNING: Fee fields not returned!');
+      console.warn('[Jupiter Ultra] This usually means the referral token account for the output mint is NOT initialized.');
+      console.warn('[Jupiter Ultra] Output mint:', outputMint);
+      console.warn('[Jupiter Ultra] Please create the token account on https://referral.jup.ag');
+    } else {
+      console.log('[Jupiter Ultra] ✅ Fee will be collected:', orderResponse.feeBps, 'bps in', orderResponse.feeMint);
+    }
+    console.log('[Jupiter Ultra] ===========================');
+
+    // Verify output mint matches
+    if (orderResponse.outputMint !== outputMint) {
+      console.error('[Jupiter Ultra] OUTPUT MINT MISMATCH!');
+      throw new Error('No route available for this token pair');
+    }
+
+    // Parse amounts
+    const outputAmountLamports = parseFloat(orderResponse.outAmount);
+    const outputAmount = outputAmountLamports / Math.pow(10, outputDecimals);
+
+    // Calculate platform fee
+    const platformFee = outputAmount * (PLATFORM_FEE_BPS / 10000);
+    const priceImpact = parseFloat(orderResponse.priceImpactPct || '0');
+    const minOutputAmount = parseFloat(orderResponse.otherAmountThreshold) / Math.pow(10, outputDecimals);
+
+    // Extract route info
+    const route = orderResponse.routePlan?.map((r: any) =>
+      r.swapInfo?.label || r.swapInfo?.ammKey?.substring(0, 8) || 'Jupiter'
+    ) || ['Jupiter Ultra'];
+
+    const quote: SwapQuote = {
+      inputMint,
+      outputMint,
+      inputAmount: amount,
+      outputAmount,
+      minOutputAmount,
+      priceImpact,
+      fee: platformFee,
+      feePercent: PLATFORM_FEE_BPS / 100,
+      route,
+      exchangeRate: outputAmount / amount,
+      quoteResponse: orderResponse, // Store for execution
+      platformFee,
+    };
+
+    return { quote, orderResponse };
+
+  } catch (error: any) {
+    clearTimeout(timeout);
+    console.error('[Jupiter Ultra] Order error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Execute swap using Jupiter Ultra API
+ * Signs the transaction locally and submits via Jupiter's /execute endpoint
+ * Jupiter handles transaction submission with optimized landing rates
+ */
+export async function executeUltraSwap(params: {
+  mnemonic: string;
+  quoteResponse: SwapQuote;
+  orderResponse: UltraOrderResponse;
+  accountIndex?: number;
+  isTestnet?: boolean;
+}): Promise<SwapResult> {
+  const { mnemonic, quoteResponse, orderResponse, accountIndex = 0, isTestnet = false } = params;
+
+  console.log('[Jupiter Ultra] Executing swap...');
+  console.log('[Jupiter Ultra] Request ID:', orderResponse.requestId);
+
+  // TESTNET MODE: Simulate
+  if (isTestnet || orderResponse.swapType === 'mock') {
+    console.log('[Jupiter Ultra] TESTNET: Simulating swap...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    const randomBytes = crypto.getRandomValues(new Uint8Array(8));
+    const randomHex = Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('');
+    const mockSignature = `suprik_ultra_testnet_${Date.now()}_${randomHex}`;
+
+    return {
+      success: true,
+      signature: mockSignature,
+      inputAmount: quoteResponse.inputAmount,
+      outputAmount: quoteResponse.outputAmount,
+      platformFee: quoteResponse.platformFee,
+    };
+  }
+
+  // MAINNET: Execute real swap
+  if (!orderResponse.transaction) {
+    throw new Error('No transaction in order response. Taker address may be missing.');
+  }
+
+  // Derive keypair
+  const keypair = await deriveSolanaKeypair(mnemonic, accountIndex);
+  console.log('[Jupiter Ultra] Wallet:', keypair.publicKey.toBase58());
+
+  // Deserialize and sign transaction
+  const transactionBuf = Buffer.from(orderResponse.transaction, 'base64');
+  const transaction = VersionedTransaction.deserialize(transactionBuf);
+
+  console.log('[Jupiter Ultra] Signing transaction...');
+  transaction.sign([keypair]);
+
+  // Serialize signed transaction
+  const signedTransaction = Buffer.from(transaction.serialize()).toString('base64');
+
+  console.log('[Jupiter Ultra] Submitting to Jupiter execute endpoint...');
+
+  // Submit via Jupiter /execute endpoint
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
+  try {
+    const executeResponse = await fetch(JUPITER_ULTRA_EXECUTE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        signedTransaction,
+        requestId: orderResponse.requestId,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    const result: UltraExecuteResponse = await executeResponse.json();
+
+    console.log('[Jupiter Ultra] Execute response:', result);
+
+    if (result.status === 'Success' && result.signature) {
+      console.log('[Jupiter Ultra] Swap successful!');
+      console.log('[Jupiter Ultra] Signature:', result.signature);
+
+      return {
+        success: true,
+        signature: result.signature,
+        inputAmount: result.inputAmountResult
+          ? parseFloat(result.inputAmountResult) / Math.pow(10, 9)
+          : quoteResponse.inputAmount,
+        outputAmount: result.outputAmountResult
+          ? parseFloat(result.outputAmountResult) / Math.pow(10, 9)
+          : quoteResponse.outputAmount,
+        platformFee: quoteResponse.platformFee,
+      };
+    } else if (result.status === 'Failed') {
+      console.error('[Jupiter Ultra] Swap failed:', result.error);
+
+      let userMessage = result.error || 'Swap failed';
+      if (result.code === 'SLIPPAGE_EXCEEDED' || (result.error && result.error.includes('slippage'))) {
+        userMessage = 'Price moved too much (slippage exceeded). Try increasing slippage.';
+      } else if (result.error && result.error.includes('insufficient')) {
+        userMessage = 'Insufficient balance for this swap.';
+      }
+
+      return {
+        success: false,
+        signature: result.signature,
+        error: userMessage,
+      };
+    } else {
+      // Pending or unknown status - may still succeed
+      return {
+        success: true,
+        signature: result.signature,
+        pending: true,
+        inputAmount: quoteResponse.inputAmount,
+        outputAmount: quoteResponse.outputAmount,
+      };
+    }
+
+  } catch (error: any) {
+    clearTimeout(timeout);
+    console.error('[Jupiter Ultra] Execute error:', error);
+
+    let userMessage = error.message || 'Swap execution failed';
+    if (error.name === 'AbortError') {
+      userMessage = 'Request timed out. The swap may still complete - check your wallet.';
+    }
+
+    return {
+      success: false,
+      error: userMessage,
+    };
+  }
+}
+
+/**
+ * Combined function: Get quote and execute swap using Ultra API
+ * This is the recommended way to perform swaps - simpler than legacy API
+ */
+export async function swapWithUltra(params: {
+  mnemonic: string;
+  inputMint: string;
+  outputMint: string;
+  amount: number;
+  accountIndex?: number;
+  slippage?: number;
+  isTestnet?: boolean;
+  inputDecimals?: number;
+  outputDecimals?: number;
+}): Promise<SwapResult> {
+  const {
+    mnemonic,
+    inputMint,
+    outputMint,
+    amount,
+    accountIndex = 0,
+    slippage = 1,
+    isTestnet = false,
+    inputDecimals = 9,
+    outputDecimals = 9,
+  } = params;
+
+  try {
+    // Get taker address
+    const keypair = await deriveSolanaKeypair(mnemonic, accountIndex);
+    const takerAddress = keypair.publicKey.toBase58();
+
+    // Step 1: Get order
+    console.log('[Jupiter Ultra] Step 1: Getting order...');
+    const { quote, orderResponse } = await getUltraSwapOrder({
+      inputMint,
+      outputMint,
+      amount,
+      takerAddress,
+      slippage,
+      isTestnet,
+      inputDecimals,
+      outputDecimals,
+    });
+
+    console.log('[Jupiter Ultra] Quote:', {
+      input: quote.inputAmount,
+      output: quote.outputAmount,
+      rate: quote.exchangeRate,
+      fee: quote.platformFee,
+    });
+
+    // Step 2: Execute swap
+    console.log('[Jupiter Ultra] Step 2: Executing swap...');
+    const result = await executeUltraSwap({
+      mnemonic,
+      quoteResponse: quote,
+      orderResponse,
+      accountIndex,
+      isTestnet,
+    });
+
+    return result;
+
+  } catch (error: any) {
+    console.error('[Jupiter Ultra] Swap error:', error);
+    return {
+      success: false,
+      error: error.message || 'Swap failed',
+    };
+  }
 }

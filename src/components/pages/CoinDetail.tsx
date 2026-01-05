@@ -239,6 +239,54 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         }
       }
 
+      // Fallback: Raydium API for Solana tokens (good for new pump.fun tokens)
+      if (price === 0 && isSolanaMint) {
+        try {
+          console.log(`[CoinDetail] Trying Raydium for ${token.symbol}...`);
+          const raydiumResponse = await fetch(
+            `https://api-v3.raydium.io/mint/price?mints=${token.mint}`,
+            { signal: AbortSignal.timeout(5000) }
+          );
+
+          if (raydiumResponse.ok) {
+            const raydiumData = await raydiumResponse.json();
+            if (raydiumData.success && raydiumData.data?.[token.mint]) {
+              price = parseFloat(raydiumData.data[token.mint]);
+              console.log(`[CoinDetail] ✅ Raydium: ${token.symbol} = $${price}`);
+            }
+          }
+        } catch (raydiumError) {
+          console.warn('[CoinDetail] Raydium failed:', raydiumError);
+        }
+      }
+
+      // Fallback: pump.fun API for pump.fun tokens
+      if (price === 0 && isSolanaMint) {
+        try {
+          console.log(`[CoinDetail] Trying pump.fun for ${token.symbol}...`);
+          const pumpResponse = await fetch(
+            `https://frontend-api.pump.fun/coins/${token.mint}`,
+            { signal: AbortSignal.timeout(5000) }
+          );
+
+          if (pumpResponse.ok) {
+            const pumpData = await pumpResponse.json();
+            if (pumpData.usd_market_cap && pumpData.total_supply) {
+              // Calculate price from market cap and supply
+              const pumpMarketCap = parseFloat(pumpData.usd_market_cap);
+              const supply = parseFloat(pumpData.total_supply) / 1e6; // pump.fun tokens have 6 decimals
+              if (supply > 0) {
+                price = pumpMarketCap / supply;
+                marketCap = pumpMarketCap;
+                console.log(`[CoinDetail] ✅ Pump.fun: ${token.symbol} = $${price}`);
+              }
+            }
+          }
+        } catch (pumpError) {
+          console.warn('[CoinDetail] pump.fun failed:', pumpError);
+        }
+      }
+
       // If we still have no price, try the fallback from Home page
       if (price === 0 && fallbackPrice > 0) {
         price = fallbackPrice;
