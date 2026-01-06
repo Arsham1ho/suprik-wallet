@@ -255,11 +255,35 @@ export function Activity({ walletId }: ActivityProps) {
     return `${address.slice(0, startChars)}...${address.slice(-endChars)}`;
   };
 
-  const formatAmount = (amount: number, symbol: string): string => {
+  const formatAmount = (amount: number | undefined, symbol: string): string => {
+    if (amount === undefined || amount === null) return '0';
+
+    // Handle very small amounts (avoid scientific notation)
+    if (amount > 0 && amount < 0.000001) {
+      return '< 0.000001';
+    }
+
     if (symbol === 'SOL' || symbol === 'ETH' || symbol === 'BTC') {
       return amount.toFixed(6);
     }
+
+    // For other tokens, show more decimals if the amount is very small
+    if (amount > 0 && amount < 0.01) {
+      return amount.toFixed(6);
+    }
+
     return amount.toFixed(2);
+  };
+
+  const formatFeeUsd = (fee: number | undefined): string => {
+    if (fee === undefined || fee === null) return '$0.00';
+
+    // Handle very small fees (avoid scientific notation like $2.6288226720000004e-7)
+    if (fee > 0 && fee < 0.01) {
+      return '< $0.01';
+    }
+
+    return `$${fee.toFixed(2)}`;
   };
 
   if (loading) {
@@ -536,9 +560,9 @@ export function Activity({ walletId }: ActivityProps) {
 
                       {/* Amounts */}
                       <div className="flex items-center gap-3 mt-3 text-sm text-slate-400">
-                        <span>{formatAmount(selectedActivity.fromAmount, selectedActivity.fromToken)}</span>
+                        <span>{formatAmount(selectedActivity.fromAmount, selectedActivity.fromToken || '')}</span>
                         <span>→</span>
-                        <span className="text-green-400">{formatAmount(selectedActivity.toAmount, selectedActivity.toToken)}</span>
+                        <span className="text-green-400">{formatAmount(selectedActivity.toAmount, selectedActivity.toToken || '')}</span>
                       </div>
                     </div>
                   </div>
@@ -641,10 +665,10 @@ export function Activity({ walletId }: ActivityProps) {
                     <div className="flex justify-between items-center">
                       <span className="text-slate-400">Fee</span>
                       <div className="text-right">
-                        <span className="text-white text-sm">${selectedActivity.fee}</span>
+                        <span className="text-white text-sm">{formatFeeUsd(selectedActivity.fee)}</span>
                         {selectedActivity.type === 'swap' && selectedActivity.feeAmount && (
                           <p className="text-slate-500 text-xs">
-                            {selectedActivity.feeAmount.toFixed(6)} {selectedActivity.fromToken}
+                            {formatAmount(selectedActivity.feeAmount, selectedActivity.fromToken || '')} {selectedActivity.fromToken}
                           </p>
                         )}
                       </div>

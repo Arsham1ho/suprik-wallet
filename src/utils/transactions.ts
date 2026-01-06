@@ -15,19 +15,19 @@ import { HDKey } from 'micro-ed25519-hdkey';
  * to ensure the address shown in Receive page matches the address used for transactions.
  */
 export async function deriveSolanaKeypair(mnemonic: string, accountIndex: number = 0) {
-  console.log('[Transaction] 🔑 deriveSolanaKeypair called, mnemonic length:', mnemonic?.length, 'accountIndex:', accountIndex);
+  // Security: Don't log mnemonic details
+  console.log('[Transaction] 🔑 deriveSolanaKeypair called, accountIndex:', accountIndex);
 
   // Validate mnemonic before attempting derivation
   if (!mnemonic || typeof mnemonic !== 'string' || mnemonic.trim().length === 0) {
-    console.error('[Transaction] ❌ deriveSolanaKeypair called with invalid mnemonic:', typeof mnemonic, mnemonic ? 'has value' : 'empty/null');
+    console.error('[Transaction] ❌ deriveSolanaKeypair called with invalid mnemonic');
     throw new Error('Wallet session not found. Please lock and unlock your wallet to continue.');
   }
 
   // Check if mnemonic looks valid (should be 12 or 24 words)
   const wordCount = mnemonic.trim().split(/\s+/).length;
-  console.log('[Transaction] 📝 Mnemonic word count:', wordCount);
   if (wordCount !== 12 && wordCount !== 24) {
-    console.error('[Transaction] ❌ Invalid mnemonic word count:', wordCount, 'Expected 12 or 24');
+    console.error('[Transaction] ❌ Invalid mnemonic format');
     throw new Error('Invalid wallet data. Please lock and unlock your wallet to continue.');
   }
 

@@ -69,9 +69,9 @@ export function SwapSuccessDialog({
           <motion.div
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ 
-              type: "spring", 
-              stiffness: 200, 
+            transition={{
+              type: "spring",
+              stiffness: 200,
               damping: 15,
               delay: 0.1
             }}
@@ -80,11 +80,11 @@ export function SwapSuccessDialog({
             <div className="relative">
               {/* Gradient background glow */}
               <div className="absolute inset-0 bg-gradient-to-br from-green-500/30 to-emerald-500/30 blur-2xl rounded-full" />
-              
+
               <motion.div
                 initial={{ scale: 0, rotate: -180 }}
                 animate={{ scale: 1, rotate: 0 }}
-                transition={{ 
+                transition={{
                   type: "spring",
                   stiffness: 260,
                   damping: 20,
@@ -104,11 +104,11 @@ export function SwapSuccessDialog({
                   </video>
                 </div>
               </motion.div>
-              
+
               {/* Animated rings */}
               <motion.div
                 initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ 
+                animate={{
                   scale: [0.8, 1.3, 1.3],
                   opacity: [0, 0.6, 0]
                 }}
@@ -121,7 +121,7 @@ export function SwapSuccessDialog({
               />
               <motion.div
                 initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ 
+                animate={{
                   scale: [0.8, 1.5, 1.5],
                   opacity: [0, 0.4, 0]
                 }}
@@ -179,7 +179,7 @@ export function SwapSuccessDialog({
               className="absolute inset-0 bg-gradient-to-br pointer-events-none"
               style={{ background: `linear-gradient(to bottom right, ${colors.primary}0D, ${colors.secondary}0D)` }}
             />
-            
+
             <div className="relative space-y-4">
               {/* From token */}
               <div className="flex items-center justify-between">

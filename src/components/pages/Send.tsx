@@ -701,9 +701,8 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
     try {
       // Check if active account is an imported account with its own mnemonic
       const activeAccount = AccountManager.getActiveAccount();
-      console.log('[Send] 📋 Active account:', activeAccount?.name, 'isImported:', activeAccount?.isImportedSeedPhrase, 'isPrivateKeyImport:', (activeAccount as any)?.isPrivateKeyImport, 'accountIndex:', activeAccount?.accountIndex);
-      console.log('[Send] 📋 wallet.mnemonic first 20 chars:', wallet.mnemonic?.substring(0, 20), '...');
-      console.log('[Send] 📋 wallet.mnemonic word count:', wallet.mnemonic?.trim().split(/\s+/).length);
+      // Security: Only log non-sensitive account info
+      console.log('[Send] 📋 Active account:', activeAccount?.name, 'isImported:', activeAccount?.isImportedSeedPhrase, 'accountIndex:', activeAccount?.accountIndex);
       let mnemonicToUse = wallet.mnemonic;
 
       // Check if this is a private key import - those don't have mnemonics!
