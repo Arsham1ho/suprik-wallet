@@ -14,35 +14,45 @@ import { deriveSolanaKeypair, getSolanaConnection } from './transactions';
 // ===========================
 
 // Jupiter API endpoints
-// Ultra API - new simplified API (recommended)
+// Ultra API - new simplified API (recommended) - requires API key from portal.jup.ag
 const JUPITER_ULTRA_ORDER_URL = 'https://api.jup.ag/ultra/v1/order';
 const JUPITER_ULTRA_EXECUTE_URL = 'https://api.jup.ag/ultra/v1/execute';
 
-// Legacy Swap API endpoints (lite-api - free public API, fallback)
+// Legacy Swap API endpoints (lite-api - free public API, fallback, no referral fee support)
 const JUPITER_QUOTE_URL = 'https://lite-api.jup.ag/swap/v1/quote';
 const JUPITER_SWAP_URL = 'https://lite-api.jup.ag/swap/v1/swap';
+
+// Jupiter API Key - Get from https://portal.jup.ag/api-keys (free tier available)
+// Required for Ultra API to return transactions and collect referral fees
+// Without this key, Ultra API will not work and swaps will fall back to Legacy API
+let JUPITER_API_KEY: string | null = null;
+
+// Function to set Jupiter API key at runtime
+export function setJupiterApiKey(key: string | null) {
+  JUPITER_API_KEY = key;
+  if (key) {
+    console.log('[Jupiter] API key configured');
+  } else {
+    console.log('[Jupiter] API key cleared - Ultra API will not work');
+  }
+}
+
+// Function to get current Jupiter API key
+export function getJupiterApiKey(): string | null {
+  return JUPITER_API_KEY;
+}
 
 // Suprik Platform Fee Configuration
 // Fee is collected in basis points (bps): 50 bps = 0.5%
 export const PLATFORM_FEE_BPS = 50; // 0.5% fee (same as Phantom)
 
-// Suprik Fee Wallet Addresses (for receiving platform fees)
-// Jupiter Referral Account (from referral.jup.ag)
-export const JUPITER_REFERRAL_ACCOUNT = 'FSHu56mFcP6eiL4HEJiijqRZekvjemmG8YpJpVmiJfuz';
+// Fee Wallet Address - receives swap fees directly via SOL transfer
+// This is simpler and more reliable than Jupiter Referral program
+export const FEE_WALLET_ADDRESS = '93QBsBSLuzmV1DDFiuLLKmhxk6meRAyiXkpxZ3zbDkLD';
 
 export const FEE_WALLET_CONFIG = {
-  // Main wallet address
-  feeWalletAddress: '93QBsBSLuzmV1DDFiuLLKmhxk6meRAyiXkpxZ3zbDkLD',
-
-  // Jupiter referral account for fee collection
-  referralAccount: JUPITER_REFERRAL_ACCOUNT,
-
-  // Direct token accounts for fee collection (wallet's ATAs)
-  // These are used when Jupiter Referral PDAs are not initialized
-  tokenAccounts: {
-    // USDC token account
-    'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': '4ZLVoKeGbmf4DhXJ9a8UhM5WbyJgpLPGPT7NBSJQpmLA',
-  } as Record<string, string>,
+  // Main wallet address for receiving platform fees
+  feeWalletAddress: FEE_WALLET_ADDRESS,
 };
 
 // ===========================
@@ -504,55 +514,9 @@ export async function resolveMintAddressAsync(
   return null;
 }
 
-// Jupiter Referral Program ID
-const JUPITER_REFERRAL_PROGRAM_ID = new PublicKey('REFER4ZgmyYx9c6He5XfaTMiGfdLwRnkV4RPp9t9iF3');
-
-/**
- * Derive the referral token account PDA for a specific mint
- * This is how Jupiter Referral Program stores fee accounts
- */
-export async function getReferralTokenAccountPDA(mint: string): Promise<string> {
-  const referralAccountPubkey = new PublicKey(JUPITER_REFERRAL_ACCOUNT);
-  const mintPubkey = new PublicKey(mint);
-
-  const [referralTokenAccount] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from('referral_ata'),
-      referralAccountPubkey.toBuffer(),
-      mintPubkey.toBuffer(),
-    ],
-    JUPITER_REFERRAL_PROGRAM_ID
-  );
-
-  return referralTokenAccount.toBase58();
-}
-
-/**
- * Get fee token account for the output mint
- * First checks for direct token accounts, then falls back to Jupiter Referral PDA
- */
-export async function getFeeAccountAsync(outputMint: string): Promise<string | null> {
-  try {
-    // First, check if we have a direct token account configured for this mint
-    if (FEE_WALLET_CONFIG.tokenAccounts && FEE_WALLET_CONFIG.tokenAccounts[outputMint]) {
-      const directAccount = FEE_WALLET_CONFIG.tokenAccounts[outputMint];
-      console.log('[Jupiter] Using direct token account:', directAccount, 'for mint:', outputMint);
-      return directAccount;
-    }
-
-    // Fall back to Jupiter Referral PDA (if initialized)
-    const referralTokenAccount = await getReferralTokenAccountPDA(outputMint);
-    console.log('[Jupiter] Referral token account:', referralTokenAccount, 'for mint:', outputMint);
-    return referralTokenAccount;
-  } catch (error) {
-    console.error('[Jupiter] Error deriving fee account:', error);
-    return null;
-  }
-}
-
-// Synchronous version for backwards compatibility
-export function getFeeAccount(_outputMint?: string): string | null {
-  return null;
+// Fee account function - returns the fee wallet address
+export function getFeeAccount(): string {
+  return FEE_WALLET_ADDRESS;
 }
 
 // ===========================
@@ -683,25 +647,17 @@ export async function getJupiterSwapQuote(params: {
     const slippageBps = Math.max(Math.floor(slippage * 100), autoSlippageBps);
     console.log('[Jupiter] Final slippage:', slippageBps, 'bps (', slippageBps / 100, '%)');
 
-    // Check if we have a fee account for the output token
-    const hasFeeAccount = FEE_WALLET_CONFIG.tokenAccounts &&
-                          FEE_WALLET_CONFIG.tokenAccounts[outputMint];
-
-    // Build quote URL - add platformFeeBps only if we can collect fees
+    // Build quote URL - NO platform fee for Legacy API
+    // Platform fees are only collected via Ultra API with referral.jup.ag
     const quoteParams = new URLSearchParams({
       inputMint,
       outputMint,
       amount: lamportsAmount.toString(),
       slippageBps: slippageBps.toString(),
+      // NOTE: platformFeeBps removed - Legacy API is fallback only, no fee collection
     });
 
-    // Only add platform fee if we have a fee account for this output token
-    if (hasFeeAccount) {
-      quoteParams.append('platformFeeBps', PLATFORM_FEE_BPS.toString());
-      console.log('[Jupiter] Platform fee enabled:', PLATFORM_FEE_BPS, 'bps');
-    } else {
-      console.log('[Jupiter] No fee account for output token, skipping platform fee');
-    }
+    console.log('[Jupiter] Legacy API quote (no platform fee - use Ultra API for fees)');
 
     const quoteUrl = `${JUPITER_QUOTE_URL}?${quoteParams.toString()}`;
 
@@ -933,15 +889,10 @@ export async function executeJupiterSwap(params: {
       autoSlippageCollisionUsdValue: 1,
     };
 
-    // Add fee account if we have one configured for the output token
-    const outputMint = quoteResponse.quoteResponse.outputMint;
-    if (FEE_WALLET_CONFIG.tokenAccounts && FEE_WALLET_CONFIG.tokenAccounts[outputMint]) {
-      const feeAccount = FEE_WALLET_CONFIG.tokenAccounts[outputMint];
-      swapRequestBody.feeAccount = feeAccount;
-      console.log('[Jupiter] Fee collection enabled! Fee account:', feeAccount);
-    } else {
-      console.log('[Jupiter] No fee account for output token, swapping without platform fees');
-    }
+    // NOTE: Fee collection for Legacy API is disabled
+    // We use the Ultra API for fee collection instead, which works with referral.jup.ag
+    // The Legacy API is only used as a fallback when Ultra API is unavailable
+    console.log('[Jupiter] Legacy API - no fee collection (use Ultra API for referral fees)');
 
     console.log('[Jupiter] Requesting swap transaction...');
     console.log('[Jupiter] Auto slippage enabled with $1 USD max collision');
@@ -1309,7 +1260,7 @@ export async function getUltraSwapOrder(params: {
     throw new Error('Invalid amount');
   }
 
-  // Build order URL with referral fee parameters
+  // Build order URL - no referral parameters, we use direct fee transfer instead
   const orderParams = new URLSearchParams({
     inputMint,
     outputMint,
@@ -1317,109 +1268,115 @@ export async function getUltraSwapOrder(params: {
     taker: takerAddress,
   });
 
-  // Add referral fee if we have a referral account configured
-  if (JUPITER_REFERRAL_ACCOUNT) {
-    orderParams.append('referralAccount', JUPITER_REFERRAL_ACCOUNT);
-    orderParams.append('referralFee', PLATFORM_FEE_BPS.toString());
-    console.log('[Jupiter Ultra] Referral fee enabled:', PLATFORM_FEE_BPS, 'bps');
-  }
-
   const orderUrl = `${JUPITER_ULTRA_ORDER_URL}?${orderParams.toString()}`;
   console.log('[Jupiter Ultra] Fetching order from:', orderUrl);
-  console.log('[Jupiter Ultra] Referral Account:', JUPITER_REFERRAL_ACCOUNT);
-  console.log('[Jupiter Ultra] Referral Fee BPS:', PLATFORM_FEE_BPS);
+  console.log('[Jupiter Ultra] Fee collection: Direct transfer to', FEE_WALLET_ADDRESS);
+  console.log('[Jupiter Ultra] API Key configured:', !!JUPITER_API_KEY);
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
-
-  try {
-    const response = await fetch(orderUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[Jupiter Ultra] Order API error:', response.status, errorText);
-      throw new Error(`Order API error: ${response.status} - ${errorText}`);
-    }
-
-    const orderResponse: UltraOrderResponse = await response.json();
-
-    if (!orderResponse || !orderResponse.outAmount) {
-      console.error('[Jupiter Ultra] Invalid order response:', orderResponse);
-      throw new Error('Invalid order response from Jupiter Ultra');
-    }
-
-    console.log('[Jupiter Ultra] Order received successfully!');
-    console.log('[Jupiter Ultra] Request ID:', orderResponse.requestId);
-    console.log('[Jupiter Ultra] OutAmount (raw):', orderResponse.outAmount);
-
-    // Log fee-related fields to verify referral fee is being applied
-    console.log('[Jupiter Ultra] === REFERRAL FEE DEBUG ===');
-    console.log('[Jupiter Ultra] feeMint:', orderResponse.feeMint || 'NOT RETURNED');
-    console.log('[Jupiter Ultra] feeBps:', orderResponse.feeBps || 'NOT RETURNED');
-    console.log('[Jupiter Ultra] feeAccount:', orderResponse.feeAccount || 'NOT RETURNED');
-    console.log('[Jupiter Ultra] Full response keys:', Object.keys(orderResponse));
-
-    // WARNING: If fee fields are missing, the referral token account may not be initialized
-    if (!orderResponse.feeMint || !orderResponse.feeBps) {
-      console.warn('[Jupiter Ultra] ⚠️ WARNING: Fee fields not returned!');
-      console.warn('[Jupiter Ultra] This usually means the referral token account for the output mint is NOT initialized.');
-      console.warn('[Jupiter Ultra] Output mint:', outputMint);
-      console.warn('[Jupiter Ultra] Please create the token account on https://referral.jup.ag');
-    } else {
-      console.log('[Jupiter Ultra] ✅ Fee will be collected:', orderResponse.feeBps, 'bps in', orderResponse.feeMint);
-    }
-    console.log('[Jupiter Ultra] ===========================');
-
-    // Verify output mint matches
-    if (orderResponse.outputMint !== outputMint) {
-      console.error('[Jupiter Ultra] OUTPUT MINT MISMATCH!');
-      throw new Error('No route available for this token pair');
-    }
-
-    // Parse amounts
-    const outputAmountLamports = parseFloat(orderResponse.outAmount);
-    const outputAmount = outputAmountLamports / Math.pow(10, outputDecimals);
-
-    // Calculate platform fee
-    const platformFee = outputAmount * (PLATFORM_FEE_BPS / 10000);
-    const priceImpact = parseFloat(orderResponse.priceImpactPct || '0');
-    const minOutputAmount = parseFloat(orderResponse.otherAmountThreshold) / Math.pow(10, outputDecimals);
-
-    // Extract route info
-    const route = orderResponse.routePlan?.map((r: any) =>
-      r.swapInfo?.label || r.swapInfo?.ammKey?.substring(0, 8) || 'Jupiter'
-    ) || ['Jupiter Ultra'];
-
-    const quote: SwapQuote = {
-      inputMint,
-      outputMint,
-      inputAmount: amount,
-      outputAmount,
-      minOutputAmount,
-      priceImpact,
-      fee: platformFee,
-      feePercent: PLATFORM_FEE_BPS / 100,
-      route,
-      exchangeRate: outputAmount / amount,
-      quoteResponse: orderResponse, // Store for execution
-      platformFee,
-    };
-
-    return { quote, orderResponse };
-
-  } catch (error: any) {
-    clearTimeout(timeout);
-    console.error('[Jupiter Ultra] Order error:', error);
-    throw error;
+  // Check if API key is available - Ultra API requires authentication
+  if (!JUPITER_API_KEY) {
+    console.warn('[Jupiter Ultra] No API key configured - Ultra API requires x-api-key header');
+    console.warn('[Jupiter Ultra] Get a free API key from https://portal.jup.ag/api-keys');
+    throw new Error('Jupiter API key not configured. Ultra API requires authentication.');
   }
+
+  // Retry logic for order request - helps with temporary network issues
+  const maxRetries = 2;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    // 30s timeout for less liquid token pairs that need more routing time
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      console.log(`[Jupiter Ultra] Order request attempt ${attempt}/${maxRetries}...`);
+
+      const response = await fetch(orderUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'x-api-key': JUPITER_API_KEY,
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Jupiter Ultra] Order API error:', response.status, errorText);
+        throw new Error(`Order API error: ${response.status} - ${errorText}`);
+      }
+
+      const orderResponse: UltraOrderResponse = await response.json();
+
+      if (!orderResponse || !orderResponse.outAmount) {
+        console.error('[Jupiter Ultra] Invalid order response:', orderResponse);
+        throw new Error('Invalid order response from Jupiter Ultra');
+      }
+
+      console.log('[Jupiter Ultra] Order received successfully!');
+      console.log('[Jupiter Ultra] Request ID:', orderResponse.requestId);
+      console.log('[Jupiter Ultra] OutAmount (raw):', orderResponse.outAmount);
+      console.log('[Jupiter Ultra] Fee will be collected via direct SOL transfer after swap');
+
+      // Verify output mint matches
+      if (orderResponse.outputMint !== outputMint) {
+        console.error('[Jupiter Ultra] OUTPUT MINT MISMATCH!');
+        throw new Error('No route available for this token pair');
+      }
+
+      // Parse amounts
+      const outputAmountLamports = parseFloat(orderResponse.outAmount);
+      const outputAmount = outputAmountLamports / Math.pow(10, outputDecimals);
+
+      // Calculate platform fee
+      const platformFee = outputAmount * (PLATFORM_FEE_BPS / 10000);
+      const priceImpact = parseFloat(orderResponse.priceImpactPct || '0');
+      const minOutputAmount = parseFloat(orderResponse.otherAmountThreshold) / Math.pow(10, outputDecimals);
+
+      // Extract route info
+      const route = orderResponse.routePlan?.map((r: any) =>
+        r.swapInfo?.label || r.swapInfo?.ammKey?.substring(0, 8) || 'Jupiter'
+      ) || ['Jupiter Ultra'];
+
+      const quote: SwapQuote = {
+        inputMint,
+        outputMint,
+        inputAmount: amount,
+        outputAmount,
+        minOutputAmount,
+        priceImpact,
+        fee: platformFee,
+        feePercent: PLATFORM_FEE_BPS / 100,
+        route,
+        exchangeRate: outputAmount / amount,
+        quoteResponse: orderResponse, // Store for execution
+        platformFee,
+      };
+
+      return { quote, orderResponse };
+
+    } catch (error: any) {
+      clearTimeout(timeout);
+      lastError = error;
+      console.error(`[Jupiter Ultra] Order attempt ${attempt} failed:`, error.message);
+
+      // If it's a timeout and we have retries left, try again
+      if (error.name === 'AbortError' && attempt < maxRetries) {
+        console.log('[Jupiter Ultra] Retrying after timeout...');
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+        continue;
+      }
+
+      // For other errors or last attempt, throw
+      throw error;
+    }
+  }
+
+  // Should never reach here, but TypeScript needs this
+  throw lastError || new Error('Order request failed after retries');
 }
 
 /**
@@ -1478,6 +1435,11 @@ export async function executeUltraSwap(params: {
 
   console.log('[Jupiter Ultra] Submitting to Jupiter execute endpoint...');
 
+  // Check if API key is available
+  if (!JUPITER_API_KEY) {
+    throw new Error('Jupiter API key not configured');
+  }
+
   // Submit via Jupiter /execute endpoint
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60000); // 60 second timeout
@@ -1488,6 +1450,7 @@ export async function executeUltraSwap(params: {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
+        'x-api-key': JUPITER_API_KEY,
       },
       body: JSON.stringify({
         signedTransaction,
@@ -1630,4 +1593,129 @@ export async function swapWithUltra(params: {
       error: error.message || 'Swap failed',
     };
   }
+}
+
+// ===========================
+// Direct Fee Transfer
+// ===========================
+
+/**
+ * Transfer platform fee directly to fee wallet after a successful swap
+ * This is called after the swap completes to collect the 0.5% fee
+ *
+ * @param mnemonic - Wallet mnemonic for signing
+ * @param feeAmountSOL - Fee amount in SOL to transfer
+ * @param accountIndex - Account index for key derivation
+ * @returns Transaction signature or null if fee transfer fails/skipped
+ */
+export async function transferSwapFee(params: {
+  mnemonic: string;
+  feeAmountSOL: number;
+  accountIndex?: number;
+}): Promise<{ success: boolean; signature?: string; error?: string }> {
+  const { mnemonic, feeAmountSOL, accountIndex = 0 } = params;
+
+  try {
+    // Skip if fee is too small (less than 0.000001 SOL = 1000 lamports)
+    const MIN_FEE_SOL = 0.000001;
+    if (feeAmountSOL < MIN_FEE_SOL) {
+      console.log('[Fee Transfer] Skipping - fee too small:', feeAmountSOL, 'SOL');
+      return { success: true, error: 'Fee too small to transfer' };
+    }
+
+    console.log('[Fee Transfer] Transferring fee:', feeAmountSOL, 'SOL to', FEE_WALLET_ADDRESS);
+
+    // Get keypair and connection
+    const keypair = await deriveSolanaKeypair(mnemonic, accountIndex);
+    const connection = await getSolanaConnection(false); // Mainnet
+
+    const feeAmountLamports = Math.floor(feeAmountSOL * 1e9);
+    const txFeeLamports = 5000; // ~0.000005 SOL for transaction fee
+    const requiredBalance = feeAmountLamports + txFeeLamports;
+
+    // Wait for balance to be available (swap just completed, need time for blockchain to update)
+    // Retry up to 3 times with 2 second delay to allow the swap output to be reflected
+    let balance = 0;
+    let attempts = 0;
+    const maxAttempts = 3;
+    const delayMs = 2000;
+
+    while (attempts < maxAttempts) {
+      // Use 'confirmed' commitment for more up-to-date balance
+      balance = await connection.getBalance(keypair.publicKey, 'confirmed');
+      console.log(`[Fee Transfer] Balance check attempt ${attempts + 1}/${maxAttempts}:`, balance / 1e9, 'SOL');
+
+      if (balance >= requiredBalance) {
+        break;
+      }
+
+      attempts++;
+      if (attempts < maxAttempts) {
+        console.log(`[Fee Transfer] Waiting ${delayMs}ms for balance to update...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+
+    if (balance < requiredBalance) {
+      console.log('[Fee Transfer] Insufficient balance for fee transfer after retries');
+      console.log('[Fee Transfer] Balance:', balance / 1e9, 'SOL, Need:', requiredBalance / 1e9, 'SOL');
+      return { success: false, error: 'Insufficient balance for fee transfer' };
+    }
+
+    // Import Solana modules
+    const {
+      Transaction,
+      SystemProgram,
+      sendAndConfirmTransaction
+    } = await import('@solana/web3.js');
+
+    // Create transfer instruction
+    const feeWalletPubkey = new PublicKey(FEE_WALLET_ADDRESS);
+    const transferInstruction = SystemProgram.transfer({
+      fromPubkey: keypair.publicKey,
+      toPubkey: feeWalletPubkey,
+      lamports: feeAmountLamports,
+    });
+
+    // Create and send transaction
+    const transaction = new Transaction().add(transferInstruction);
+
+    // Get recent blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = keypair.publicKey;
+
+    console.log('[Fee Transfer] Sending fee transaction...');
+
+    // Sign and send
+    const signature = await sendAndConfirmTransaction(
+      connection,
+      transaction,
+      [keypair],
+      {
+        commitment: 'confirmed',
+        maxRetries: 3,
+      }
+    );
+
+    console.log('[Fee Transfer] Fee transferred successfully!');
+    console.log('[Fee Transfer] Signature:', signature);
+    console.log('[Fee Transfer] Amount:', feeAmountSOL, 'SOL');
+
+    return { success: true, signature };
+
+  } catch (error: any) {
+    console.error('[Fee Transfer] Error:', error);
+    // Don't fail the swap if fee transfer fails - just log it
+    return { success: false, error: error.message || 'Fee transfer failed' };
+  }
+}
+
+/**
+ * Calculate the fee amount for a swap
+ * @param outputAmountSOL - Output amount in SOL (or SOL equivalent)
+ * @returns Fee amount in SOL
+ */
+export function calculateSwapFee(outputAmountSOL: number): number {
+  return outputAmountSOL * (PLATFORM_FEE_BPS / 10000); // 0.5%
 }

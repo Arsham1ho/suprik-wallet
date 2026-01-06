@@ -62,6 +62,9 @@ import {
   resolveMintAddress,
   resolveMintAddressAsync,
   UltraOrderResponse,
+  transferSwapFee,
+  calculateSwapFee,
+  PLATFORM_FEE_BPS,
 } from "../../utils/jupiterSwap";
 import { saveSwapToHistory } from "../../utils/transactionHistory";
 import { playSwapExchange } from "../../utils/sounds";
@@ -523,17 +526,19 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         const effectiveSlippage = slippageMode === "auto" ? 3 : parseFloat(slippage);
         console.log("🔄 [Swap] Slippage mode:", slippageMode, "Effective slippage:", effectiveSlippage + "%");
 
+        // Use Ultra API for Jupiter Referral fee collection
+        // The referral account FSHu56mFcP6eiL4HEJiijqRZekvjemmG8YpJpVmiJfuz is configured under the Ultra project
+        // Ultra API uses referralAccount + referralFee parameters for fee collection
+        let quote;
+        let orderResponse;
+
         // Get wallet address for Ultra API taker parameter
         const walletData = localStorage.getItem('wallet_data');
         const walletAddress = walletData ? JSON.parse(walletData)?.addresses?.solana : null;
 
-        // Try Ultra API first (recommended), fall back to legacy if needed
-        let quote;
-        let orderResponse;
-
         if (walletAddress) {
           try {
-            console.log("🔄 [Swap] Using Jupiter Ultra API...");
+            console.log("🔄 [Swap] Using Jupiter Ultra API (for referral fee collection)...");
             const ultraResult = await getUltraSwapOrder({
               inputMint,
               outputMint,
@@ -548,9 +553,34 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             orderResponse = ultraResult.orderResponse;
             setUltraOrderResponse(orderResponse);
             console.log("✅ [Swap] Ultra API order received!");
+            console.log("✅ [Swap] Request ID:", orderResponse.requestId);
+            console.log("✅ [Swap] Has transaction:", !!orderResponse.transaction);
+            console.log("✅ [Swap] Fee mint:", orderResponse.feeMint || 'NOT SET');
+            console.log("✅ [Swap] Fee bps:", orderResponse.feeBps || 'NOT SET');
+            console.log("✅ [Swap] Fee account:", orderResponse.feeAccount || 'NOT SET');
+
+            // If transaction is missing, we cannot use Ultra API for execution
+            // Fall back to legacy API for this swap
+            if (!orderResponse.transaction) {
+              console.error("❌ [Swap] Ultra API returned no transaction! Falling back to legacy API.");
+              console.error("❌ [Swap] Order response keys:", Object.keys(orderResponse));
+              console.error("❌ [Swap] Note: Fee collection will NOT work without Ultra API transaction.");
+              // Clear ultra response to force legacy API usage
+              setUltraOrderResponse(null);
+              // Get legacy quote instead
+              quote = await getJupiterSwapQuote({
+                inputMint,
+                outputMint,
+                amount: amountNum,
+                slippage: effectiveSlippage,
+                isTestnet: network.isTestnet,
+                inputDecimals,
+                outputDecimals,
+              });
+            }
           } catch (ultraError: any) {
             console.warn("⚠️ [Swap] Ultra API failed, falling back to legacy:", ultraError.message);
-            // Fall back to legacy API
+            // Fall back to legacy API (without referral fees)
             quote = await getJupiterSwapQuote({
               inputMint,
               outputMint,
@@ -588,7 +618,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           console.log("✅ [Swap] Quote received!");
           console.log("✅ [Swap] Output amount:", quote.outputAmount);
           console.log("✅ [Swap] Price impact:", quote.priceImpact + "%");
-          console.log("✅ [Swap] Using Ultra:", !!orderResponse);
+          console.log("✅ [Swap] Using Ultra API:", !!orderResponse);
         } else {
           throw new Error("No quote available");
         }
@@ -1104,12 +1134,41 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     () => fromTokenData?.symbol.toUpperCase() === 'SOL',
     [fromTokenData]
   );
+
+  // Calculate the total SOL needed when swapping FROM SOL:
+  // swapAmount + fee (0.5% in SOL) + tx fee for fee transfer (~0.000005) + min SOL for rent (0.005)
+  const totalSolNeededForSwap = useMemo(() => {
+    if (!isSwappingSol || !fromAmount) return 0;
+    const swapAmount = parseFloat(fromAmount);
+    const feeAmount = swapAmount * 0.005; // 0.5% fee in SOL
+    const feeTxCost = 0.000005; // Transaction cost for fee transfer
+    return swapAmount + feeAmount + feeTxCost + MIN_SOL_FOR_SWAP;
+  }, [isSwappingSol, fromAmount]);
+
   // If swapping SOL, check if remaining balance after swap covers fees
   const solBalanceAfterSwap = useMemo(() => {
     if (!isSwappingSol || !fromAmount) return solBalance;
-    const swapAmount = parseFloat(fromAmount) + feeInFromToken;
-    return Math.max(0, solBalance - swapAmount);
-  }, [isSwappingSol, fromAmount, solBalance, feeInFromToken]);
+    const swapAmount = parseFloat(fromAmount);
+    const feeAmount = swapAmount * 0.005; // 0.5% fee in SOL
+    const feeTxCost = 0.000005; // Transaction cost for fee transfer
+    return Math.max(0, solBalance - swapAmount - feeAmount - feeTxCost);
+  }, [isSwappingSol, fromAmount, solBalance]);
+
+  // Check if user has enough balance for the swap (including fee when swapping SOL)
+  const hasInsufficientBalance = useMemo(() => {
+    if (!fromTokenData || !fromAmount) return false;
+    const amount = parseFloat(fromAmount);
+    if (amount <= 0) return false;
+
+    if (isSwappingSol) {
+      // When swapping SOL, check total SOL needed
+      return totalSolNeededForSwap > fromTokenData.balance;
+    } else {
+      // When swapping other tokens, just check the token balance
+      return amount > fromTokenData.balance;
+    }
+  }, [fromTokenData, fromAmount, isSwappingSol, totalSolNeededForSwap]);
+
   const willHaveEnoughSolAfterSwap = useMemo(
     () => isSwappingSol ? solBalanceAfterSwap >= MIN_SOL_FOR_SWAP : hasEnoughSolForFees,
     [isSwappingSol, solBalanceAfterSwap, hasEnoughSolForFees]
@@ -1236,9 +1295,12 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         const accountIndexToUse = activeAccount?.accountIndex ?? 0;
 
         // Execute swap - use Ultra API if order response is available, otherwise legacy
+        // Check for requestId (always present in Ultra API) rather than transaction field
         let result;
-        if (ultraOrderResponse && ultraOrderResponse.transaction) {
-          console.log("🚀 [Swap] Executing via Jupiter Ultra API...");
+        if (ultraOrderResponse && ultraOrderResponse.requestId) {
+          console.log("🚀 [Swap] Executing via Jupiter Ultra API (referral fees enabled)...");
+          console.log("🚀 [Swap] Ultra API Request ID:", ultraOrderResponse.requestId);
+          console.log("🚀 [Swap] Has transaction:", !!ultraOrderResponse.transaction);
           result = await executeUltraSwap({
             mnemonic: mnemonicToUse,
             quoteResponse: jupiterQuote,
@@ -1247,7 +1309,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             isTestnet: network.isTestnet,
           });
         } else {
-          console.log("🔄 [Swap] Executing via legacy Jupiter API...");
+          console.log("🔄 [Swap] Executing via Jupiter Legacy API...");
           result = await executeJupiterSwap({
             mnemonic: mnemonicToUse,
             quoteResponse: jupiterQuote,
@@ -1263,6 +1325,50 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         console.log("✅ [Swap] Swap successful!");
         console.log("✅ [Swap] Signature:", result.signature);
         console.log("✅ [Swap] Used Ultra API:", !!ultraOrderResponse);
+
+        // Transfer platform fee (0.5%) directly to fee wallet
+        // Only on mainnet - use result output or quote output as fallback
+        const actualOutputAmount = result.outputAmount || jupiterQuote?.outputAmount || parseFloat(toAmount) || 0;
+
+        if (!network.isTestnet && actualOutputAmount > 0) {
+          try {
+            // Calculate fee based on the INPUT value in SOL equivalent (more reliable)
+            // This ensures we always collect fee regardless of output token
+            const inputAmount = parseFloat(fromAmount) || 0;
+            const inputTokenPrice = fromTokenData?.price || 0;
+            const solPrice = tokens.find(t => t.symbol === 'SOL')?.price || 185;
+
+            // Calculate input value in USD, then convert to SOL
+            const inputValueUSD = inputAmount * inputTokenPrice;
+            const inputValueSOL = inputValueUSD / solPrice;
+
+            // Calculate fee (0.5% of input value in SOL)
+            const feeAmountSOL = calculateSwapFee(inputValueSOL);
+
+            console.log("💰 [Swap] Input amount:", inputAmount, fromTokenData?.symbol);
+            console.log("💰 [Swap] Input value USD:", inputValueUSD.toFixed(2));
+            console.log("💰 [Swap] Input value SOL:", inputValueSOL.toFixed(6));
+            console.log("💰 [Swap] Collecting platform fee:", feeAmountSOL.toFixed(6), "SOL");
+            console.log("💰 [Swap] Fee percentage:", PLATFORM_FEE_BPS / 100, "%");
+
+            // Transfer fee in background - don't block the UI
+            transferSwapFee({
+              mnemonic: mnemonicToUse,
+              feeAmountSOL,
+              accountIndex: accountIndexToUse,
+            }).then((feeResult) => {
+              if (feeResult.success && feeResult.signature) {
+                console.log("💰 [Swap] Fee transfer successful:", feeResult.signature);
+              } else if (feeResult.error) {
+                console.warn("💰 [Swap] Fee transfer skipped:", feeResult.error);
+              }
+            }).catch((feeError) => {
+              console.warn("💰 [Swap] Fee transfer failed (non-blocking):", feeError);
+            });
+          } catch (feeCalcError) {
+            console.warn("💰 [Swap] Fee calculation error (non-blocking):", feeCalcError);
+          }
+        }
 
         // Save swap to local history (only on mainnet, not testnet)
         // Include mint addresses for symbol resolution in case symbol is "TOKEN"
@@ -1603,10 +1709,37 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
 
   const setMaxAmount = useCallback(() => {
     if (fromTokenData) {
-      // Calculate max amount considering 0.5% fee
-      // If balance is X, max swap amount is X / 1.005 (so X = swapAmount + fee)
-      const maxSwapAmount = fromTokenData.balance / 1.005;
-      handleFromAmountChange(maxSwapAmount.toFixed(6));
+      const isFromSOL = fromTokenData.symbol.toUpperCase() === 'SOL';
+
+      if (isFromSOL) {
+        // When swapping FROM SOL, we need to reserve:
+        // 1. Fee amount (0.5% of swap amount) - fee is paid in SOL
+        // 2. Fee transaction cost (~0.000005 SOL)
+        // 3. Minimum SOL for account rent (MIN_SOL_FOR_SWAP = 0.005)
+        //
+        // Formula: balance = swapAmount + (swapAmount * 0.005) + 0.000005 + 0.005
+        //          balance = swapAmount * 1.005 + 0.005005
+        //          swapAmount = (balance - 0.005005) / 1.005
+        const reserveForFeeAndRent = 0.005005; // 0.005 min SOL + 0.000005 tx fee
+        const availableForSwap = fromTokenData.balance - reserveForFeeAndRent;
+
+        if (availableForSwap <= 0) {
+          handleFromAmountChange("0");
+          return;
+        }
+
+        // Max amount = availableForSwap / 1.005 (to account for the 0.5% fee)
+        const maxSwapAmount = Math.floor((availableForSwap / 1.005) * 1000000) / 1000000;
+        handleFromAmountChange(Math.max(0, maxSwapAmount).toString());
+      } else {
+        // When swapping FROM other tokens:
+        // The 0.5% fee is still paid in SOL (not the input token)
+        // So we can swap the full balance of the non-SOL token
+        // But the UI shows "fee in fromToken" for display purposes
+        // The actual fee transfer happens in SOL after the swap
+        const maxSwapAmount = Math.floor(fromTokenData.balance * 1000000) / 1000000;
+        handleFromAmountChange(maxSwapAmount.toString());
+      }
     }
   }, [fromTokenData, handleFromAmountChange]);
 
@@ -1707,7 +1840,8 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
                       size="sm"
                       variant="ghost"
                       onClick={setMaxAmount}
-                      className="h-6 px-2 text-xs text-purple-400 hover:text-purple-300 hover:bg-slate-900/50"
+                      className="h-6 px-2 text-xs hover:bg-slate-900/50"
+                      style={{ color: colors.accent }}
                     >
                       MAX
                     </Button>
@@ -1718,7 +1852,8 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setShowFromTokenSearch(true)}
-                  className="w-[140px] bg-slate-950/80 border border-slate-800/50 text-white h-14 rounded-md px-3 flex items-center justify-between hover:bg-slate-900/80 transition-colors"
+                  className="w-[140px] bg-slate-900/90 border text-white h-10 rounded-full px-3 flex items-center justify-between hover:bg-slate-800/90 transition-colors"
+                  style={{ borderColor: `${colors.primary}80` }}
                 >
                   {fromTokenData ? (
                     <div className="flex items-center gap-2">
@@ -1738,12 +1873,26 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
                   <ChevronDown className="w-4 h-4 text-slate-400" />
                 </button>
 
-                <Input
+                <input
                   type="number"
                   placeholder="0.00"
                   value={fromAmount}
-                  onChange={(e) => handleFromAmountChange(e.target.value)}
-                  className="flex-1 bg-transparent border-0 text-white text-2xl placeholder:text-slate-700 h-14 focus-visible:ring-0"
+                  min="0"
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Prevent negative numbers
+                    if (value === '' || parseFloat(value) >= 0) {
+                      handleFromAmountChange(value);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    // Prevent typing minus sign
+                    if (e.key === '-' || e.key === 'e') {
+                      e.preventDefault();
+                    }
+                  }}
+                  style={{ fontSize: '1.5rem' }}
+                  className="flex-1 bg-transparent border-0 text-white font-medium placeholder:text-slate-700 h-14 focus:outline-none focus:ring-0 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
               </div>
 
@@ -1784,7 +1933,8 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setShowToTokenSearch(true)}
-                  className="w-[140px] bg-slate-950/80 border border-slate-800/50 text-white h-14 rounded-md px-3 flex items-center justify-between hover:bg-slate-900/80 transition-colors"
+                  className="w-[140px] bg-slate-900/90 border text-white h-10 rounded-full px-3 flex items-center justify-between hover:bg-slate-800/90 transition-colors"
+                  style={{ borderColor: `${colors.primary}80` }}
                 >
                   {toTokenData ? (
                     <div className="flex items-center gap-2">
@@ -1804,8 +1954,10 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
                   <ChevronDown className="w-4 h-4 text-slate-400" />
                 </button>
 
-                <div className="flex-1 text-2xl text-white h-14 flex items-center">
-                  {toAmount || "0.00"}
+                <div className="flex-1 text-2xl font-medium text-white h-14 flex items-center justify-center">
+                  <span className="truncate">
+                    {toAmount ? parseFloat(toAmount).toLocaleString('en-US', { maximumFractionDigits: 6 }) : "0.00"}
+                  </span>
                 </div>
               </div>
 
@@ -1894,15 +2046,20 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               <div className="text-right">
                 <span className="text-white">${estimatedFeeUSD}</span>
                 <p className="text-slate-500 text-xs">
-                  {feeInFromToken.toFixed(6)} {fromTokenData?.symbol}
+                  {isSwappingSol
+                    ? `${feeInFromToken.toFixed(6)} SOL`
+                    : `≈ ${feeInFromToken.toFixed(6)} SOL equivalent`
+                  }
                 </p>
               </div>
             </div>
             <div className="flex items-center justify-between text-sm mb-3">
               <span className="text-slate-400">Total Deducted</span>
               <span className="text-white">
-                {(parseFloat(fromAmount || "0") + feeInFromToken).toFixed(6)}{" "}
-                {fromTokenData?.symbol}
+                {isSwappingSol
+                  ? `${(parseFloat(fromAmount || "0") + feeInFromToken + 0.005005).toFixed(6)} SOL`
+                  : `${parseFloat(fromAmount || "0").toFixed(6)} ${fromTokenData?.symbol}`
+                }
               </span>
             </div>
             <div className="flex items-center justify-between text-sm">
@@ -1934,9 +2091,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               isSwapping ||
               !fromAmount ||
               parseFloat(fromAmount) <= 0 ||
-              (fromTokenData &&
-                parseFloat(fromAmount) + feeInFromToken >
-                  fromTokenData.balance) ||
+              hasInsufficientBalance ||
               fromTokenOptions.length === 0 ||
               (!network.isTestnet && !hasEnoughSolForFees)
             }
@@ -1968,9 +2123,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               "No tokens with balance"
             ) : !fromAmount || parseFloat(fromAmount) <= 0 ? (
               "Enter an amount"
-            ) : fromTokenData &&
-              parseFloat(fromAmount) + feeInFromToken >
-                fromTokenData.balance ? (
+            ) : hasInsufficientBalance ? (
               "Insufficient balance (including fee)"
             ) : (
               "Swap"

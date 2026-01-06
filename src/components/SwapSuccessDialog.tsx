@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { ArrowDown, X, ExternalLink, Copy } from 'lucide-react';
 import { TokenLogo } from './TokenLogo';
 import { useLanguage } from '../utils/i18n/LanguageContext';
+import { useTheme } from '../utils/ThemeContext';
 import { toast } from 'sonner';
 
 interface SwapSuccessDialogProps {
@@ -43,6 +44,7 @@ export function SwapSuccessDialog({
   isTestnet = false
 }: SwapSuccessDialogProps) {
   const { formatPrice } = useLanguage();
+  const { colors } = useTheme();
 
   const handleCopySignature = () => {
     if (signature) {
@@ -142,7 +144,7 @@ export function SwapSuccessDialog({
               transition={{ delay: 0.3 }}
               className="text-2xl font-bold text-center bg-gradient-to-r from-white to-slate-200 bg-clip-text text-transparent mb-2"
             >
-              Swap Complete! 🎉
+              Swap Complete!
             </motion.h2>
           </DialogTitle>
 
@@ -173,7 +175,10 @@ export function SwapSuccessDialog({
             className="relative bg-gradient-to-br from-slate-800/80 to-slate-900/80 rounded-2xl p-5 mb-4 border border-slate-700/50 shadow-xl backdrop-blur-sm overflow-hidden"
           >
             {/* Gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-blue-500/5 pointer-events-none" />
+            <div
+              className="absolute inset-0 bg-gradient-to-br pointer-events-none"
+              style={{ background: `linear-gradient(to bottom right, ${colors.primary}0D, ${colors.secondary}0D)` }}
+            />
             
             <div className="relative space-y-4">
               {/* From token */}
@@ -214,7 +219,8 @@ export function SwapSuccessDialog({
                     damping: 10,
                     delay: 0.5
                   }}
-                  className="bg-gradient-to-br from-purple-600 to-blue-600 rounded-full p-2"
+                  className="rounded-full p-2"
+                  style={{ background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.secondary})` }}
                 >
                   <ArrowDown className="w-4 h-4 text-white" strokeWidth={2.5} />
                 </motion.div>
@@ -256,15 +262,13 @@ export function SwapSuccessDialog({
             transition={{ delay: 0.5 }}
             className="space-y-2.5 mb-6"
           >
-            {/* Network fee */}
-            {fee && feeUSD && (
-              <div className="flex items-center justify-between text-sm bg-slate-800/40 rounded-lg px-3 py-2">
-                <span className="text-slate-400">Network Fee</span>
-                <span className="text-white font-medium">
-                  {fee} {fromToken.symbol} <span className="text-slate-400 text-xs">(≈ ${feeUSD})</span>
-                </span>
-              </div>
-            )}
+            {/* Network fee - Solana transaction fee */}
+            <div className="flex items-center justify-between text-sm bg-slate-800/40 rounded-lg px-3 py-2">
+              <span className="text-slate-400">Network Fee</span>
+              <span className="text-white font-medium">
+                ~0.000005 SOL <span className="text-slate-400 text-xs">(≈ $0.001)</span>
+              </span>
+            </div>
 
             {/* Transaction signature */}
             {signature && (
@@ -273,7 +277,8 @@ export function SwapSuccessDialog({
                   <span className="text-slate-400">Transaction</span>
                   <button
                     onClick={handleCopySignature}
-                    className="flex items-center gap-1.5 text-purple-400 hover:text-purple-300 transition-colors group"
+                    className="flex items-center gap-1.5 transition-colors group"
+                    style={{ color: colors.accent }}
                     title="Copy signature"
                   >
                     <Copy className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
@@ -286,7 +291,12 @@ export function SwapSuccessDialog({
                   href={`https://solscan.io/tx/${signature}${isTestnet ? '?cluster=devnet' : ''}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 text-sm text-purple-300 hover:text-purple-200 transition-all bg-gradient-to-r from-purple-500/10 to-blue-500/10 hover:from-purple-500/20 hover:to-blue-500/20 rounded-lg py-2.5 border border-purple-500/20 group"
+                  className="flex items-center justify-center gap-2 text-sm transition-all rounded-lg py-2.5 border group"
+                  style={{
+                    color: colors.accent,
+                    background: `linear-gradient(to right, ${colors.primary}1A, ${colors.secondary}1A)`,
+                    borderColor: `${colors.primary}33`
+                  }}
                 >
                   <ExternalLink className="w-4 h-4 group-hover:scale-110 transition-transform" />
                   View on Solscan
@@ -315,7 +325,11 @@ export function SwapSuccessDialog({
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => onOpenChange(false)}
-            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 transition-all font-semibold text-white shadow-lg shadow-purple-500/25"
+            className="w-full py-3.5 rounded-xl transition-all font-semibold text-white shadow-lg"
+            style={{
+              background: `linear-gradient(to right, ${colors.primary}, ${colors.secondary})`,
+              boxShadow: `0 10px 15px -3px ${colors.primary}40`
+            }}
           >
             Done
           </motion.button>

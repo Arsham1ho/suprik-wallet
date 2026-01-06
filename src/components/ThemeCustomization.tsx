@@ -147,7 +147,7 @@ export function ThemeCustomization({ onThemeChange }: ThemeCustomizationProps) {
   useLanguage(); // Keep hook for potential future translations
   const { accentColor, setAccentColor } = useTheme();
   const [selectedBackground, setSelectedBackground] = useState<string>(() => {
-    return localStorage.getItem('balanceBackground') || 'circuit-board';
+    return localStorage.getItem('balanceBackground') || 'none';
   });
   const [showAllBackgrounds, setShowAllBackgrounds] = useState(false);
 

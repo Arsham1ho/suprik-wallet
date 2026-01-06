@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { validateMnemonic, deriveAddresses, SecureStorage, deriveWalletId, WalletStorage, encryptWithPassword } from '../utils/wallet';
 import { AccountManager } from '../utils/accountManager';
 import { useWallet } from '../utils/WalletContext';
+import { useTheme } from '../utils/ThemeContext';
 import { fetchSolanaBalance } from '../utils/blockchain';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
@@ -40,6 +41,7 @@ export function ImportWalletDialog({
   isAddingAccount = false,
 }: ImportWalletDialogProps) {
   const wallet = useWallet();
+  const { colors } = useTheme();
   const [seedPhrase, setSeedPhrase] = useState('');
   const [seedWords, setSeedWords] = useState<string[]>(Array(12).fill(''));
   const [wordCount, setWordCount] = useState<12 | 24>(12);
@@ -756,9 +758,11 @@ export function ImportWalletDialog({
                   <div className="grid grid-cols-3 gap-2">
                     {seedWords.map((word, index) => (
                       <div key={index} className="relative">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-500 font-medium">
-                          {index + 1}.
-                        </span>
+                        {!word && (
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-500 font-medium pointer-events-none">
+                            {index + 1}.
+                          </span>
+                        )}
                         <input
                           type="text"
                           value={word}
@@ -766,7 +770,17 @@ export function ImportWalletDialog({
                             handleWordChange(index, e.target.value);
                             setError('');
                           }}
-                          className="w-full pl-7 pr-2 py-2.5 bg-slate-800/80 border border-slate-700/50 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus:border-purple-500/50"
+                          className={`w-full pr-2 py-2.5 bg-slate-800/80 border border-slate-700/50 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 ${word ? 'pl-2' : 'pl-7'}`}
+                          style={{
+                            // @ts-ignore - CSS custom properties
+                            '--tw-ring-color': `${colors.primary}4D`,
+                          } as React.CSSProperties}
+                          onFocus={(e) => {
+                            e.target.style.borderColor = `${colors.primary}80`;
+                          }}
+                          onBlur={(e) => {
+                            e.target.style.borderColor = '';
+                          }}
                           placeholder=""
                           autoComplete="off"
                           spellCheck={false}
@@ -829,7 +843,8 @@ export function ImportWalletDialog({
                 <Button
                   onClick={handleContinue}
                   disabled={loading || (mode === 'seed-phrase' ? seedWords.filter(w => w.trim()).length < wordCount : !privateKey.trim())}
-                  className="flex-1 bg-[#ad46ff] hover:bg-[#ad46ff]/90 text-white disabled:opacity-50"
+                  className="flex-1 text-white disabled:opacity-50"
+                  style={{ background: colors.primary }}
                 >
                   {loading ? (
                     <>
@@ -851,8 +866,11 @@ export function ImportWalletDialog({
               className="space-y-6 py-8"
             >
               <div className="text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-500/20 flex items-center justify-center">
-                  <Loader2 className="w-8 h-8 text-purple-400 animate-spin" />
+                <div
+                  className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
+                  style={{ background: `${colors.primary}33` }}
+                >
+                  <Loader2 className="w-8 h-8 animate-spin" style={{ color: colors.accent }} />
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Scanning for Accounts</h3>
                 <p className="text-slate-400 text-sm">
@@ -863,8 +881,8 @@ export function ImportWalletDialog({
               {/* Progress bar */}
               <div className="w-full bg-slate-800 rounded-full h-2">
                 <div
-                  className="bg-purple-500 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${scanProgress}%` }}
+                  className="h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${scanProgress}%`, background: colors.primary }}
                 />
               </div>
               <p className="text-center text-xs text-slate-500">
@@ -899,18 +917,28 @@ export function ImportWalletDialog({
                   <button
                     key={account.index}
                     onClick={() => handleAccountSelection(account.index)}
-                    className={`w-full p-3 rounded-xl border transition-all flex items-center justify-between ${
-                      selectedAccounts.includes(account.index)
-                        ? 'bg-purple-500/20 border-purple-500/50'
-                        : 'bg-slate-900/50 border-slate-700/50 hover:border-slate-600/50'
-                    }`}
+                    className="w-full p-3 rounded-xl border transition-all flex items-center justify-between"
+                    style={{
+                      background: selectedAccounts.includes(account.index)
+                        ? `${colors.primary}33`
+                        : 'rgb(15 23 42 / 0.5)',
+                      borderColor: selectedAccounts.includes(account.index)
+                        ? `${colors.primary}80`
+                        : 'rgb(51 65 85 / 0.5)'
+                    }}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                        selectedAccounts.includes(account.index)
-                          ? 'bg-purple-500 text-white'
-                          : 'bg-slate-700 text-slate-300'
-                      }`}>
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
+                        style={{
+                          background: selectedAccounts.includes(account.index)
+                            ? colors.primary
+                            : 'rgb(51 65 85)',
+                          color: selectedAccounts.includes(account.index)
+                            ? 'white'
+                            : 'rgb(203 213 225)'
+                        }}
+                      >
                         {account.index + 1}
                       </div>
                       <div className="text-left">
@@ -929,7 +957,7 @@ export function ImportWalletDialog({
                         </span>
                       )}
                       {selectedAccounts.includes(account.index) && (
-                        <Check className="w-5 h-5 text-purple-400" />
+                        <Check className="w-5 h-5" style={{ color: colors.accent }} />
                       )}
                     </div>
                   </button>
@@ -954,7 +982,8 @@ export function ImportWalletDialog({
               <Button
                 onClick={handleConfirmAccounts}
                 disabled={loading || selectedAccounts.length === 0}
-                className="w-full bg-[#ad46ff] hover:bg-[#ad46ff]/90 text-white"
+                className="w-full text-white"
+                style={{ background: colors.primary }}
               >
                 {loading ? (
                   <>
@@ -986,8 +1015,15 @@ export function ImportWalletDialog({
               </button>
 
               {discoveredAccounts.length > 0 && selectedAccounts.length > 0 && (
-                <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-3">
-                  <p className="text-sm text-purple-200">
+                <div
+                  className="rounded-lg p-3"
+                  style={{
+                    background: `${colors.primary}1A`,
+                    borderWidth: 1,
+                    borderColor: `${colors.primary}4D`
+                  }}
+                >
+                  <p className="text-sm" style={{ color: colors.accent }}>
                     Importing {selectedAccounts.length} account{selectedAccounts.length > 1 ? 's' : ''} from this seed phrase
                   </p>
                 </div>
@@ -1058,7 +1094,8 @@ export function ImportWalletDialog({
               <Button
                 onClick={handlePasswordSubmit}
                 disabled={loading || !password || (!isAddingAccount && !confirmPassword)}
-                className="w-full bg-[#ad46ff] hover:bg-[#ad46ff]/90"
+                className="w-full text-white"
+                style={{ background: colors.primary }}
               >
                 {loading ? (
                   <>

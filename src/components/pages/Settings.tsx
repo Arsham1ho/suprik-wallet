@@ -1,19 +1,20 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { 
-  ChevronRight, 
-  Globe, 
-  Shield, 
-  Info, 
-  Users, 
-  LogOut, 
-  Wrench, 
-  Palette, 
+import {
+  ChevronRight,
+  Globe,
+  Shield,
+  Info,
+  Users,
+  LogOut,
+  Wrench,
+  Palette,
   BookUser,
   Wallet,
   ChevronDown,
   Server,
-  HelpCircle
+  HelpCircle,
+  Key
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
@@ -465,6 +466,22 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
               <div className="text-left">
                 <p className="text-white font-medium">{t.settings.rpcSettings}</p>
                 <p className="text-slate-400 text-sm">{t.settings.rpcSettingsDesc}</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-slate-600" />
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('apiKeys')}
+            className="w-full p-4 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                <Key className="w-5 h-5 text-white" />
+              </div>
+              <div className="text-left">
+                <p className="text-white font-medium">API Keys</p>
+                <p className="text-slate-400 text-sm">Configure blockchain API keys</p>
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-slate-600" />

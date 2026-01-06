@@ -95,83 +95,84 @@ const CoinItem = memo(({
   showComingSoon?: boolean;
 }) => {
   const priceChange = coin.price_change_percentage_24h || 0;
-  
+  const hasBalance = coin.amount && coin.amount > 0;
+  const usdValue = (coin.value || (coin.amount || 0) * coin.current_price) || 0;
+
+  // Format price display
+  const formatPrice = (price: number) => {
+    if (price >= 1) {
+      return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    } else if (price >= 0.01) {
+      return `$${price.toFixed(2)}`;
+    } else if (price > 0) {
+      return `<$0.01`;
+    }
+    return '-';
+  };
+
+  // Format balance display
+  const formatBalance = (amount: number, symbol: string) => {
+    if (amount >= 1000000) {
+      return `${(amount / 1000000).toFixed(2)}M ${symbol}`;
+    } else if (amount >= 1000) {
+      return `${amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${symbol}`;
+    } else if (amount >= 0.0001) {
+      return `${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 })} ${symbol}`;
+    }
+    return `${amount.toExponential(2)} ${symbol}`;
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ 
+      transition={{
         duration: 0.15,
         ease: 'easeOut'
       }}
-      className="w-full bg-slate-900/30 hover:bg-slate-900/50 backdrop-blur-sm rounded-xl p-2.5 transition-colors border border-transparent hover:border-purple-500/30 cursor-pointer will-change-auto"
+      className="w-full bg-slate-900/50 hover:bg-slate-800/50 rounded-xl p-3 transition-colors cursor-pointer mb-1.5"
       onClick={() => onClick(coin)}
     >
-      <div className="flex items-center gap-1.5">
-        {/* Market Cap Rank */}
-        <div className="text-xs text-slate-500 w-4 text-left flex-shrink-0">
-          {coin.market_cap_rank || '-'}
-        </div>
-
+      <div className="flex items-center gap-3">
         {/* Token Logo */}
         <div className="flex-shrink-0">
           <TokenLogo
             logoUrl={coin.image}
             symbol={coin.symbol}
             name={coin.name}
-            size="sm"
+            size="md"
             coinGeckoId={coin.id}
           />
         </div>
 
-        {/* Token Info */}
+        {/* Token Info - Name, then balance */}
         <div className="flex-1 text-left min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-white text-sm truncate">{coin.name}</span>
+          <div className="flex items-center gap-1">
+            <span className="text-white text-sm font-semibold truncate">{coin.name}</span>
             {showComingSoon && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap flex-shrink-0">
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 whitespace-nowrap flex-shrink-0">
                 Coming Soon
               </span>
             )}
           </div>
-          <div className="text-slate-400 text-xs uppercase">
-            {coin.symbol}
+          {/* Balance amount below name */}
+          <div className="text-slate-400 text-xs">
+            {hasBalance
+              ? formatBalance(coin.amount!, coin.symbol.toUpperCase())
+              : coin.symbol.toUpperCase()
+            }
           </div>
         </div>
 
-        {/* Balance (if user holds this token) or Price & Change */}
-        <div className="text-right mr-1 flex-shrink-0">
-          {coin.amount && coin.amount > 0 ? (
-            <>
-              <div className="text-white text-xs font-medium">
-                {coin.amount >= 0.0001
-                  ? coin.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })
-                  : coin.amount.toExponential(2)
-                } {coin.symbol.toUpperCase()}
-              </div>
-              <div className="text-slate-400 text-xs">
-                ${((coin.value || coin.amount * coin.current_price) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="text-white text-xs">
-                ${coin.current_price >= 0.01
-                  ? coin.current_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                  : coin.current_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
-                }
-              </div>
-              <div className={`text-xs flex items-center gap-0.5 justify-end ${priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {priceChange >= 0 ? (
-                  <TrendingUp className="w-2.5 h-2.5" />
-                ) : (
-                  <TrendingDown className="w-2.5 h-2.5" />
-                )}
-                {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(1)}%
-              </div>
-            </>
-          )}
+        {/* Price & Change on right */}
+        <div className="text-right flex-shrink-0">
+          <div className="text-white text-sm font-medium">
+            {hasBalance ? formatPrice(usdValue) : formatPrice(coin.current_price)}
+          </div>
+          <div className={`text-xs ${priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {priceChange >= 0 ? '+' : ''}{priceChange < 0.01 && priceChange > -0.01 ? '<' : ''}${Math.abs(priceChange * (hasBalance ? usdValue : coin.current_price) / 100).toFixed(2)}
+          </div>
         </div>
 
         {/* Add Button - Only show if not in selection mode */}
@@ -179,18 +180,18 @@ const CoinItem = memo(({
           <button
             onClick={(e) => isAdded ? onRemove(e, coin) : onAdd(e, coin)}
             disabled={isAdding}
-            className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${
+            className={`p-2 rounded-lg transition-all flex-shrink-0 ${
               isAdded
                 ? 'bg-red-500/20 hover:bg-red-500/30 text-red-400'
                 : 'bg-purple-600 hover:bg-purple-700 text-white'
             } disabled:opacity-50`}
           >
             {isAdding ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : isAdded ? (
-              <Minus className="w-3.5 h-3.5" />
+              <Minus className="w-4 h-4" />
             ) : (
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-4 h-4" />
             )}
           </button>
         )}

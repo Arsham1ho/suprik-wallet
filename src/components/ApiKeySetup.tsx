@@ -9,18 +9,22 @@ import { areApiKeysConfigured, saveEncryptedApiKey, getEncryptedApiKey, removeAp
 export function ApiKeySetup() {
   const [heliusKey, setHeliusKey] = useState('');
   const [alchemyKey, setAlchemyKey] = useState('');
+  const [jupiterKey, setJupiterKey] = useState('');
   const [showHelius, setShowHelius] = useState(false);
   const [showAlchemy, setShowAlchemy] = useState(false);
-  const [apiStatus, setApiStatus] = useState({ helius: false, alchemy: false, allConfigured: false });
+  const [showJupiter, setShowJupiter] = useState(false);
+  const [apiStatus, setApiStatus] = useState({ helius: false, alchemy: false, jupiter: false, allConfigured: false });
 
   useEffect(() => {
     // Load existing keys from encrypted storage
     const loadKeys = async () => {
       const existingHelius = await getEncryptedApiKey('helius') || '';
       const existingAlchemy = await getEncryptedApiKey('alchemy') || '';
+      const existingJupiter = await getEncryptedApiKey('jupiter') || '';
 
       setHeliusKey(existingHelius);
       setAlchemyKey(existingAlchemy);
+      setJupiterKey(existingJupiter);
 
       // Check status
       checkApiStatus();
@@ -55,6 +59,17 @@ export function ApiKeySetup() {
     checkApiStatus();
   };
 
+  const saveJupiterKey = async () => {
+    if (!jupiterKey.trim()) {
+      toast.error('Please enter a valid Jupiter API key');
+      return;
+    }
+
+    await saveEncryptedApiKey('jupiter', jupiterKey.trim());
+    toast.success('Jupiter API key saved! Swap fees will now be collected via Jupiter Referral.');
+    checkApiStatus();
+  };
+
   const removeHeliusKey = () => {
     removeApiKey('helius');
     setHeliusKey('');
@@ -66,6 +81,13 @@ export function ApiKeySetup() {
     removeApiKey('alchemy');
     setAlchemyKey('');
     toast.success('Alchemy API key removed');
+    checkApiStatus();
+  };
+
+  const removeJupiterKey = () => {
+    removeApiKey('jupiter');
+    setJupiterKey('');
+    toast.success('Jupiter API key removed');
     checkApiStatus();
   };
 
@@ -216,6 +238,81 @@ export function ApiKeySetup() {
             Save Alchemy Key
           </Button>
         </div>
+      </motion.div>
+
+      {/* Jupiter API Key */}
+      <motion.div
+        className="space-y-3 p-4 rounded-xl bg-slate-900/50 border border-slate-800/30"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-white">Jupiter API</h3>
+            {apiStatus.jupiter && <Check className="w-4 h-4 text-green-500" />}
+          </div>
+          <a
+            href="https://portal.jup.ag/api-keys"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300"
+          >
+            Get Free Key <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+
+        <p className="text-xs text-slate-400">
+          For Jupiter Ultra API (enables swap fee collection via referral program)
+        </p>
+
+        <div className="space-y-2">
+          <div className="relative">
+            <Input
+              type={showJupiter ? 'text' : 'password'}
+              placeholder="Enter Jupiter API key"
+              value={jupiterKey}
+              onChange={(e) => setJupiterKey(e.target.value)}
+              className="pr-20 bg-slate-950/50 border-slate-700"
+            />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+              <button
+                onClick={() => setShowJupiter(!showJupiter)}
+                className="p-1 hover:bg-slate-700/50 rounded"
+              >
+                {showJupiter ? (
+                  <EyeOff className="w-4 h-4 text-slate-400" />
+                ) : (
+                  <Eye className="w-4 h-4 text-slate-400" />
+                )}
+              </button>
+              {jupiterKey && (
+                <button
+                  onClick={removeJupiterKey}
+                  className="p-1 hover:bg-slate-700/50 rounded"
+                >
+                  <X className="w-4 h-4 text-red-400" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <Button
+            onClick={saveJupiterKey}
+            className="w-full bg-purple-600 hover:bg-purple-700"
+            disabled={!jupiterKey.trim()}
+          >
+            Save Jupiter Key
+          </Button>
+        </div>
+
+        {!apiStatus.jupiter && (
+          <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20">
+            <p className="text-xs text-amber-300">
+              ⚠️ Without Jupiter API key, swaps will use the Legacy API without referral fee collection.
+            </p>
+          </div>
+        )}
       </motion.div>
 
       {/* Info Box */}
