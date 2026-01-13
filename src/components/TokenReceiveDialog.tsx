@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { Button } from './ui/button';
-import { Check, Copy, Info, ExternalLink, Share2, Download, X, Link, MessageCircle } from 'lucide-react';
+import { Check, Copy, Share2, Download, X, Link, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { toast } from 'sonner';
 import { copyToClipboard } from '../utils/clipboard';
 import QRCode from 'qrcode';
 import type { Token } from './pages/Home';
 import { useWallet } from '../utils/WalletContext';
+import { TOKEN_BY_ID, TOKEN_BY_SYMBOL } from '../utils/tokenRegistry';
+import { AccountManager } from '../utils/accountManager';
 import suprikQrLogo from 'figma:asset/5aa4d38c7eec78d8bd26f08104423d0aa0e3b5f4.png';
 
 interface TokenReceiveDialogProps {
@@ -34,14 +35,29 @@ export function TokenReceiveDialog({ open, onOpenChange, token, walletId }: Toke
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
-  const { mnemonic } = useWallet();
+  const wallet = useWallet();
   
+  // Resolve actual Solana mint if token.mint is a CoinGecko ID
+  const resolveActualMint = (): string => {
+    if (token.mint && token.mint.length < 30 && !token.mint.includes('1111')) {
+      // token.mint might be a CoinGecko ID like "parabolic-ai", try to resolve actual mint
+      const registryToken = TOKEN_BY_ID.get(token.mint) || TOKEN_BY_SYMBOL.get(token.symbol.toUpperCase());
+      if (registryToken?.mint) {
+        console.log(`[TokenReceiveDialog] Resolved mint from registry: ${token.mint} -> ${registryToken.mint}`);
+        return registryToken.mint;
+      }
+    }
+    return token.mint;
+  };
+
+  const actualMint = resolveActualMint();
+
   // Detect network from token mint address
   const detectNetwork = (): NetworkInfo => {
-    const mint = token.mint.toLowerCase();
-    
+    const mint = actualMint.toLowerCase();
+
     // Solana: base58 encoded, typically 32-44 characters
-    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(token.mint) && !mint.startsWith('0x')) {
+    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(actualMint) && !mint.startsWith('0x')) {
       return {
         name: 'Solana',
         symbol: 'SOL',
@@ -49,7 +65,7 @@ export function TokenReceiveDialog({ open, onOpenChange, token, walletId }: Toke
         gradient: 'from-purple-500 via-purple-600 to-indigo-600',
         logo: '◎',
         explorer: 'https://solscan.io',
-        addressUrl: `https://solscan.io/token/${token.mint}`
+        addressUrl: `https://solscan.io/token/${actualMint}`
       };
     }
     
@@ -64,7 +80,7 @@ export function TokenReceiveDialog({ open, onOpenChange, token, walletId }: Toke
           gradient: 'from-blue-500 via-blue-600 to-indigo-600',
           logo: '⬡',
           explorer: 'https://basescan.org',
-          addressUrl: `https://basescan.org/token/${token.mint}`
+          addressUrl: `https://basescan.org/token/${actualMint}`
         };
       }
       
@@ -77,7 +93,7 @@ export function TokenReceiveDialog({ open, onOpenChange, token, walletId }: Toke
           gradient: 'from-purple-600 via-purple-700 to-indigo-700',
           logo: '⬢',
           explorer: 'https://polygonscan.com',
-          addressUrl: `https://polygonscan.com/token/${token.mint}`
+          addressUrl: `https://polygonscan.com/token/${actualMint}`
         };
       }
       
@@ -89,7 +105,7 @@ export function TokenReceiveDialog({ open, onOpenChange, token, walletId }: Toke
         gradient: 'from-slate-400 via-slate-500 to-slate-600',
         logo: 'Ξ',
         explorer: 'https://etherscan.io',
-        addressUrl: `https://etherscan.io/token/${token.mint}`
+        addressUrl: `https://etherscan.io/token/${actualMint}`
       };
     }
     
@@ -101,7 +117,7 @@ export function TokenReceiveDialog({ open, onOpenChange, token, walletId }: Toke
       gradient: 'from-purple-500 via-purple-600 to-indigo-600',
       logo: '◎',
       explorer: 'https://solscan.io',
-      addressUrl: `https://solscan.io/token/${token.mint}`
+      addressUrl: `https://solscan.io/token/${actualMint}`
     };
   };
 
@@ -134,65 +150,32 @@ export function TokenReceiveDialog({ open, onOpenChange, token, walletId }: Toke
   const fetchWalletAddress = async () => {
     try {
       setLoading(true);
-      console.log('Fetching wallet address for network:', network.name);
-      
-      if (!mnemonic) {
-        console.error('Mnemonic not found in local storage');
-        toast.error('Mnemonic not found. Please sign in again.');
+      console.log('[TokenReceiveDialog] Fetching wallet address for network:', network.name);
+
+      // Get address from AccountManager (same as Receive.tsx page)
+      // This ensures we use the active account's address
+      const activeAccount = AccountManager.getActiveAccount();
+      let address = '';
+
+      // Currently only Solana is supported - use the same pattern as Receive.tsx
+      if (activeAccount?.addresses?.solana) {
+        address = activeAccount.addresses.solana;
+      } else if (wallet.addresses?.solana) {
+        address = wallet.addresses.solana;
+      }
+
+      if (!address) {
+        console.error('[TokenReceiveDialog] No address found for network:', network.symbol);
+        toast.error('Wallet address not found');
         return;
       }
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/generate-addresses`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ 
-            walletId,
-            seedPhrase: mnemonic 
-          }),
-        }
-      );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Error fetching wallet address:', errorData);
-        throw new Error(errorData.error || 'Failed to fetch wallet address');
-      }
-
-      const data = await response.json();
-      console.log('Addresses received:', data);
-
-      // Get the appropriate address based on network
-      let address = '';
-      switch (network.symbol) {
-        case 'SOL':
-          address = data.solana;
-          break;
-        case 'ETH':
-          address = data.ethereum;
-          break;
-        case 'BASE':
-          address = data.base;
-          break;
-        case 'MATIC':
-          address = data.polygon;
-          break;
-        case 'BTC':
-          address = data.bitcoin;
-          break;
-        default:
-          address = data.solana;
-      }
-
+      console.log('[TokenReceiveDialog] Using address from active account:', address);
       setWalletAddress(address);
       const qr = await generateQRCode(address);
       setQrCode(qr);
     } catch (error) {
-      console.error('Error fetching wallet address:', error);
+      console.error('[TokenReceiveDialog] Error fetching wallet address:', error);
       toast.error('Failed to load wallet address');
     } finally {
       setLoading(false);
@@ -283,7 +266,7 @@ export function TokenReceiveDialog({ open, onOpenChange, token, walletId }: Toke
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-black border-slate-800/50 text-white w-full max-w-[95vw] sm:max-w-md p-0 overflow-hidden max-h-[95vh]">
+      <DialogContent className="bg-black border-slate-800/50 text-white w-full max-w-[95vw] sm:max-w-md p-0 overflow-hidden max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="relative bg-gradient-to-br from-purple-900/40 via-indigo-900/40 to-slate-900/40 px-4 py-5 border-b border-slate-800/50">
           <DialogHeader>
@@ -303,83 +286,86 @@ export function TokenReceiveDialog({ open, onOpenChange, token, walletId }: Toke
             <div className="h-64 bg-slate-900/50 rounded-xl animate-pulse" />
           </div>
         ) : (
-          <div className="overflow-y-auto max-h-[calc(95vh-100px)] p-6 space-y-6">
-            {/* Selected Network Info */}
-            <div className="text-center">
-              <div className="w-20 h-20 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 bg-black overflow-hidden p-3">
-                <img 
-                  src={token.logoUrl || token.logo} 
-                  alt={token.name}
-                  className="w-full h-full object-contain"
-                />
-              </div>
-              <h2 className="text-2xl font-bold mb-1">{token.name}</h2>
-              <p className="text-slate-400">{network.name} Network</p>
-            </div>
-
-            {/* QR Code */}
-            <motion.div 
-              className="bg-white rounded-3xl p-6 mx-auto w-fit"
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.1 }}
-            >
-              {qrCode && (
-                <div className="relative w-[280px] h-[280px]">
-                  <img 
-                    src={qrCode} 
-                    alt="QR Code" 
-                    className="w-full h-full"
+          <div className="flex flex-col h-full">
+            {/* Scrollable content */}
+            <div className="overflow-y-auto flex-1 p-4 space-y-4">
+              {/* Selected Network Info - Compact */}
+              <div className="text-center">
+                <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-2 bg-black overflow-hidden p-2">
+                  <img
+                    src={token.logoUrl || token.logo}
+                    alt={token.name}
+                    className="w-full h-full object-contain"
                   />
-                  {/* Suprik Wallet Logo in center - sized to work with QR error correction */}
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                    <img
-                      src={suprikQrLogo}
-                      alt="Suprik Wallet"
-                      className="w-16 h-16 rounded-full object-cover shadow-lg"
-                    />
-                  </div>
                 </div>
-              )}
-            </motion.div>
+                <h2 className="text-lg font-bold">{token.name}</h2>
+                <p className="text-slate-400 text-sm">{network.name} Network</p>
+              </div>
 
-            {/* Address */}
-            <div className="bg-slate-900/50 rounded-2xl p-4 border border-slate-800">
-              <p className="text-xs text-slate-400 mb-2 text-center">Your {network.name} Address</p>
-              <div className="flex items-center justify-between gap-3">
-                <code className="text-sm text-white font-mono flex-1 text-center break-all px-2">
+              {/* QR Code - Smaller */}
+              <motion.div
+                className="bg-white rounded-2xl p-4 mx-auto w-fit"
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.1 }}
+              >
+                {qrCode && (
+                  <div className="relative w-[200px] h-[200px]">
+                    <img
+                      src={qrCode}
+                      alt="QR Code"
+                      className="w-full h-full"
+                    />
+                    {/* Suprik Wallet Logo in center */}
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                      <img
+                        src={suprikQrLogo}
+                        alt="Suprik Wallet"
+                        className="w-12 h-12 rounded-full object-cover shadow-lg"
+                      />
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+
+              {/* Address - Compact */}
+              <div className="bg-slate-900/50 rounded-xl p-3 border border-slate-800">
+                <p className="text-xs text-slate-400 mb-1 text-center">Your {network.name} Address</p>
+                <code className="text-sm text-white font-mono text-center block break-all px-2">
                   {walletAddress ? truncateAddress(walletAddress) : ''}
                 </code>
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-3 pt-4">
-              <Button
-                onClick={handleShare}
-                className="h-14 bg-slate-800 hover:bg-slate-700 text-white border-slate-700 rounded-xl"
-                size="lg"
-              >
-                <Share2 className="w-5 h-5 mr-2" />
-                Share
-              </Button>
-              <Button
-                onClick={handleCopy}
-                className="h-14 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white rounded-xl"
-                size="lg"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-5 h-5 mr-2" />
-                    Copied!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-5 h-5 mr-2" />
-                    Copy Address
-                  </>
-                )}
-              </Button>
+            {/* Action Buttons - Fixed at bottom */}
+            <div className="p-4 pt-2 border-t border-slate-800/50">
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  onClick={handleShare}
+                  className="h-12 bg-slate-800 hover:bg-slate-700 text-white border-slate-700 rounded-xl"
+                  size="lg"
+                >
+                  <Share2 className="w-5 h-5 mr-2" />
+                  Share
+                </Button>
+                <Button
+                  onClick={handleCopy}
+                  className="h-12 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white rounded-xl"
+                  size="lg"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-5 h-5 mr-2" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-5 h-5 mr-2" />
+                      Copy
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         )}

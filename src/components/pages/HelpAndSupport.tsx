@@ -62,8 +62,8 @@ const faqs: FAQItem[] = [
   },
   {
     category: 'Transactions',
-    question: 'What is CosmoPay?',
-    answer: 'CosmoPay is Suprik\'s innovative feature for peer-to-peer offline transactions. You can create transaction files that can be shared via QR code, Bluetooth, or NFC - even without internet!'
+    question: 'What is Suprik Pay?',
+    answer: 'Suprik Pay is Suprik\'s innovative feature for peer-to-peer offline transactions. You can create transaction files that can be shared via QR code, Bluetooth, or NFC - even without internet!'
   },
   {
     category: 'Transactions',

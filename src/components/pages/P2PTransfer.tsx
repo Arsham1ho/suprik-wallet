@@ -485,7 +485,7 @@ export function P2PTransfer({ onBack }: P2PTransferProps) {
       if (navigator.share) {
         try {
           await navigator.share({
-            title: 'CosmoPay Transaction',
+            title: 'Suprik Pay Transaction',
             text: json,
           });
           toast.success('Shared successfully');
@@ -597,7 +597,7 @@ export function P2PTransfer({ onBack }: P2PTransferProps) {
           <div className="flex items-center gap-2">
             <Orbit className="w-5 h-5 text-purple-500" />
             <h1 className="font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-              CosmoPay
+              Suprik Pay
             </h1>
           </div>
           <div className="w-10" /> {/* Spacer */}
@@ -702,7 +702,7 @@ export function P2PTransfer({ onBack }: P2PTransferProps) {
                 transition={{ delay: 0.2 }}
               >
                 <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
-                  Start CosmoPay
+                  Start Suprik Pay
                 </h2>
                 <p className="text-slate-400 max-w-sm">
                   Send and receive tokens with offline transaction capabilities
@@ -867,7 +867,7 @@ export function P2PTransfer({ onBack }: P2PTransferProps) {
                   <div className="space-y-1">
                     <p className="text-blue-400 font-semibold">Why is this needed?</p>
                     <p className="text-blue-400/80 text-sm">
-                      CosmoPay uses Durable Nonce to enable true offline P2P transfers without time limits. 
+                      Suprik Pay uses Durable Nonce to enable true offline P2P transfers without time limits. 
                       Normal Solana transactions expire in 90 seconds, but with a nonce account, your transactions never expire!
                       Create it once and reuse forever. The rent (~0.0015 SOL) is fully refundable.
                     </p>

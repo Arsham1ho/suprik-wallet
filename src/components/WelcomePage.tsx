@@ -208,7 +208,7 @@ export function WelcomePage({ onContinue }: WelcomePageProps) {
                 }}
               >
                 <Zap className="w-5 h-5 text-cyan-400 flex-shrink-0" />
-                <p className="text-slate-200">Innovative CosmoPay</p>
+                <p className="text-slate-200">Innovative Suprik Pay</p>
               </div>
             </motion.div>
 

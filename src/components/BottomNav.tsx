@@ -16,7 +16,7 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
   const [tappedButton, setTappedButton] = useState<string | null>(null);
   
   const navItems = [
-    { id: 'p2p', icon: Orbit, label: 'CosmoPay', gradient: true },
+    { id: 'p2p', icon: Orbit, label: 'SuprikPay', gradient: true },
     { id: 'swap', icon: ArrowLeftRight, label: t.nav.swap },
     { id: 'home', icon: Home, label: t.nav.home },
     { id: 'activity', icon: Activity, label: t.nav.activity },
@@ -42,7 +42,7 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
                 // CosmoPay is coming soon
                 if (item.id === 'p2p') {
                   toast('Coming Soon!', {
-                    description: 'CosmoPay will be available in a future update.',
+                    description: 'Suprik Pay will be available in a future update.',
                     icon: '🚀',
                   });
                   return;

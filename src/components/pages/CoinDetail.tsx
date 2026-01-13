@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
 import { getCoinGeckoId, getTokenPrice, getTokenChart } from '../../utils/coingecko';
+import { TOKEN_BY_ID, TOKEN_BY_SYMBOL } from '../../utils/tokenRegistry';
 import {
   Sheet,
   SheetContent,
@@ -117,13 +118,25 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         }
       }
 
+      // Try to resolve actual Solana mint if token.mint is a CoinGecko ID
+      let actualMint = token.mint;
+      if (token.mint && token.mint.length < 30 && !token.mint.includes('1111')) {
+        // token.mint might be a CoinGecko ID like "parabolic-ai", try to resolve actual mint
+        const registryToken = TOKEN_BY_ID.get(token.mint) || TOKEN_BY_SYMBOL.get(token.symbol.toUpperCase());
+        if (registryToken?.mint) {
+          actualMint = registryToken.mint;
+          console.log(`[CoinDetail] Resolved mint from registry: ${token.mint} -> ${actualMint}`);
+        }
+      }
+
       console.log('[CoinDetail] Fetching coin details for:', {
         mint: token.mint,
+        actualMint: actualMint,
         symbol: token.symbol,
         name: token.name,
         existingPrice: token.price,
         existingChange: token.change,
-        mintLength: token.mint?.length
+        mintLength: actualMint?.length
       });
 
       // Start with token's existing price as fallback (from Search page or Home)
@@ -136,21 +149,21 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
       let chartData: Array<{ time: string; price: number }> = [];
 
       // Check if mint is a Solana address (44 chars) or a CoinGecko ID
-      const isSolanaMint = token.mint && token.mint.length >= 32 && token.mint.length <= 50;
-      const isLikelyCoinGeckoId = token.mint && token.mint.length < 30 && !token.mint.includes('1111');
+      const isSolanaMint = actualMint && actualMint.length >= 32 && actualMint.length <= 50;
+      const isLikelyCoinGeckoId = actualMint && actualMint.length < 30 && !actualMint.includes('1111');
 
       // For Solana tokens, try Jupiter first (no rate limits, most reliable for Solana)
       if (isSolanaMint && price === 0) {
         try {
           console.log(`[CoinDetail] Trying Jupiter v2 for ${token.symbol}...`);
           const jupResponse = await fetch(
-            `https://api.jup.ag/price/v2?ids=${token.mint}`,
+            `https://api.jup.ag/price/v2?ids=${actualMint}`,
             { signal: AbortSignal.timeout(5000) }
           );
 
           if (jupResponse.ok) {
             const jupData = await jupResponse.json();
-            const priceData = jupData.data?.[token.mint];
+            const priceData = jupData.data?.[actualMint];
             if (priceData?.price) {
               price = parseFloat(priceData.price);
               console.log(`[CoinDetail] ✅ Jupiter v2: ${token.symbol} = $${price}`);
@@ -162,11 +175,12 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
       }
 
       // Try DexScreener for Solana tokens (good fallback, no rate limits)
-      if (isSolanaMint && price === 0) {
+      // Also use to get market cap even if we already have price
+      if (isSolanaMint && (price === 0 || marketCap === 0)) {
         try {
           console.log(`[CoinDetail] Trying DexScreener for ${token.symbol}...`);
           const dexResponse = await fetch(
-            `https://api.dexscreener.com/latest/dex/tokens/${token.mint}`,
+            `https://api.dexscreener.com/latest/dex/tokens/${actualMint}`,
             { signal: AbortSignal.timeout(5000) }
           );
 
@@ -174,10 +188,19 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
             const dexData = await dexResponse.json();
             const pair = dexData.pairs?.[0];
             if (pair) {
-              price = parseFloat(pair.priceUsd) || 0;
-              change24h = pair.priceChange?.h24 || 0;
-              marketCap = pair.marketCap || 0;
-              console.log(`[CoinDetail] ✅ DexScreener: ${token.symbol} = $${price}, 24h: ${change24h}%`);
+              // Only update price if we don't have one yet
+              if (price === 0) {
+                price = parseFloat(pair.priceUsd) || 0;
+              }
+              // Get market cap and FDV from DexScreener
+              if (marketCap === 0) {
+                marketCap = pair.marketCap || pair.fdv || 0;
+              }
+              // Get 24h change if we don't have it
+              if (change24h === 0) {
+                change24h = pair.priceChange?.h24 || 0;
+              }
+              console.log(`[CoinDetail] ✅ DexScreener: ${token.symbol} = $${price}, mcap: $${marketCap}, 24h: ${change24h}%`);
             }
           }
         } catch (dexError) {
@@ -214,11 +237,35 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         }
       }
 
+      // Fallback: CryptoCompare API for non-Solana tokens (CORS-friendly, reliable)
+      if (price === 0 && !isSolanaMint) {
+        try {
+          console.log(`[CoinDetail] Trying CryptoCompare for ${token.symbol}...`);
+          const cryptoCompareResponse = await fetch(
+            `https://min-api.cryptocompare.com/data/pricemultifull?fsyms=${token.symbol.toUpperCase()}&tsyms=USD`,
+            { signal: AbortSignal.timeout(5000) }
+          );
+
+          if (cryptoCompareResponse.ok) {
+            const ccData = await cryptoCompareResponse.json();
+            const rawData = ccData.RAW?.[token.symbol.toUpperCase()]?.USD;
+            if (rawData?.PRICE) {
+              price = rawData.PRICE;
+              change24h = rawData.CHANGEPCT24HOUR || 0;
+              marketCap = rawData.MKTCAP || 0;
+              console.log(`[CoinDetail] ✅ CryptoCompare: ${token.symbol} = $${price.toFixed(6)}, 24h: ${change24h.toFixed(2)}%`);
+            }
+          }
+        } catch (ccError) {
+          console.warn('[CoinDetail] CryptoCompare failed:', ccError);
+        }
+      }
+
       // Fallback: CoinCap API for non-Solana tokens (free, no rate limits)
       if (price === 0 && !isSolanaMint) {
         try {
-          // CoinCap uses lowercase IDs like "bitcoin", "ethereum", "tron"
-          const coinCapId = token.mint.toLowerCase().replace(/-/g, '');
+          // CoinCap uses lowercase IDs like "bitcoin", "ethereum", "ripple"
+          const coinCapId = token.mint.toLowerCase();
           console.log(`[CoinDetail] Trying CoinCap for ${token.symbol} (${coinCapId})...`);
           const coinCapResponse = await fetch(
             `https://api.coincap.io/v2/assets/${coinCapId}`,
@@ -244,14 +291,14 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         try {
           console.log(`[CoinDetail] Trying Raydium for ${token.symbol}...`);
           const raydiumResponse = await fetch(
-            `https://api-v3.raydium.io/mint/price?mints=${token.mint}`,
+            `https://api-v3.raydium.io/mint/price?mints=${actualMint}`,
             { signal: AbortSignal.timeout(5000) }
           );
 
           if (raydiumResponse.ok) {
             const raydiumData = await raydiumResponse.json();
-            if (raydiumData.success && raydiumData.data?.[token.mint]) {
-              price = parseFloat(raydiumData.data[token.mint]);
+            if (raydiumData.success && raydiumData.data?.[actualMint]) {
+              price = parseFloat(raydiumData.data[actualMint]);
               console.log(`[CoinDetail] ✅ Raydium: ${token.symbol} = $${price}`);
             }
           }
@@ -265,7 +312,7 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         try {
           console.log(`[CoinDetail] Trying pump.fun for ${token.symbol}...`);
           const pumpResponse = await fetch(
-            `https://frontend-api.pump.fun/coins/${token.mint}`,
+            `https://frontend-api.pump.fun/coins/${actualMint}`,
             { signal: AbortSignal.timeout(5000) }
           );
 
@@ -287,6 +334,30 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         }
       }
 
+      // Final fallback: CryptoCompare for any token that still has no price
+      if (price === 0) {
+        try {
+          console.log(`[CoinDetail] Final fallback: Trying CryptoCompare for ${token.symbol}...`);
+          const cryptoCompareResponse = await fetch(
+            `https://min-api.cryptocompare.com/data/pricemultifull?fsyms=${token.symbol.toUpperCase()}&tsyms=USD`,
+            { signal: AbortSignal.timeout(5000) }
+          );
+
+          if (cryptoCompareResponse.ok) {
+            const ccData = await cryptoCompareResponse.json();
+            const rawData = ccData.RAW?.[token.symbol.toUpperCase()]?.USD;
+            if (rawData?.PRICE) {
+              price = rawData.PRICE;
+              change24h = rawData.CHANGEPCT24HOUR || 0;
+              marketCap = rawData.MKTCAP || 0;
+              console.log(`[CoinDetail] ✅ CryptoCompare (final): ${token.symbol} = $${price.toFixed(6)}, 24h: ${change24h.toFixed(2)}%`);
+            }
+          }
+        } catch (ccError) {
+          console.warn('[CoinDetail] CryptoCompare (final) failed:', ccError);
+        }
+      }
+
       // If we still have no price, try the fallback from Home page
       if (price === 0 && fallbackPrice > 0) {
         price = fallbackPrice;
@@ -295,7 +366,7 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
       }
 
       // Fetch chart data - CoinGecko primary, Jupiter fallback
-      chartData = await fetchChartData(token.mint, selectedPeriod, price, change24h);
+      chartData = await fetchChartData(actualMint, selectedPeriod, price, change24h);
 
       // If we have chart data but no price change, calculate it from the chart
       if (chartData.length > 1 && (change24h === 0 || Math.abs(change24h) < 0.001)) {
@@ -323,6 +394,12 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         console.warn(`[CoinDetail] ❌ Could not fetch price for ${token.symbol} (${token.mint}) from any source`);
       }
 
+      // Calculate total supply from market cap if we have both price and market cap
+      let totalSupply = 0;
+      if (marketCap > 0 && price > 0) {
+        totalSupply = marketCap / price;
+      }
+
       const details: CoinDetails = {
         mint: token.mint,
         symbol: token.symbol,
@@ -331,8 +408,8 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         change24h: change24h,
         changeAmount: price * change24h / 100,
         marketCap: marketCap,
-        totalSupply: 0,
-        circulatingSupply: 0,
+        totalSupply: totalSupply,
+        circulatingSupply: totalSupply, // Assume circulating = total for most tokens
         description: `${token.name} (${token.symbol}) on Solana.`,
         website: '',
         twitter: '',
@@ -342,6 +419,8 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
       console.log(`[CoinDetail] ✅ Coin details loaded for ${token.symbol}:`, {
         price: details.currentPrice,
         change: details.change24h,
+        marketCap: details.marketCap,
+        totalSupply: details.totalSupply,
         chartPoints: details.chartData?.length || 0
       });
 
@@ -445,6 +524,39 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         }
       } catch (jupErr) {
         console.warn('[CoinDetail] Jupiter history failed:', jupErr);
+      }
+
+      // FALLBACK: CryptoCompare historical data (CORS-friendly)
+      try {
+        const periodConfig: Record<TimePeriod, { api: string; limit: number }> = {
+          '1H': { api: 'histominute', limit: 60 },
+          '1D': { api: 'histohour', limit: 24 },
+          '1W': { api: 'histohour', limit: 168 },
+          '1M': { api: 'histoday', limit: 30 },
+          'YTD': { api: 'histoday', limit: Math.ceil((Date.now() - new Date(new Date().getFullYear(), 0, 1).getTime()) / (1000 * 60 * 60 * 24)) },
+        };
+
+        const config = periodConfig[period];
+        const ccHistoryUrl = `https://min-api.cryptocompare.com/data/v2/${config.api}?fsym=${token.symbol.toUpperCase()}&tsym=USD&limit=${config.limit}`;
+        console.log(`[CoinDetail] Trying CryptoCompare history for ${token.symbol}`);
+
+        const ccResponse = await fetch(ccHistoryUrl, {
+          signal: AbortSignal.timeout(8000),
+        });
+
+        if (ccResponse.ok) {
+          const ccData = await ccResponse.json();
+          if (ccData.Data?.Data && Array.isArray(ccData.Data.Data) && ccData.Data.Data.length > 0) {
+            const ccChartData = ccData.Data.Data.map((item: { time: number; close: number }) => ({
+              time: new Date(item.time * 1000).toISOString(),
+              price: item.close,
+            }));
+            console.log(`[CoinDetail] ✅ CryptoCompare history: ${ccChartData.length} points`);
+            return ccChartData;
+          }
+        }
+      } catch (ccErr) {
+        console.warn('[CoinDetail] CryptoCompare history failed:', ccErr);
       }
 
       // LAST FALLBACK: Synthetic data

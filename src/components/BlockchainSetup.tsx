@@ -5,7 +5,7 @@ import { ExternalLink, CheckCircle, XCircle, Network, Bug } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { APIKeysTest } from './APIKeysTest';
-import { areApiKeysConfigured } from '../utils/env';
+import { areApiKeysConfigured, getEncryptedApiKey } from '../utils/env';
 import { useWallet } from '../utils/WalletContext';
 
 interface BlockchainSetupProps {
@@ -56,9 +56,26 @@ export function BlockchainSetup({ walletId }: BlockchainSetupProps) {
   };
 
   // Check API key status from client-side env (no server call)
-  const checkApiStatus = () => {
+  const checkApiStatus = async () => {
     try {
-      const status = areApiKeysConfigured();
+      // First check the sync cache
+      let status = areApiKeysConfigured();
+
+      // If cache says not configured, double-check by reading encrypted storage directly
+      // This handles edge cases where the cache wasn't populated yet
+      if (!status.helius || !status.alchemy) {
+        const [heliusKey, alchemyKey] = await Promise.all([
+          getEncryptedApiKey('helius'),
+          getEncryptedApiKey('alchemy')
+        ]);
+        status = {
+          helius: !!heliusKey,
+          alchemy: !!alchemyKey,
+          jupiter: status.jupiter,
+          allConfigured: !!heliusKey && !!alchemyKey
+        };
+      }
+
       setApiStatus(status);
       setAddresses(wallet.addresses || null);
       console.log('API keys status (client-side):', status);

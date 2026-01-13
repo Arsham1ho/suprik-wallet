@@ -122,19 +122,39 @@ export function LanguageProvider({
 
     const currencySymbol = symbol || currencySymbols[currency] || '$';
 
-    // Format number based on currency - round to 2 decimal places like Phantom
+    // Format number based on currency and size
     let formattedNumber: string;
 
     if (['JPY', 'KRW'].includes(currency)) {
       // No decimals for JPY and KRW
       formattedNumber = Math.round(convertedAmount).toLocaleString();
-    } else {
-      // Round to nearest 0.10 for cleaner display (like Phantom)
-      const roundedAmount = Math.round(convertedAmount * 10) / 10;
-      formattedNumber = roundedAmount.toLocaleString(undefined, {
+    } else if (convertedAmount >= 1) {
+      // For amounts >= $1, round to 2 decimal places (like Phantom)
+      formattedNumber = convertedAmount.toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       });
+    } else if (convertedAmount >= 0.01) {
+      // For amounts between $0.01 and $1, show 4 decimal places
+      formattedNumber = convertedAmount.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 4,
+      });
+    } else if (convertedAmount >= 0.0001) {
+      // For very small amounts, show 6 decimal places
+      formattedNumber = convertedAmount.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 6,
+      });
+    } else if (convertedAmount > 0) {
+      // For extremely small amounts (meme coins), show up to 8 decimal places
+      formattedNumber = convertedAmount.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 8,
+      });
+    } else {
+      // Zero or negative
+      formattedNumber = '0.00';
     }
 
     return `${currencySymbol}${formattedNumber}`;
