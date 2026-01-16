@@ -122,39 +122,37 @@ export function LanguageProvider({
 
     const currencySymbol = symbol || currencySymbols[currency] || '$';
 
-    // Format number based on currency and size
+    // Format number based on currency and value
     let formattedNumber: string;
 
     if (['JPY', 'KRW'].includes(currency)) {
       // No decimals for JPY and KRW
       formattedNumber = Math.round(convertedAmount).toLocaleString();
-    } else if (convertedAmount >= 1) {
-      // For amounts >= $1, round to 2 decimal places (like Phantom)
-      formattedNumber = convertedAmount.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
-    } else if (convertedAmount >= 0.01) {
-      // For amounts between $0.01 and $1, show 4 decimal places
-      formattedNumber = convertedAmount.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 4,
-      });
-    } else if (convertedAmount >= 0.0001) {
-      // For very small amounts, show 6 decimal places
+    } else if (convertedAmount === 0) {
+      // Zero value
+      formattedNumber = '0.00';
+    } else if (convertedAmount < 0.0001) {
+      // Very small values (like meme coins) - show scientific notation or more decimals
+      formattedNumber = convertedAmount.toFixed(8).replace(/\.?0+$/, '');
+      if (!formattedNumber.includes('.')) formattedNumber += '.00';
+    } else if (convertedAmount < 0.01) {
+      // Small values - show up to 6 decimal places
       formattedNumber = convertedAmount.toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 6,
       });
-    } else if (convertedAmount > 0) {
-      // For extremely small amounts (meme coins), show up to 8 decimal places
+    } else if (convertedAmount < 1) {
+      // Values under $1 - show up to 4 decimal places
       formattedNumber = convertedAmount.toLocaleString(undefined, {
         minimumFractionDigits: 2,
-        maximumFractionDigits: 8,
+        maximumFractionDigits: 4,
       });
     } else {
-      // Zero or negative
-      formattedNumber = '0.00';
+      // Normal values - round to 2 decimal places like Phantom
+      formattedNumber = convertedAmount.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
     }
 
     return `${currencySymbol}${formattedNumber}`;

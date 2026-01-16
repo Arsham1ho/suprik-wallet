@@ -334,6 +334,36 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         }
       }
 
+      // Fallback: Direct CoinGecko simple price API using known coingeckoId
+      if (price === 0) {
+        try {
+          // Try to get coingeckoId from registry or known mappings
+          const registryToken = TOKEN_BY_ID.get(token.mint) || TOKEN_BY_SYMBOL.get(token.symbol.toUpperCase());
+          const coingeckoId = registryToken?.coingeckoId || registryToken?.id || token.mint.toLowerCase();
+
+          if (coingeckoId && coingeckoId.length > 2 && !coingeckoId.includes('1111')) {
+            console.log(`[CoinDetail] Trying direct CoinGecko API for ${token.symbol} (id: ${coingeckoId})...`);
+            const cgResponse = await fetch(
+              `https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoId}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true`,
+              { signal: AbortSignal.timeout(5000) }
+            );
+
+            if (cgResponse.ok) {
+              const cgData = await cgResponse.json();
+              const tokenData = cgData[coingeckoId];
+              if (tokenData?.usd) {
+                price = tokenData.usd;
+                change24h = tokenData.usd_24h_change || 0;
+                marketCap = tokenData.usd_market_cap || 0;
+                console.log(`[CoinDetail] ✅ Direct CoinGecko: ${token.symbol} = $${price}, 24h: ${change24h.toFixed(2)}%`);
+              }
+            }
+          }
+        } catch (cgError) {
+          console.warn('[CoinDetail] Direct CoinGecko failed:', cgError);
+        }
+      }
+
       // Final fallback: CryptoCompare for any token that still has no price
       if (price === 0) {
         try {
