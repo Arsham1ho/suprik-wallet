@@ -1256,7 +1256,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                         <p className="text-xs text-slate-400 mb-1">
                           {network.isTestnet ? 'Mock Signature' : 'Transaction Signature'}
                         </p>
-                        <p className="text-sm text-purple-400 font-mono break-all">
+                        <p className="text-sm break-all" style={{ color: colors.accent }}>
                           {transactionDetails.signature.slice(0, 12)}...{transactionDetails.signature.slice(-12)}
                         </p>
                       </div>
@@ -1267,7 +1267,12 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                         href={`https://solscan.io/tx/${transactionDetails.signature}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 text-sm text-purple-300 hover:text-purple-200 transition-all bg-gradient-to-r from-purple-500/10 to-blue-500/10 hover:from-purple-500/20 hover:to-blue-500/20 rounded-lg py-2.5 border border-purple-500/20 group mb-4"
+                        className="flex items-center justify-center gap-2 text-sm transition-all rounded-lg py-2.5 border group mb-4"
+                        style={{
+                          color: colors.accent,
+                          background: `linear-gradient(to right, ${colors.primary}1A, ${colors.secondary}1A)`,
+                          borderColor: `${colors.primary}33`
+                        }}
                       >
                         <ExternalLink className="w-4 h-4 group-hover:scale-110 transition-transform" />
                         View on Solscan

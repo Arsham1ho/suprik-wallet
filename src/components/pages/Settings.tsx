@@ -42,6 +42,7 @@ import { AccountManager } from '../../utils/accountManager';
 import { useWallet } from '../../utils/WalletContext';
 import { deriveAddresses } from '../../utils/wallet';
 import { VERSION_STRING } from '../../utils/version';
+import { scrollToTop } from '../../utils/scrollToTop';
 
 interface SettingsProps {
   onSignOut: () => void;
@@ -67,7 +68,7 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
 
   // Scroll to top when page changes
   useEffect(() => {
-    window.scrollTo(0, 0);
+    scrollToTop();
   }, [currentPage]);
 
   // Notify parent when on a subpage (to hide bottom nav)

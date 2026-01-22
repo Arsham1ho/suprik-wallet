@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { ArrowLeft, Copy, Share2, Mail, MessageCircle, Check, QrCode } from 'lucide-react';
+import { useState, useLayoutEffect } from 'react';
+import { ArrowLeft, Copy, Share2, Mail, MessageCircle, Check, QrCode, Users } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Separator } from '../ui/separator';
 import { toast } from 'sonner';
+import { scrollToTop } from '../../utils/scrollToTop';
 
 interface InviteFriendsProps {
   onBack: () => void;
@@ -14,6 +15,11 @@ interface InviteFriendsProps {
 export function InviteFriends({ onBack }: InviteFriendsProps) {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedMessage, setCopiedMessage] = useState(false);
+
+  // Scroll to top when page opens
+  useLayoutEffect(() => {
+    scrollToTop();
+  }, []);
   const inviteLink = 'https://www.suprik.com';
 
   const inviteMessage = `Join me on Suprik Wallet! 🪐
@@ -88,9 +94,9 @@ Download now: ${inviteLink}`;
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-            className="text-7xl mb-6"
+            className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center"
           >
-            🎁
+            <Users className="w-10 h-10 text-purple-400" />
           </motion.div>
           <h2 className="text-2xl font-bold mb-2 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
             Share Suprik with Friends
@@ -114,7 +120,7 @@ Download now: ${inviteLink}`;
               <Input
                 value={inviteLink}
                 readOnly
-                className="bg-slate-900 border-slate-700 text-white font-mono text-sm"
+                className="bg-slate-900 border-slate-700 text-white text-sm"
               />
               <Button
                 onClick={() => {
@@ -254,26 +260,6 @@ Download now: ${inviteLink}`;
           </ul>
         </motion.div>
 
-        {/* Stats */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="grid grid-cols-3 gap-3"
-        >
-          <div className="bg-slate-900/50 border border-slate-800/30 rounded-xl p-4 text-center">
-            <p className="text-2xl font-bold text-purple-400 mb-1">0</p>
-            <p className="text-slate-400 text-xs">Invited</p>
-          </div>
-          <div className="bg-slate-900/50 border border-slate-800/30 rounded-xl p-4 text-center">
-            <p className="text-2xl font-bold text-blue-400 mb-1">0</p>
-            <p className="text-slate-400 text-xs">Joined</p>
-          </div>
-          <div className="bg-slate-900/50 border border-slate-800/30 rounded-xl p-4 text-center">
-            <p className="text-2xl font-bold text-green-400 mb-1">∞</p>
-            <p className="text-slate-400 text-xs">Potential</p>
-          </div>
-        </motion.div>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { ArrowLeft, LayoutGrid, QrCode, DollarSign, Share2, MoreHorizontal, ExternalLink, Send } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
@@ -9,8 +9,9 @@ import { AnimalAvatar } from '../AnimalAvatar';
 import { toast } from 'sonner';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
-import { getCoinGeckoId, getTokenPrice, getTokenChart } from '../../utils/coingecko';
+import { getCoinGeckoId, getTokenPrice, getTokenChart, fetchCoinGeckoDetails } from '../../utils/coingecko';
 import { TOKEN_BY_ID, TOKEN_BY_SYMBOL } from '../../utils/tokenRegistry';
+import { scrollToTop } from '../../utils/scrollToTop';
 import {
   Sheet,
   SheetContent,
@@ -67,6 +68,11 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
   const [profileLoading, setProfileLoading] = useState(true);
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
   const [networkStatus, setNetworkStatus] = useState<{network: string, lastCheck: string} | null>(null);
+
+  // Scroll to top when component mounts
+  useLayoutEffect(() => {
+    scrollToTop();
+  }, []);
 
   useEffect(() => {
     fetchCoinDetails();
@@ -426,8 +432,55 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
 
       // Calculate total supply from market cap if we have both price and market cap
       let totalSupply = 0;
-      if (marketCap > 0 && price > 0) {
+      let circulatingSupply = 0;
+      let description = `${token.name} (${token.symbol}) on Solana.`;
+      let website = '';
+      let twitter = '';
+
+      // Try to get detailed info from CoinGecko (includes description, market cap, supply, links)
+      try {
+        console.log(`[CoinDetail] Fetching CoinGecko details for ${token.symbol}...`);
+        const cgDetails = await fetchCoinGeckoDetails(token.symbol, token.name);
+
+        if (cgDetails) {
+          // Use CoinGecko detailed data if available
+          if (cgDetails.marketCap > 0) {
+            marketCap = cgDetails.marketCap;
+          }
+          if (cgDetails.totalSupply > 0) {
+            totalSupply = cgDetails.totalSupply;
+          }
+          if (cgDetails.circulatingSupply > 0) {
+            circulatingSupply = cgDetails.circulatingSupply;
+          }
+          if (cgDetails.description) {
+            description = cgDetails.description;
+          }
+          if (cgDetails.website) {
+            website = cgDetails.website;
+          }
+          if (cgDetails.twitter) {
+            twitter = cgDetails.twitter;
+          }
+          // Also update price/change if CoinGecko has better data
+          if (price === 0 && cgDetails.currentPrice > 0) {
+            price = cgDetails.currentPrice;
+          }
+          if (change24h === 0 && cgDetails.change24h !== 0) {
+            change24h = cgDetails.change24h;
+          }
+          console.log(`[CoinDetail] ✅ CoinGecko details: mcap=${marketCap}, supply=${totalSupply}, desc=${description.substring(0, 50)}...`);
+        }
+      } catch (cgError) {
+        console.warn('[CoinDetail] Failed to fetch CoinGecko details:', cgError);
+      }
+
+      // Fallback: Calculate total supply from market cap if we still don't have it
+      if (totalSupply === 0 && marketCap > 0 && price > 0) {
         totalSupply = marketCap / price;
+      }
+      if (circulatingSupply === 0) {
+        circulatingSupply = totalSupply;
       }
 
       const details: CoinDetails = {
@@ -439,10 +492,10 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         changeAmount: price * change24h / 100,
         marketCap: marketCap,
         totalSupply: totalSupply,
-        circulatingSupply: totalSupply, // Assume circulating = total for most tokens
-        description: `${token.name} (${token.symbol}) on Solana.`,
-        website: '',
-        twitter: '',
+        circulatingSupply: circulatingSupply,
+        description: description,
+        website: website,
+        twitter: twitter,
         chartData: chartData,
       };
 
@@ -811,31 +864,31 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
   // Handle chart hover with improved positioning
   const handleChartHover = (e: React.MouseEvent<HTMLDivElement>) => {
     if (chartData.length === 0) return;
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const xPercent = (x / rect.width) * 100;
-    
+
     // Clamp xPercent to valid range
     const clampedXPercent = Math.max(0, Math.min(100, xPercent));
-    
+
     // Find nearest data point
     const index = Math.round((clampedXPercent / 100) * (chartData.length - 1));
     const clampedIndex = Math.max(0, Math.min(index, chartData.length - 1));
     const point = chartData[clampedIndex];
-    
+
     if (point && typeof point.price === 'number' && !isNaN(point.price)) {
       // Calculate x position - handle single data point case
-      const xPos = chartData.length > 1 
-        ? (clampedIndex / (chartData.length - 1)) * 100 
+      const xPos = chartData.length > 1
+        ? (clampedIndex / (chartData.length - 1)) * 100
         : 50;
-      
+
       // Calculate y position with validation
       let yPos = 50; // default to center
       if (paddedRange > 0 && !isNaN(paddedMin) && !isNaN(paddedRange)) {
         yPos = 100 - ((point.price - paddedMin) / paddedRange) * 100;
       }
-      
+
       // Validate final values before setting state
       if (!isNaN(xPos) && !isNaN(yPos) && isFinite(xPos) && isFinite(yPos)) {
         setHoveredPoint({
@@ -1057,16 +1110,20 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
                 }
                 
                 return (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute z-20 bg-gradient-to-br from-slate-800 to-slate-900 border border-purple-500/30 rounded-lg px-2.5 py-1.5 shadow-2xl pointer-events-none backdrop-blur-xl whitespace-nowrap"
-                    style={tooltipStyle}
-                  >
-                    <div className="text-[10px] text-purple-300 mb-0.5">{formatTime(hoveredPoint.time)}</div>
-                    <div className="text-sm text-white">{formatCurrency(hoveredPoint.price)}</div>
-                  </motion.div>
+                  <>
+                    {/* Tooltip */}
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9, y: 5 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="absolute z-20 bg-black/90 border border-white/20 rounded-xl px-3 py-2 shadow-2xl pointer-events-none backdrop-blur-xl whitespace-nowrap"
+                      style={tooltipStyle}
+                    >
+                      <div className="text-[11px] text-slate-400 mb-1">{formatTime(hoveredPoint.time)}</div>
+                      <div className="text-base font-semibold text-white">{formatCurrency(hoveredPoint.price)}</div>
+                    </motion.div>
+
+                  </>
                 );
               })()}
               
@@ -1126,18 +1183,31 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
                   />
                 ))}
                 
-                {/* Hover line */}
+                {/* Hover line - solid line from top to point */}
                 {hoveredPoint && (
-                  <line
-                    x1={hoveredPoint.x}
-                    y1="0"
-                    x2={hoveredPoint.x}
-                    y2="100"
-                    stroke="#a78bfa"
-                    strokeWidth="0.3"
-                    strokeDasharray="2,2"
-                    opacity="0.6"
-                  />
+                  <>
+                    {/* Vertical line from top to the point */}
+                    <line
+                      x1={hoveredPoint.x}
+                      y1="0"
+                      x2={hoveredPoint.x}
+                      y2={hoveredPoint.y}
+                      stroke="white"
+                      strokeWidth="0.4"
+                      opacity="0.5"
+                    />
+                    {/* Faded line from point to bottom */}
+                    <line
+                      x1={hoveredPoint.x}
+                      y1={hoveredPoint.y}
+                      x2={hoveredPoint.x}
+                      y2="100"
+                      stroke="white"
+                      strokeWidth="0.3"
+                      opacity="0.15"
+                      strokeDasharray="1,1"
+                    />
+                  </>
                 )}
                 
                 {/* Chart gradient fill */}
@@ -1177,32 +1247,65 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
                     d: { duration: 0.6, ease: "easeInOut" }
                   }}
                 />
-                
-                {/* Hover point with glow */}
-                {hoveredPoint && (
-                  <>
-                    <motion.circle
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      cx={hoveredPoint.x}
-                      cy={hoveredPoint.y}
-                      r="2.5"
-                      fill={change24h >= 0 ? '#10b981' : '#ef4444'}
-                      opacity="0.3"
-                    />
-                    <motion.circle
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      cx={hoveredPoint.x}
-                      cy={hoveredPoint.y}
-                      r="1.5"
-                      fill={change24h >= 0 ? '#10b981' : '#ef4444'}
-                      stroke="white"
-                      strokeWidth="0.8"
-                    />
-                  </>
-                )}
+
               </svg>
+
+              {/* Circular pointer dot - overlay that matches the SVG viewBox */}
+              {hoveredPoint && (
+                <div className="absolute inset-0 p-4 pointer-events-none">
+                  <div className="relative w-full h-full">
+                    <motion.div
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="absolute z-10"
+                      style={{
+                        left: `${hoveredPoint.x}%`,
+                        top: `${hoveredPoint.y}%`,
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                    >
+                      {/* Outer glow */}
+                      <div
+                        className="absolute rounded-full"
+                        style={{
+                          width: '24px',
+                          height: '24px',
+                          left: '50%',
+                          top: '50%',
+                          transform: 'translate(-50%, -50%)',
+                          backgroundColor: change24h >= 0 ? '#10b981' : '#ef4444',
+                          opacity: 0.15,
+                        }}
+                      />
+                      {/* Middle glow */}
+                      <div
+                        className="absolute rounded-full"
+                        style={{
+                          width: '16px',
+                          height: '16px',
+                          left: '50%',
+                          top: '50%',
+                          transform: 'translate(-50%, -50%)',
+                          backgroundColor: change24h >= 0 ? '#10b981' : '#ef4444',
+                          opacity: 0.3,
+                        }}
+                      />
+                      {/* Inner dot with white border */}
+                      <div
+                        className="absolute rounded-full border-2 border-white"
+                        style={{
+                          width: '10px',
+                          height: '10px',
+                          left: '50%',
+                          top: '50%',
+                          transform: 'translate(-50%, -50%)',
+                          backgroundColor: change24h >= 0 ? '#10b981' : '#ef4444',
+                        }}
+                      />
+                    </motion.div>
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
         </motion.div>

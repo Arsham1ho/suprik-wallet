@@ -412,9 +412,9 @@ export function Receive({ onBack, walletId }: ReceiveProps) {
               <div className="bg-slate-900/50 rounded-2xl p-4 border border-slate-800 w-full">
                 <p className="text-xs text-slate-400 mb-2 text-center">Your {selectedNetwork.name} Address</p>
                 <div className="flex items-center justify-center gap-3">
-                  <code className="text-sm text-white font-mono text-center break-all px-2">
+                  <span className="text-sm text-white text-center break-all px-2">
                     {selectedNetwork.address ? truncateAddress(selectedNetwork.address) : ''}
-                  </code>
+                  </span>
                 </div>
               </div>
 

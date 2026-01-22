@@ -282,7 +282,7 @@ export function SwapSuccessDialog({
                     title="Copy signature"
                   >
                     <Copy className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-                    <span className="font-mono text-xs">
+                    <span className="text-xs">
                       {signature.substring(0, 4)}...{signature.substring(signature.length - 4)}
                     </span>
                   </button>

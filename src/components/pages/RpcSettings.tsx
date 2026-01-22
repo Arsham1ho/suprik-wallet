@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 import { motion } from 'motion/react';
 import { ChevronRight, Wifi, WifiOff, CheckCircle, AlertCircle, Loader2, Server } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -7,6 +7,7 @@ import { useNetwork, NetworkMode, getNetworkEndpoints } from '../../utils/Networ
 import { useTheme } from '../../utils/ThemeContext';
 import { toast } from 'sonner';
 import { Connection } from '@solana/web3.js';
+import { scrollToTop } from '../../utils/scrollToTop';
 
 interface RpcSettingsProps {
   onBack: () => void;
@@ -18,6 +19,11 @@ export function RpcSettings({ onBack }: RpcSettingsProps) {
   const [customRpcInput, setCustomRpcInput] = useState(customRpcUrl);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
+
+  // Scroll to top when component mounts
+  useLayoutEffect(() => {
+    scrollToTop();
+  }, []);
 
   useEffect(() => {
     setCustomRpcInput(customRpcUrl);

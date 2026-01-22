@@ -297,9 +297,9 @@ export function ImportWalletDialog({
       // Password was provided (e.g., OAuth flow)
       await handleImportMultipleAccountsWithPassword(existingPassword);
     } else if (isAddingAccount) {
-      // When adding an account to existing wallet, we need the password to encrypt the mnemonic
-      // The password is needed to decrypt transactions later
-      setStep('password');
+      // When adding an account to existing wallet, import directly without asking for password
+      // The mnemonic will be stored separately for the imported accounts
+      await handleImportMultipleAccounts();
     } else {
       // New wallet import - always requires password
       setStep('password');
@@ -316,6 +316,12 @@ export function ImportWalletDialog({
       const mnemonic = seedPhrase.trim().toLowerCase().replace(/\s+/g, ' ');
       const walletId = await deriveWalletId(mnemonic);
       let addedCount = 0;
+
+      // Store the imported mnemonic for these accounts (base64 encoded for simple storage)
+      // This allows transactions to work without requiring password each time
+      const storedMnemonics = JSON.parse(localStorage.getItem('saturn_imported_mnemonics') || '{}');
+      storedMnemonics[walletId] = btoa(mnemonic);
+      localStorage.setItem('saturn_imported_mnemonics', JSON.stringify(storedMnemonics));
 
       for (const selectedIndex of selectedAccounts.sort((a, b) => a - b)) {
         const account = discoveredAccounts.find(a => a.index === selectedIndex);
@@ -342,6 +348,8 @@ export function ImportWalletDialog({
           createdAt: Date.now(),
           // CRITICAL: Mark as imported so WalletContext doesn't override addresses
           isImportedSeedPhrase: true,
+          // Store walletId to retrieve mnemonic later for transactions
+          importedWalletId: walletId,
         };
 
         accounts.push(newAccount);
@@ -770,7 +778,7 @@ export function ImportWalletDialog({
                             handleWordChange(index, e.target.value);
                             setError('');
                           }}
-                          className={`w-full pr-2 py-2.5 bg-slate-800/80 border border-slate-700/50 rounded-lg text-white text-sm font-mono focus:outline-none focus:ring-2 ${word ? 'pl-2' : 'pl-7'}`}
+                          className={`w-full pr-2 py-2.5 bg-slate-800/80 border border-slate-700/50 rounded-lg text-white text-sm font-medium focus:outline-none focus:ring-2 ${word ? 'pl-2' : 'pl-7'}`}
                           style={{
                             // @ts-ignore - CSS custom properties
                             '--tw-ring-color': `${colors.primary}4D`,
@@ -804,8 +812,8 @@ export function ImportWalletDialog({
                         setPrivateKey(e.target.value);
                         setError('');
                       }}
-                      className="bg-slate-900/50 border-slate-700/50 pr-10 font-mono text-sm"
-                      placeholder="Enter your base58-encoded private key..."
+                      className="bg-slate-900/50 border-slate-700/50 pr-10 text-sm"
+                      placeholder="Import Private Key"
                     />
                     <button
                       type="button"
@@ -945,7 +953,7 @@ export function ImportWalletDialog({
                         <p className="text-sm font-medium text-white">
                           Account {account.index + 1}
                         </p>
-                        <p className="text-xs text-slate-400 font-mono">
+                        <p className="text-xs text-slate-400">
                           {account.address.slice(0, 6)}...{account.address.slice(-4)}
                         </p>
                       </div>
