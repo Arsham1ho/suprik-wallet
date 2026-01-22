@@ -14,7 +14,7 @@ import { AddTokenDialog } from '../AddTokenDialog';
 import { CoinDetail } from './CoinDetail';
 import { TokenLogo } from '../TokenLogo';
 import { AnimalAvatar } from '../AnimalAvatar';
-import { BlockchainSetup } from '../BlockchainSetup';
+// BlockchainSetup removed - not needed for production
 import { AccountSwitcher } from '../AccountSwitcher';
 import { ImportWalletDialog } from '../ImportWalletDialog';
 import { AccountManager } from '../../utils/accountManager';
@@ -161,7 +161,7 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
   const [balanceBackground, setBalanceBackground] = useState<string>(() => {
-    return localStorage.getItem('balanceBackground') || 'circuit-board';
+    return localStorage.getItem('balanceBackground') || 'none';
   });
   const [tokens, setTokens] = useState<Token[]>([]);
   const [allVerifiedTokens, setAllVerifiedTokens] = useState<Token[]>([]);
@@ -261,7 +261,7 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
   // Listen for background changes
   useEffect(() => {
     const handleStorageChange = () => {
-      const newBackground = localStorage.getItem('balanceBackground') || 'circuit-board';
+      const newBackground = localStorage.getItem('balanceBackground') || 'none';
       setBalanceBackground(newBackground);
     };
 
@@ -269,7 +269,7 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
 
     // Check periodically for same-tab updates (reduced frequency to avoid battery drain)
     const interval = setInterval(() => {
-      const currentBg = localStorage.getItem('balanceBackground') || 'circuit-board';
+      const currentBg = localStorage.getItem('balanceBackground') || 'none';
       setBalanceBackground(prev => prev !== currentBg ? currentBg : prev);
     }, 5000); // Check every 5 seconds instead of 1
 
@@ -509,7 +509,6 @@ Check console for full details!
     `;
     
     alert(summary);
-    setShowDebug(!showDebug);
   };
 
   // Clear all cache and reload
@@ -1133,9 +1132,6 @@ Check console for full details!
   return (
     <div className="min-h-screen bg-black text-white pb-20 w-full">
       <div className="px-4 py-3 space-y-6 w-full">
-        {/* Blockchain Setup Alert */}
-        <BlockchainSetup walletId={walletId} />
-
         {/* Header with Profile Info */}
         <div className="space-y-4 pt-2">
           {/* Top row - Avatar and Actions */}

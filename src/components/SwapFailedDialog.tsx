@@ -2,6 +2,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dial
 import { motion } from 'motion/react';
 import { X, AlertTriangle, RefreshCw, ExternalLink } from 'lucide-react';
 import { TokenLogo } from './TokenLogo';
+import { useTheme } from '../utils/ThemeContext';
 
 interface SwapFailedDialogProps {
   open: boolean;
@@ -37,6 +38,7 @@ export function SwapFailedDialog({
   signature,
   isTestnet = false
 }: SwapFailedDialogProps) {
+  const { colors } = useTheme();
   // Parse error for user-friendly messages
   const getErrorTitle = () => {
     if (error.includes('slippage') || error.includes('0x1788') || error.includes('Price moved')) {
@@ -248,7 +250,8 @@ export function SwapFailedDialog({
                 href={`https://solscan.io/tx/${signature}${isTestnet ? '?cluster=devnet' : ''}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 text-sm text-purple-300 hover:text-purple-200 transition-all bg-slate-800/50 hover:bg-slate-800 rounded-lg py-2.5 border border-slate-700/50 group"
+                className="flex items-center justify-center gap-2 text-sm transition-all bg-slate-800/50 hover:bg-slate-800 rounded-lg py-2.5 border border-slate-700/50 group"
+                style={{ color: colors.accent }}
               >
                 <ExternalLink className="w-4 h-4" />
                 View transaction on Solscan
@@ -271,7 +274,13 @@ export function SwapFailedDialog({
                   onOpenChange(false);
                   onRetry();
                 }}
-                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 transition-all font-semibold text-white shadow-lg shadow-purple-500/25 flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-xl transition-all font-semibold text-white shadow-lg flex items-center justify-center gap-2"
+                style={{
+                  backgroundColor: colors.primary,
+                  boxShadow: `0 4px 14px -3px ${colors.primary}4D`,
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = colors.primaryDark}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = colors.primary}
               >
                 <RefreshCw className="w-4 h-4" />
                 Try Again

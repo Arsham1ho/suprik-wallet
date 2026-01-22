@@ -732,7 +732,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
                     <textarea
                       value={privateKey}
                       onChange={(e) => handlePrivateKeyChange(e.target.value)}
-                      className="w-full bg-black/50 border border-slate-800/50 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all font-mono resize-none"
+                      className="w-full bg-black/50 border border-slate-800/50 rounded-lg px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all resize-none"
                       placeholder="Paste your private key (base58 or byte array)"
                       rows={3}
                       autoComplete="off"
@@ -747,7 +747,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
                       className="bg-green-950/30 border border-green-900/30 rounded-lg p-3"
                     >
                       <p className="text-xs text-green-400 mb-1">Wallet Address:</p>
-                      <p className="text-sm text-green-200 font-mono break-all">{derivedPublicKey}</p>
+                      <p className="text-sm text-green-200 break-all">{derivedPublicKey}</p>
                     </motion.div>
                   )}
 
@@ -861,7 +861,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
                         <p className="text-base font-semibold text-white">
                           Account {account.index + 1}
                         </p>
-                        <p className="text-sm text-slate-400 font-mono">
+                        <p className="text-sm text-slate-400">
                           {account.address.slice(0, 6)}...{account.address.slice(-4)}
                         </p>
                       </div>
@@ -926,7 +926,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
               {importMode === 'privateKey' && derivedPublicKey && (
                 <div className="bg-slate-950/50 backdrop-blur-sm border border-slate-800/50 rounded-xl p-4">
                   <p className="text-xs text-slate-400 mb-1">Importing wallet:</p>
-                  <p className="text-sm text-white font-mono break-all">{derivedPublicKey}</p>
+                  <p className="text-sm text-white break-all">{derivedPublicKey}</p>
                 </div>
               )}
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -16,6 +16,7 @@ import { AccountManager } from '../../utils/accountManager';
 import { useWallet } from '../../utils/WalletContext';
 import { useTheme } from '../../utils/ThemeContext';
 import { deriveAddresses } from '../../utils/wallet';
+import { scrollToTop } from '../../utils/scrollToTop';
 
 interface AccountSettingsProps {
   onBack: () => void;
@@ -72,6 +73,11 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
   const [newUsernameAvailable, setNewUsernameAvailable] = useState<boolean | null>(null);
   const [newUsernameError, setNewUsernameError] = useState<string>('');
   const checkNewTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Scroll to top when component mounts
+  useLayoutEffect(() => {
+    scrollToTop();
+  }, []);
 
   useEffect(() => {
     loadWalletInfo();

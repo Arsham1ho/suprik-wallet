@@ -8,24 +8,45 @@ import * as bip39 from '@scure/bip39';
 import { HDKey } from 'micro-ed25519-hdkey';
 
 /**
- * Derive Solana keypair from mnemonic (CLIENT-SIDE)
+ * Derive Solana keypair from mnemonic OR private key (CLIENT-SIDE)
  * Uses micro-ed25519-hdkey (SLIP-0010) for derivation - same as Phantom wallet
  *
  * IMPORTANT: This MUST use the exact same derivation as wallet.ts deriveAddresses()
  * to ensure the address shown in Receive page matches the address used for transactions.
+ *
+ * Also supports private key imports stored with PRIVKEY: prefix
  */
-export async function deriveSolanaKeypair(mnemonic: string, accountIndex: number = 0) {
+export async function deriveSolanaKeypair(mnemonicOrKey: string, accountIndex: number = 0) {
   // Security: Don't log mnemonic details
   console.log('[Transaction] 🔑 deriveSolanaKeypair called, accountIndex:', accountIndex);
 
-  // Validate mnemonic before attempting derivation
-  if (!mnemonic || typeof mnemonic !== 'string' || mnemonic.trim().length === 0) {
-    console.error('[Transaction] ❌ deriveSolanaKeypair called with invalid mnemonic');
+  // Validate input before attempting derivation
+  if (!mnemonicOrKey || typeof mnemonicOrKey !== 'string' || mnemonicOrKey.trim().length === 0) {
+    console.error('[Transaction] ❌ deriveSolanaKeypair called with invalid input');
     throw new Error('Wallet session not found. Please lock and unlock your wallet to continue.');
   }
 
+  // Import Solana web3.js dynamically (needed for both paths)
+  const { Keypair } = await import('@solana/web3.js');
+
+  // Check if this is a private key import (stored with PRIVKEY: prefix)
+  if (mnemonicOrKey.startsWith('PRIVKEY:')) {
+    console.log('[Transaction] 🔑 Private key import detected, using direct keypair');
+    try {
+      const privateKeyBase58 = mnemonicOrKey.substring(8); // Remove "PRIVKEY:" prefix
+      const bs58 = await import('bs58');
+      const privateKeyBytes = bs58.default.decode(privateKeyBase58);
+      const keypair = Keypair.fromSecretKey(privateKeyBytes);
+      console.log('[Transaction] ✅ Keypair created from imported private key');
+      return keypair;
+    } catch (error: any) {
+      console.error('[Transaction] ❌ Failed to create keypair from private key:', error.message);
+      throw new Error('Invalid private key. Please re-import your wallet.');
+    }
+  }
+
   // Check if mnemonic looks valid (should be 12 or 24 words)
-  const wordCount = mnemonic.trim().split(/\s+/).length;
+  const wordCount = mnemonicOrKey.trim().split(/\s+/).length;
   if (wordCount !== 12 && wordCount !== 24) {
     console.error('[Transaction] ❌ Invalid mnemonic format');
     throw new Error('Invalid wallet data. Please lock and unlock your wallet to continue.');
@@ -34,7 +55,7 @@ export async function deriveSolanaKeypair(mnemonic: string, accountIndex: number
   try {
     // Convert mnemonic to seed - use mnemonicToSeedSync with empty passphrase
     // This MUST match wallet.ts line 404: bip39.mnemonicToSeedSync(mnemonic, '')
-    const seed = bip39.mnemonicToSeedSync(mnemonic, '');
+    const seed = bip39.mnemonicToSeedSync(mnemonicOrKey, '');
 
     // Derive Solana path using micro-ed25519-hdkey (SLIP-0010, same as Phantom)
     // Path: m/44'/501'/accountIndex'/0'
@@ -45,9 +66,6 @@ export async function deriveSolanaKeypair(mnemonic: string, accountIndex: number
     if (!derived.privateKey) {
       throw new Error('Failed to derive Solana private key');
     }
-
-    // Import Solana web3.js dynamically
-    const { Keypair } = await import('@solana/web3.js');
 
     // Create keypair from derived private key (32 bytes)
     const keypair = Keypair.fromSeed(derived.privateKey);

@@ -1,14 +1,21 @@
-import { ArrowLeft, Info, Globe, Mail, Heart, Shield, Zap, Users, Send, Instagram } from 'lucide-react';
+import { useLayoutEffect } from 'react';
+import { ArrowLeft, Info, Globe, Mail, Heart, Shield, Zap, Users, Send, Instagram, Twitter, Youtube } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '../ui/button';
 import { Separator } from '../ui/separator';
 import suprikLogo from 'figma:asset/5aa4d38c7eec78d8bd26f08104423d0aa0e3b5f4.png';
+import { scrollToTop } from '../../utils/scrollToTop';
 
 interface AboutSuprikProps {
   onBack: () => void;
 }
 
 export function AboutSuprik({ onBack }: AboutSuprikProps) {
+  // Scroll to top when page opens
+  useLayoutEffect(() => {
+    scrollToTop();
+  }, []);
+
   const features = [
     {
       icon: Shield,
@@ -30,6 +37,8 @@ export function AboutSuprik({ onBack }: AboutSuprikProps) {
   const links = [
     { icon: Globe, label: 'Website', url: 'https://www.suprik.com', color: 'text-blue-400' },
     { icon: Instagram, label: 'Instagram', url: 'https://instagram.com/suprik_wallet', color: 'text-pink-400' },
+    { icon: Twitter, label: 'X (Twitter)', url: 'https://x.com/suprik_wallet', color: 'text-slate-300' },
+    { icon: Youtube, label: 'YouTube', url: 'https://youtube.com/@suprik_wallet', color: 'text-red-400' },
     { icon: Send, label: 'Telegram', url: 'https://t.me/suprik_wallet', color: 'text-sky-400' },
     { icon: Mail, label: 'Contact', url: 'mailto:support@suprik.com', color: 'text-green-400' },
   ];

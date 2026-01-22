@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { ArrowLeft, Globe, DollarSign, Languages } from 'lucide-react';
@@ -6,6 +6,7 @@ import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
 import { getUserSettings } from '../../utils/userSettings';
+import { scrollToTop } from '../../utils/scrollToTop';
 
 interface PreferencesSettingsProps {
   onBack: () => void;
@@ -57,6 +58,11 @@ export function PreferencesSettings({ onBack, walletId }: PreferencesSettingsPro
     currency: 'USD',
     usePassword: false,
   });
+
+  // Scroll to top when component mounts
+  useLayoutEffect(() => {
+    scrollToTop();
+  }, []);
 
   useEffect(() => {
     loadUserSettings();

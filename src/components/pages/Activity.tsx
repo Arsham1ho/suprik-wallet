@@ -693,9 +693,9 @@ export function Activity({ walletId }: ActivityProps) {
                       <div>
                         <p className="text-slate-400 text-xs mb-1">To</p>
                         <div className="flex items-center justify-between gap-2">
-                          <code className="text-white text-xs font-mono bg-slate-950/50 px-2 py-1.5 rounded-lg flex-1">
+                          <span className="text-white text-xs bg-slate-950/50 px-2 py-1.5 rounded-lg flex-1">
                             {truncateAddress(selectedActivity.to, 6, 6)}
-                          </code>
+                          </span>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -716,12 +716,12 @@ export function Activity({ walletId }: ActivityProps) {
                       <div>
                         <p className="text-slate-400 text-xs mb-1">From</p>
                         <div className="flex items-center justify-between gap-2">
-                          <code className="text-white text-xs font-mono bg-slate-950/50 px-2 py-1.5 rounded-lg flex-1">
-                            {selectedActivity.from === 'Blockchain' || selectedActivity.from === 'Dev Mode Simulation' 
-                              ? selectedActivity.from 
+                          <span className="text-white text-xs bg-slate-950/50 px-2 py-1.5 rounded-lg flex-1">
+                            {selectedActivity.from === 'Blockchain' || selectedActivity.from === 'Dev Mode Simulation'
+                              ? selectedActivity.from
                               : truncateAddress(selectedActivity.from, 6, 6)
                             }
-                          </code>
+                          </span>
                           {selectedActivity.from !== 'Blockchain' && selectedActivity.from !== 'Dev Mode Simulation' && (
                             <Button
                               variant="ghost"
@@ -748,9 +748,9 @@ export function Activity({ walletId }: ActivityProps) {
                     <div>
                       <p className="text-slate-400 text-xs mb-1">Transaction Hash</p>
                       <div className="flex items-center justify-between gap-2">
-                        <code className="text-white text-xs font-mono bg-slate-950/50 px-2 py-1.5 rounded-lg flex-1 break-all">
+                        <span className="text-white text-xs bg-slate-950/50 px-2 py-1.5 rounded-lg flex-1 break-all">
                           {truncateAddress(selectedActivity.signature, 8, 8)}
-                        </code>
+                        </span>
                         <Button
                           variant="ghost"
                           size="icon"

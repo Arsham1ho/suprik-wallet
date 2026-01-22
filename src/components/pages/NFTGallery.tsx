@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 import { Button } from '../ui/button';
 import { ArrowLeft, ExternalLink, Loader2, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
 import { getHeliusApiKey } from '../../utils/env';
 import { useWallet } from '../../utils/WalletContext';
+import { scrollToTop } from '../../utils/scrollToTop';
 
 interface NFT {
   id: string;
@@ -30,6 +31,11 @@ export function NFTGallery({ walletId, onBack }: NFTGalleryProps) {
   const [nfts, setNfts] = useState<NFT[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedNFT, setSelectedNFT] = useState<NFT | null>(null);
+
+  // Scroll to top when component mounts
+  useLayoutEffect(() => {
+    scrollToTop();
+  }, []);
 
   useEffect(() => {
     fetchNFTs();

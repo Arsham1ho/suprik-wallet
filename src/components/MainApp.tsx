@@ -9,6 +9,7 @@ import { Search, CoinGeckoToken } from './pages/Search';
 import { CoinDetail } from './pages/CoinDetail';
 import { P2PTransfer } from './pages/P2PTransfer';
 import { BottomNav } from './BottomNav';
+import { scrollToTop } from '../utils/scrollToTop';
 import type { Token } from './pages/Home';
 
 interface MainAppProps {
@@ -24,7 +25,7 @@ export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount 
   
   // Scroll to top when page changes
   useEffect(() => {
-    window.scrollTo(0, 0);
+    scrollToTop();
   }, [currentPage]);
   
   const handleNavigate = (page: 'home' | 'swap' | 'activity' | 'settings' | 'p2p') => {

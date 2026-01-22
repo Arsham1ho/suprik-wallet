@@ -660,3 +660,131 @@ export function preloadTopTokens(): void {
     console.warn('[CoinGecko] Background preload failed:', err);
   });
 }
+
+/**
+ * Detailed coin info from CoinGecko
+ */
+export interface CoinGeckoDetails {
+  id: string;
+  symbol: string;
+  name: string;
+  description: string;
+  marketCap: number;
+  totalSupply: number;
+  circulatingSupply: number;
+  currentPrice: number;
+  change24h: number;
+  website: string;
+  twitter: string;
+}
+
+// Cache for detailed coin info
+const COIN_DETAILS_CACHE_KEY = 'suprik_coingecko_details';
+const COIN_DETAILS_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+
+function loadCachedDetails(): Record<string, { data: CoinGeckoDetails; timestamp: number }> {
+  try {
+    const cached = localStorage.getItem(COIN_DETAILS_CACHE_KEY);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch (e) {
+    // Ignore
+  }
+  return {};
+}
+
+function saveCachedDetails(id: string, details: CoinGeckoDetails): void {
+  try {
+    const cached = loadCachedDetails();
+    cached[id] = { data: details, timestamp: Date.now() };
+    localStorage.setItem(COIN_DETAILS_CACHE_KEY, JSON.stringify(cached));
+  } catch (e) {
+    // Ignore storage errors
+  }
+}
+
+/**
+ * Fetch detailed coin information from CoinGecko
+ * Includes description, market cap, total supply, circulating supply, links
+ */
+export async function fetchCoinGeckoDetails(
+  mintOrSymbol: string,
+  tokenName?: string
+): Promise<CoinGeckoDetails | null> {
+  // First, get the CoinGecko ID
+  const coinGeckoId = await getCoinGeckoId(mintOrSymbol, tokenName);
+
+  if (!coinGeckoId) {
+    console.log(`[CoinGecko] No ID found for ${mintOrSymbol}`);
+    return null;
+  }
+
+  // Check cache first
+  const cached = loadCachedDetails();
+  if (cached[coinGeckoId] && Date.now() - cached[coinGeckoId].timestamp < COIN_DETAILS_CACHE_DURATION) {
+    console.log(`[CoinGecko] Using cached details for ${coinGeckoId}`);
+    return cached[coinGeckoId].data;
+  }
+
+  try {
+    // Use the detailed coins/{id} endpoint
+    const url = `https://api.coingecko.com/api/v3/coins/${coinGeckoId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`;
+
+    console.log(`[CoinGecko] Fetching detailed info for ${coinGeckoId}...`);
+
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+
+      // Extract description (English preferred)
+      let description = '';
+      if (data.description?.en) {
+        description = data.description.en;
+      }
+
+      // Extract market data
+      const marketData = data.market_data || {};
+
+      const details: CoinGeckoDetails = {
+        id: data.id,
+        symbol: data.symbol?.toUpperCase() || '',
+        name: data.name || '',
+        description: description,
+        marketCap: marketData.market_cap?.usd || 0,
+        totalSupply: marketData.total_supply || 0,
+        circulatingSupply: marketData.circulating_supply || 0,
+        currentPrice: marketData.current_price?.usd || 0,
+        change24h: marketData.price_change_percentage_24h || 0,
+        website: data.links?.homepage?.[0] || '',
+        twitter: data.links?.twitter_screen_name || '',
+      };
+
+      console.log(`[CoinGecko] ✅ Got details for ${coinGeckoId}: mcap=${details.marketCap}, supply=${details.totalSupply}`);
+
+      // Cache the result
+      saveCachedDetails(coinGeckoId, details);
+
+      return details;
+    } else if (response.status === 429) {
+      console.warn(`[CoinGecko] Rate limited (429) for ${coinGeckoId}`);
+      // Return stale cache if available
+      if (cached[coinGeckoId]) {
+        return cached[coinGeckoId].data;
+      }
+    } else {
+      console.warn(`[CoinGecko] Details API returned ${response.status} for ${coinGeckoId}`);
+    }
+  } catch (error) {
+    console.warn(`[CoinGecko] Details fetch failed for ${coinGeckoId}:`, error);
+    // Return stale cache on error
+    if (cached[coinGeckoId]) {
+      return cached[coinGeckoId].data;
+    }
+  }
+
+  return null;
+}

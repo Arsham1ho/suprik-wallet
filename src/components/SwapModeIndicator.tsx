@@ -78,7 +78,7 @@ export function SwapModeIndicator({ isRealMode, route, priceImpact }: SwapModeIn
         >
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-400">Route:</span>
-            <span className="text-slate-200 font-mono">{route}</span>
+            <span className="text-slate-200">{route}</span>
           </div>
           {priceImpact !== null && priceImpact !== undefined && (
             <div className="flex items-center justify-between text-xs mt-1">
