@@ -487,6 +487,12 @@ export function ImportWalletDialog({
           return;
         }
 
+        // Store the imported mnemonic for these accounts (base64 encoded for simple storage)
+        // This allows transactions to work without requiring password each time
+        const storedMnemonics = JSON.parse(localStorage.getItem('saturn_imported_mnemonics') || '{}');
+        storedMnemonics[walletId] = btoa(mnemonic);
+        localStorage.setItem('saturn_imported_mnemonics', JSON.stringify(storedMnemonics));
+
         // Create unique account ID
         const uniqueAccountId = `${walletId}_imported_${Date.now()}`;
 
@@ -499,6 +505,10 @@ export function ImportWalletDialog({
             ethereum: addresses.ethereum,
           },
           createdAt: Date.now(),
+          // CRITICAL: Mark as imported so WalletContext doesn't override addresses
+          isImportedSeedPhrase: true,
+          // Store walletId to retrieve mnemonic later for transactions
+          importedWalletId: walletId,
         };
 
         accounts.push(newAccount);
@@ -532,6 +542,11 @@ export function ImportWalletDialog({
 
         const uniqueAccountId = `pk_${solanaAddress.slice(0, 8)}_${Date.now()}`;
 
+        // Store the private key for this imported account (base64 encoded)
+        const storedPrivateKeys = JSON.parse(localStorage.getItem('saturn_imported_private_keys') || '{}');
+        storedPrivateKeys[solanaAddress] = btoa(key);
+        localStorage.setItem('saturn_imported_private_keys', JSON.stringify(storedPrivateKeys));
+
         const newAccount = {
           id: uniqueAccountId,
           name: `Account ${accounts.length + 1}`,
@@ -542,6 +557,8 @@ export function ImportWalletDialog({
           },
           createdAt: Date.now(),
           isPrivateKeyImport: true,
+          // Store reference to retrieve private key later
+          importedPrivateKeyAddress: solanaAddress,
         };
 
         accounts.push(newAccount);
