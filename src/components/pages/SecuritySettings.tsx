@@ -517,6 +517,21 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
         }
       }
 
+      // Check if this is an imported account with mnemonic stored in saturn_imported_mnemonics
+      if (!mnemonic && activeAccount?.importedWalletId) {
+        console.log("[SecuritySettings] 📦 Account has importedWalletId, checking saturn_imported_mnemonics...");
+        try {
+          const storedMnemonics = JSON.parse(localStorage.getItem('saturn_imported_mnemonics') || '{}');
+          const encodedMnemonic = storedMnemonics[activeAccount.importedWalletId];
+          if (encodedMnemonic) {
+            mnemonic = atob(encodedMnemonic);
+            console.log("[SecuritySettings] ✅ Retrieved mnemonic from saturn_imported_mnemonics");
+          }
+        } catch (storageError) {
+          console.error("[SecuritySettings] ❌ Failed to retrieve mnemonic from storage:", storageError);
+        }
+      }
+
       // If no account-specific mnemonic (derived account), use the global wallet mnemonic
       if (!mnemonic) {
         // Only use global mnemonic if this is NOT an imported account
@@ -574,132 +589,113 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
   const loadPrivateKey = async () => {
     setLoadingPrivateKey(true);
     try {
-      console.log(
-        "[SecuritySettings] 🔍 Loading private key..."
-      );
+      console.log("[SecuritySettings] 🔍 Loading private key for account:", activeAccount?.name);
 
-      // Helper function to handle mnemonic/private key data
-      const extractPrivateKey = async (data: string, password: string): Promise<string | null> => {
-        // Check if this is a private key import (stored with PRIVKEY: prefix)
-        if (data.startsWith("PRIVKEY:")) {
-          console.log("[SecuritySettings] ✅ Private key import detected, extracting key...");
-          // Extract the actual private key (remove the PRIVKEY: prefix)
-          return data.substring(8);
+      const activeAcc = AccountManager.getActiveAccount();
+      if (!activeAcc) {
+        toast.error("No active account found");
+        setLoadingPrivateKey(false);
+        return;
+      }
+
+      // Case 1: Account imported via private key - retrieve from saturn_imported_private_keys
+      if (activeAcc.isPrivateKeyImport && activeAcc.importedPrivateKeyAddress) {
+        console.log("[SecuritySettings] 📦 Private key import detected, retrieving from storage...");
+        try {
+          const storedPrivateKeys = JSON.parse(localStorage.getItem('saturn_imported_private_keys') || '{}');
+          const encodedKey = storedPrivateKeys[activeAcc.importedPrivateKeyAddress];
+          if (encodedKey) {
+            const privateKeyValue = atob(encodedKey);
+            setPrivateKey(privateKeyValue);
+            setPrivateKeyConfirmed(true);
+            toast.success("Private key loaded");
+            setLoadingPrivateKey(false);
+            return;
+          }
+        } catch (storageError) {
+          console.error("[SecuritySettings] ❌ Failed to retrieve private key from storage:", storageError);
         }
+        toast.error("Private key not found in storage");
+        setLoadingPrivateKey(false);
+        return;
+      }
 
-        // Otherwise, derive from seed phrase
-        console.log("[SecuritySettings] 📦 Deriving private key from seed phrase...");
-        const result = await exportPrivateKey(data, password);
-        if (result.success && result.privateKey.length) {
-          return bs58.encode(result.privateKey);
+      // Case 2: Account imported via seed phrase - retrieve mnemonic from saturn_imported_mnemonics
+      if (activeAcc.isImportedSeedPhrase && activeAcc.importedWalletId) {
+        console.log("[SecuritySettings] 📦 Imported seed phrase account, retrieving mnemonic...");
+        try {
+          const storedMnemonics = JSON.parse(localStorage.getItem('saturn_imported_mnemonics') || '{}');
+          const encodedMnemonic = storedMnemonics[activeAcc.importedWalletId];
+          if (encodedMnemonic) {
+            const mnemonic = atob(encodedMnemonic);
+            // Derive private key from the imported mnemonic using the account's accountIndex
+            const result = await exportPrivateKey(mnemonic, '', activeAcc.accountIndex || 0);
+            if (result.success && result.privateKey.length) {
+              const privateKeyBase58 = bs58.encode(result.privateKey);
+              setPrivateKey(privateKeyBase58);
+              setPrivateKeyConfirmed(true);
+              toast.success("Private key loaded");
+              setLoadingPrivateKey(false);
+              return;
+            }
+          }
+        } catch (storageError) {
+          console.error("[SecuritySettings] ❌ Failed to retrieve mnemonic from storage:", storageError);
         }
-        return null;
-      };
+        toast.error("Could not derive private key for this imported account");
+        setLoadingPrivateKey(false);
+        return;
+      }
 
-      // Always require password verification for security
-      // Even if wallet is unlocked, we need to verify the user knows the password
+      // Case 3: Derived account from main wallet - need password to decrypt main mnemonic
+      console.log("[SecuritySettings] 📦 Derived account, using main wallet mnemonic...");
 
-      // Check if wallet is already unlocked (from WalletContext)
-      if (wallet.isUnlocked && wallet.mnemonic) {
-        console.log(
-          "[SecuritySettings] ✅ Wallet already unlocked, but requiring password verification"
-        );
+      // Get password - try OAuth first, then prompt
+      let password: string | null = null;
+      const authMethod = localStorage.getItem(`${walletId}_auth_method`);
+      if (authMethod === "social") {
+        password = await WalletStorage.getOAuthPassword();
+      }
 
-        // Always prompt for password verification
-        const pwd = prompt("Enter your wallet password to view private key:");
-        if (!pwd) {
+      if (!password) {
+        password = prompt("Enter your wallet password to view private key:");
+        if (!password) {
           toast.error("Password required to view private key");
           setLoadingPrivateKey(false);
           return;
         }
-
-        // Verify password by trying to retrieve mnemonic from storage
-        const verifiedMnemonic = await SecureStorage.retrieveMnemonic(pwd);
-        if (!verifiedMnemonic) {
-          toast.error("Incorrect password. Please try again.");
-          setLoadingPrivateKey(false);
-          return;
-        }
-
-        // Check if it's a private key import
-        if (wallet.mnemonic.startsWith("PRIVKEY:")) {
-          const key = wallet.mnemonic.substring(8);
-          setPrivateKey(key);
-          setPrivateKeyConfirmed(true);
-          setLoadingPrivateKey(false);
-          toast.success("Private key loaded");
-          return;
-        }
-
-        // Derive private key from seed phrase
-        const result = await exportPrivateKey(wallet.mnemonic, pwd);
-        if (!result.success || !result.privateKey.length) {
-          toast.error(result.error || "Failed to export private key");
-          setLoadingPrivateKey(false);
-          return;
-        }
-        const privateKeyBase58 = bs58.encode(result.privateKey);
-        setPrivateKey(privateKeyBase58);
-        setPrivateKeyConfirmed(true);
-        setLoadingPrivateKey(false);
-        return;
       }
 
-      // If not unlocked, try OAuth password first
-      const authMethod = localStorage.getItem(`${walletId}_auth_method`);
-      if (authMethod === "social") {
-        console.log(
-          "[SecuritySettings] 🔑 OAuth wallet detected, trying auto-unlock..."
-        );
-        const oauthPassword = await WalletStorage.getOAuthPassword();
-
-        if (oauthPassword) {
-          const mnemonic = await SecureStorage.retrieveMnemonic(oauthPassword);
-          if (mnemonic) {
-            console.log(
-              "[SecuritySettings] ✅ Mnemonic retrieved with OAuth password"
-            );
-            const extractedKey = await extractPrivateKey(mnemonic, oauthPassword);
-            if (extractedKey) {
-              setPrivateKey(extractedKey);
-              setPrivateKeyConfirmed(true);
-              setLoadingPrivateKey(false);
-              toast.success("Private key loaded");
-              return;
-            }
-          }
-        }
-      }
-
-      // If OAuth failed or not OAuth wallet, prompt for password
-      const password = prompt(
-        "Enter your wallet password to view private key:"
-      );
-
-      if (!password) {
-        toast.error("Password required to view private key");
-        setLoadingPrivateKey(false);
-        return;
-      }
-
+      // Retrieve and verify mnemonic
       const mnemonic = await SecureStorage.retrieveMnemonic(password);
-
       if (!mnemonic) {
         toast.error("Incorrect password. Please try again.");
         setLoadingPrivateKey(false);
         return;
       }
 
-      console.log("[SecuritySettings] ✅ Data retrieved, extracting private key...");
-      const extractedKey = await extractPrivateKey(mnemonic, password);
-
-      if (!extractedKey) {
-        toast.error("Failed to export private key");
+      // Check if main wallet was imported via private key (PRIVKEY: prefix)
+      if (mnemonic.startsWith("PRIVKEY:")) {
+        const key = mnemonic.substring(8);
+        setPrivateKey(key);
+        setPrivateKeyConfirmed(true);
+        toast.success("Private key loaded");
         setLoadingPrivateKey(false);
         return;
       }
 
-      setPrivateKey(extractedKey);
+      // Derive private key from seed phrase using the account's index
+      const accountIndex = activeAcc.accountIndex || 0;
+      console.log("[SecuritySettings] 🔑 Deriving private key at index:", accountIndex);
+      const result = await exportPrivateKey(mnemonic, password, accountIndex);
+      if (!result.success || !result.privateKey.length) {
+        toast.error(result.error || "Failed to export private key");
+        setLoadingPrivateKey(false);
+        return;
+      }
+
+      const privateKeyBase58 = bs58.encode(result.privateKey);
+      setPrivateKey(privateKeyBase58);
       setPrivateKeyConfirmed(true);
       toast.success("Private key loaded");
     } catch (error) {
@@ -725,9 +721,9 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
     (wallet.mnemonic?.startsWith("PRIVKEY:")) ||
     (walletInfo?.seedPhrase?.startsWith("PRIVKEY:")) ||
     false;
-  // Only consider it a truly imported seed phrase if it has its own encrypted mnemonic
+  // Only consider it a truly imported seed phrase if it has its own encrypted mnemonic or importedWalletId
   // Otherwise, it's a derived account that shares the main wallet's recovery phrase
-  const isImportedWithOwnPhrase = activeAccount?.isImportedSeedPhrase && activeAccount?.encryptedMnemonic;
+  const isImportedWithOwnPhrase = activeAccount?.isImportedSeedPhrase && (activeAccount?.encryptedMnemonic || activeAccount?.importedWalletId);
   const seedWords = isPrivateKeyImport ? [] : (walletInfo?.seedPhrase?.split(" ") || []);
 
   console.log("[SecuritySettings] Active account:", activeAccount?.name, "isImportedSeedPhrase:", activeAccount?.isImportedSeedPhrase, "hasEncryptedMnemonic:", !!activeAccount?.encryptedMnemonic);
@@ -797,7 +793,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
                 ? 'This account was imported using a private key. No recovery phrase is available. Use the Private Key section below to export your key.'
                 : isImportedWithOwnPhrase
                   ? 'This account was imported with its own recovery phrase, different from your main wallet.'
-                  : activeAccount?.isImportedSeedPhrase && !activeAccount?.encryptedMnemonic
+                  : activeAccount?.isImportedSeedPhrase && !activeAccount?.encryptedMnemonic && !activeAccount?.importedWalletId
                     ? 'This account was imported but the recovery phrase was not stored. Please delete and re-import this account to access its recovery phrase.'
                     : 'Your 12-word recovery phrase is the master key to your wallet. Never share it with anyone.'}
             </p>
@@ -808,7 +804,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
                   💡 Private key imports don't have a recovery phrase. Your private key is shown in the "Private Key" section below.
                 </p>
               </div>
-            ) : activeAccount?.isImportedSeedPhrase && !activeAccount?.encryptedMnemonic ? (
+            ) : activeAccount?.isImportedSeedPhrase && !activeAccount?.encryptedMnemonic && !activeAccount?.importedWalletId ? (
               <div className="bg-yellow-950/20 border border-yellow-900/30 rounded-lg p-3">
                 <p className="text-yellow-200 text-xs">
                   ⚠️ This imported account's recovery phrase was not saved during import. To view it, please delete this account and re-import it using the seed phrase.
