@@ -1264,8 +1264,29 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         // Check if active account is an imported account with its own mnemonic
         const activeAccount = AccountManager.getActiveAccount();
         let mnemonicToUse = wallet.mnemonic;
+        let privateKeyBase58: string | undefined;
 
-        if (activeAccount?.isImportedSeedPhrase) {
+        // Check if this is a private key import
+        const storedPrivateKeys = JSON.parse(localStorage.getItem('saturn_imported_private_keys') || '{}');
+        const accountAddress = activeAccount?.addresses?.solana;
+        const hasStoredPrivateKey = accountAddress && storedPrivateKeys[accountAddress];
+
+        if (hasStoredPrivateKey || activeAccount?.isPrivateKeyImport) {
+          // This account has its own private key in storage - use it
+          console.log('[Swap] ⚠️ Using stored private key for imported account');
+          const base64Key = storedPrivateKeys[accountAddress!];
+          if (base64Key) {
+            try {
+              privateKeyBase58 = atob(base64Key);
+              console.log('[Swap] Retrieved private key for swap');
+            } catch (e) {
+              console.error('[Swap] Failed to decode private key:', e);
+              throw new Error("Failed to retrieve private key. Please delete and re-import this account.");
+            }
+          } else {
+            throw new Error("Private key not found for this account. Please delete and re-import it.");
+          }
+        } else if (activeAccount?.isImportedSeedPhrase) {
           // Check if this imported account has an encrypted mnemonic stored
           if (activeAccount?.encryptedMnemonic) {
             if (!wallet.password) {
@@ -1278,6 +1299,19 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             }
 
             mnemonicToUse = decryptedMnemonic;
+          } else if (activeAccount?.importedWalletId) {
+            // Check for mnemonic stored in saturn_imported_mnemonics (base64 encoded)
+            const storedMnemonics = JSON.parse(localStorage.getItem('saturn_imported_mnemonics') || '{}');
+            const base64Mnemonic = storedMnemonics[activeAccount.importedWalletId];
+            if (base64Mnemonic) {
+              try {
+                mnemonicToUse = atob(base64Mnemonic);
+              } catch {
+                throw new Error("Failed to retrieve imported account mnemonic. Please delete and re-import this account.");
+              }
+            } else {
+              throw new Error("Imported account mnemonic not found. Please delete and re-import this account.");
+            }
           } else {
             // This is an old imported account without encrypted mnemonic
             // User needs to re-import it with the new system
@@ -1307,6 +1341,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             orderResponse: ultraOrderResponse,
             accountIndex: accountIndexToUse,
             isTestnet: network.isTestnet,
+            privateKeyBase58,
           });
         } else {
           console.log("🔄 [Swap] Executing via Jupiter Legacy API...");
@@ -1315,6 +1350,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             quoteResponse: jupiterQuote,
             accountIndex: accountIndexToUse,
             isTestnet: network.isTestnet,
+            privateKeyBase58,
           });
         }
 

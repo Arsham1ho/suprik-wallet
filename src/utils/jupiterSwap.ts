@@ -772,9 +772,10 @@ export async function executeJupiterSwap(params: {
   quoteResponse: SwapQuote;
   accountIndex?: number;
   isTestnet?: boolean;
+  privateKeyBase58?: string; // For private key imports
 }): Promise<SwapResult> {
   try {
-    const { mnemonic, quoteResponse, accountIndex = 0, isTestnet = false } = params;
+    const { mnemonic, quoteResponse, accountIndex = 0, isTestnet = false, privateKeyBase58 } = params;
 
     console.log('[Jupiter] Executing swap...');
     console.log('[Jupiter] Mode:', isTestnet ? 'TESTNET' : 'MAINNET');
@@ -813,8 +814,26 @@ export async function executeJupiterSwap(params: {
     // MAINNET MODE: Execute real swap
     console.log('[Jupiter] MAINNET: Executing real swap...');
 
-    // Derive keypair
-    const keypair = await deriveSolanaKeypair(mnemonic, accountIndex);
+    // Get keypair - either from private key or derived from mnemonic
+    let keypair;
+    if (privateKeyBase58) {
+      // Use private key directly
+      const bs58 = await import('bs58');
+      const decoded = bs58.default.decode(privateKeyBase58);
+      const { Keypair } = await import('@solana/web3.js');
+      if (decoded.length === 64) {
+        keypair = Keypair.fromSecretKey(decoded);
+      } else {
+        // 32 byte seed
+        const nacl = await import('tweetnacl');
+        const kp = nacl.default.sign.keyPair.fromSeed(decoded);
+        keypair = Keypair.fromSecretKey(kp.secretKey);
+      }
+      console.log('[Jupiter] Using private key import');
+    } else {
+      // Derive from mnemonic
+      keypair = await deriveSolanaKeypair(mnemonic, accountIndex);
+    }
     const connection = await getSolanaConnection(false); // Mainnet
 
     console.log('[Jupiter] Wallet:', keypair.publicKey.toBase58());
@@ -1390,8 +1409,9 @@ export async function executeUltraSwap(params: {
   orderResponse: UltraOrderResponse;
   accountIndex?: number;
   isTestnet?: boolean;
+  privateKeyBase58?: string; // For private key imports
 }): Promise<SwapResult> {
-  const { mnemonic, quoteResponse, orderResponse, accountIndex = 0, isTestnet = false } = params;
+  const { mnemonic, quoteResponse, orderResponse, accountIndex = 0, isTestnet = false, privateKeyBase58 } = params;
 
   console.log('[Jupiter Ultra] Executing swap...');
   console.log('[Jupiter Ultra] Request ID:', orderResponse.requestId);
@@ -1419,8 +1439,26 @@ export async function executeUltraSwap(params: {
     throw new Error('No transaction in order response. Taker address may be missing.');
   }
 
-  // Derive keypair
-  const keypair = await deriveSolanaKeypair(mnemonic, accountIndex);
+  // Get keypair - either from private key or derived from mnemonic
+  let keypair;
+  if (privateKeyBase58) {
+    // Use private key directly
+    const bs58 = await import('bs58');
+    const decoded = bs58.default.decode(privateKeyBase58);
+    const { Keypair } = await import('@solana/web3.js');
+    if (decoded.length === 64) {
+      keypair = Keypair.fromSecretKey(decoded);
+    } else {
+      // 32 byte seed
+      const nacl = await import('tweetnacl');
+      const kp = nacl.default.sign.keyPair.fromSeed(decoded);
+      keypair = Keypair.fromSecretKey(kp.secretKey);
+    }
+    console.log('[Jupiter Ultra] Using private key import');
+  } else {
+    // Derive from mnemonic
+    keypair = await deriveSolanaKeypair(mnemonic, accountIndex);
+  }
   console.log('[Jupiter Ultra] Wallet:', keypair.publicKey.toBase58());
 
   // Deserialize and sign transaction

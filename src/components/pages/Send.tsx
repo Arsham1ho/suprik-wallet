@@ -708,14 +708,113 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
       // Check if this is a private key import - those don't have mnemonics!
       // Private keys are stored as "PRIVKEY:xxxx..." in the wallet
       const isPrivateKeyWallet = wallet.mnemonic?.startsWith('PRIVKEY:');
-      if (isPrivateKeyWallet || (activeAccount as any)?.isPrivateKeyImport) {
-        console.log('[Send] ⚠️ Detected private key wallet, using direct private key for transaction');
 
-        // Extract the private key (remove the PRIVKEY: prefix)
-        const privateKeyBase58 = wallet.mnemonic?.replace('PRIVKEY:', '');
+      // Check if active account is a secondary private key import (different from main wallet)
+      const isSecondaryPrivateKeyAccount = activeAccount?.isPrivateKeyImport ||
+        (activeAccount?.id?.startsWith('pk_') && !isPrivateKeyWallet);
+
+      // Also check if the account's address is in the imported private keys storage
+      const storedPrivateKeys = JSON.parse(localStorage.getItem('saturn_imported_private_keys') || '{}');
+      const accountAddress = activeAccount?.addresses?.solana;
+      const hasStoredPrivateKey = accountAddress && storedPrivateKeys[accountAddress];
+
+      console.log('[Send] 🔑 Private key check - isPrivateKeyWallet:', isPrivateKeyWallet,
+        'isSecondaryPrivateKeyAccount:', isSecondaryPrivateKeyAccount,
+        'hasStoredPrivateKey:', !!hasStoredPrivateKey,
+        'accountAddress:', accountAddress);
+
+      if (hasStoredPrivateKey || isSecondaryPrivateKeyAccount) {
+        // This account has its own private key in storage - use it
+        console.log('[Send] ⚠️ Using stored private key for secondary account');
+
+        let privateKeyBase58: string | undefined;
+        const base64Key = storedPrivateKeys[accountAddress!];
+
+        if (base64Key) {
+          try {
+            privateKeyBase58 = atob(base64Key);
+            console.log('[Send] Retrieved private key, length:', privateKeyBase58?.length);
+          } catch (e) {
+            console.error('[Send] Failed to decode private key:', e);
+            toast.error('Failed to retrieve private key. Please delete and re-import this account.');
+            setSending(false);
+            setTransactionStatus('idle');
+            return;
+          }
+        }
 
         if (!privateKeyBase58) {
-          toast.error('Private key not found. Please unlock the wallet again.');
+          toast.error('Private key not found for this account. Please delete and re-import it.');
+          setSending(false);
+          setTransactionStatus('idle');
+          return;
+        }
+
+        // For private key imports, we can only send SOL/SPL tokens on Solana
+        if (selectedToken!.symbol === 'ETH' || selectedToken!.network === 'ethereum') {
+          toast.error('Private key imports only support Solana transactions.');
+          setSending(false);
+          setTransactionStatus('idle');
+          return;
+        }
+
+        // Handle private key transaction
+        const { sendSolanaTransactionWithPrivateKey, sendSPLTokenTransactionWithPrivateKey } = await import('../../utils/transactions');
+
+        let result;
+        if (selectedToken!.symbol === 'SOL') {
+          result = await sendSolanaTransactionWithPrivateKey({
+            privateKeyBase58,
+            toAddress: address,
+            amount: parseFloat(amount),
+            isTestnet: network.isTestnet,
+          });
+        } else if (selectedToken!.network === 'solana') {
+          // SPL token
+          let decimals = 9;
+          const registryToken = selectedToken!.mint ? TOKEN_BY_MINT.get(selectedToken!.mint) : null;
+          if (registryToken?.decimals !== undefined) {
+            decimals = registryToken.decimals;
+          } else if (selectedToken!.symbol === 'USDC' || selectedToken!.symbol === 'USDT') {
+            decimals = 6;
+          }
+
+          result = await sendSPLTokenTransactionWithPrivateKey({
+            privateKeyBase58,
+            toAddress: address,
+            amount: parseFloat(amount),
+            tokenMint: selectedToken!.mint || '',
+            decimals,
+            isTestnet: network.isTestnet,
+          });
+        } else {
+          toast.error('Unsupported token for private key wallet.');
+          setSending(false);
+          setTransactionStatus('idle');
+          return;
+        }
+
+        if (!result || !result.success) {
+          throw new Error(result?.error || 'Transaction failed');
+        }
+
+        console.log('[Send] ✅ Private key transaction successful!');
+        playSendWhoosh();
+        setTransactionStatus('success');
+        setTransactionDetails({ signature: result.signature });
+        window.dispatchEvent(new Event('walletBalanceUpdated'));
+        onSendComplete?.();
+        setSending(false);
+        return;
+      } else if (isPrivateKeyWallet) {
+        console.log('[Send] ⚠️ Detected main private key wallet, using direct private key for transaction');
+
+        let privateKeyBase58: string | undefined;
+        // Main wallet is a private key import - extract from wallet.mnemonic
+        privateKeyBase58 = wallet.mnemonic?.replace('PRIVKEY:', '');
+
+        if (!privateKeyBase58) {
+          toast.error('Private key not found. Please delete and re-import this account.');
           setSending(false);
           setTransactionStatus('idle');
           return;
@@ -799,6 +898,25 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
           }
 
           mnemonicToUse = decryptedMnemonic;
+        } else if (activeAccount?.importedWalletId) {
+          // Check for mnemonic stored in saturn_imported_mnemonics (base64 encoded)
+          const storedMnemonics = JSON.parse(localStorage.getItem('saturn_imported_mnemonics') || '{}');
+          const base64Mnemonic = storedMnemonics[activeAccount.importedWalletId];
+          if (base64Mnemonic) {
+            try {
+              mnemonicToUse = atob(base64Mnemonic);
+            } catch {
+              toast.error('Failed to retrieve imported account mnemonic. Please delete and re-import this account.');
+              setSending(false);
+              setTransactionStatus('idle');
+              return;
+            }
+          } else {
+            toast.error('Imported account mnemonic not found. Please delete and re-import this account.');
+            setSending(false);
+            setTransactionStatus('idle');
+            return;
+          }
         } else {
           // This is an old imported account without encrypted mnemonic
           // User needs to re-import it with the new system

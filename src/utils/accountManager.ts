@@ -22,6 +22,10 @@ export interface Account {
   encryptedMnemonic?: string;
   // Encrypted private key for private key imports
   encryptedPrivateKey?: string;
+  // Wallet ID for imported seed phrase accounts (used to retrieve mnemonic from saturn_imported_mnemonics)
+  importedWalletId?: string;
+  // Solana address for imported private key accounts (used to retrieve key from saturn_imported_private_keys)
+  importedPrivateKeyAddress?: string;
 }
 
 const ACCOUNTS_KEY = 'saturn_accounts';
