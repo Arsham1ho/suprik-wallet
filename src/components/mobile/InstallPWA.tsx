@@ -61,8 +61,9 @@ export function InstallPWA() {
           initial={{ y: 100, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 100, opacity: 0 }}
-          className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-[398px]"
+          className="fixed bottom-20 left-0 right-0 z-50 flex justify-center"
         >
+          <div className="w-full max-w-[430px] px-4">
           <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl p-4 shadow-2xl border border-purple-400/30">
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0 w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
@@ -92,6 +93,7 @@ export function InstallPWA() {
                 </div>
               </div>
             </div>
+          </div>
           </div>
         </motion.div>
       )}
