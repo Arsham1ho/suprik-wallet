@@ -46,7 +46,7 @@ export function SuprikLogo({ size = 160, animate = true, className = '' }: Supri
         }}
       >
         <ImageWithFallback
-          src="/suprik-logo.png"
+          src="/sup_logo.png"
           alt="Suprik Wallet Logo"
           className="w-full h-full object-contain"
           style={{

@@ -3,7 +3,7 @@ import { ArrowLeft, Info, Globe, Mail, Heart, Shield, Zap, Users, Send, Instagra
 import { motion } from 'motion/react';
 import { Button } from '../ui/button';
 import { Separator } from '../ui/separator';
-import suprikLogo from 'figma:asset/5aa4d38c7eec78d8bd26f08104423d0aa0e3b5f4.png';
+const suprikLogo = '/sup_logo2.jpg';
 import { scrollToTop } from '../../utils/scrollToTop';
 
 interface AboutSuprikProps {
