@@ -1,5 +1,5 @@
 import { Sparkles, Shield, Zap, Lock, ArrowRight, Check } from 'lucide-react';
-import logo from 'figma:asset/ed7942d275ee52c87815efe3d7991e061c49a8ae.png';
+const logo = '/sup_logo.png';
 import backgroundImage from 'figma:asset/7fff6c0f4086de297821ed0e75fcf92b1f55b37f.png';
 
 interface LandingProps {
@@ -45,7 +45,7 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
 
               {/* Logo */}
               <div
-                className="relative w-32 h-32 flex items-center justify-center animate-spin-slow"
+                className="relative w-32 h-32 flex items-center justify-center"
                 style={{
                   borderRadius: '50%',
                   overflow: 'hidden',

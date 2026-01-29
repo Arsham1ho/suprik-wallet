@@ -14,14 +14,14 @@ export function PWAHead() {
       <meta name="msapplication-TileColor" content="#9333EA" />
       
       {/* Apple Touch Icons */}
-      <link rel="apple-touch-icon" sizes="180x180" href="https://i.ibb.co/zWTXB2nZ/cropped-circle-image.png" />
-      <link rel="apple-touch-icon" sizes="152x152" href="https://i.ibb.co/zWTXB2nZ/cropped-circle-image.png" />
-      <link rel="apple-touch-icon" sizes="120x120" href="https://i.ibb.co/zWTXB2nZ/cropped-circle-image.png" />
+      <link rel="apple-touch-icon" sizes="180x180" href="/sup_logo.png" />
+      <link rel="apple-touch-icon" sizes="152x152" href="/sup_logo.png" />
+      <link rel="apple-touch-icon" sizes="120x120" href="/sup_logo.png" />
       
       {/* Favicon */}
-      <link rel="icon" type="image/png" sizes="512x512" href="https://i.ibb.co/zWTXB2nZ/cropped-circle-image.png" />
-      <link rel="icon" type="image/png" sizes="192x192" href="https://i.ibb.co/zWTXB2nZ/cropped-circle-image.png" />
-      <link rel="icon" type="image/png" sizes="32x32" href="https://i.ibb.co/zWTXB2nZ/cropped-circle-image.png" />
+      <link rel="icon" type="image/png" sizes="512x512" href="/sup_logo.png" />
+      <link rel="icon" type="image/png" sizes="192x192" href="/sup_logo.png" />
+      <link rel="icon" type="image/png" sizes="32x32" href="/sup_logo.png" />
       
       {/* iOS Meta Tags */}
       <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -39,13 +39,13 @@ export function PWAHead() {
       <meta property="og:title" content="Suprik Wallet" />
       <meta property="og:description" content="Your Web3 Solana Wallet - Fast, Secure, Beautiful" />
       <meta property="og:type" content="website" />
-      <meta property="og:image" content="https://i.ibb.co/zWTXB2nZ/cropped-circle-image.png" />
+      <meta property="og:image" content="/sup_logo.png" />
       
       {/* Twitter Card */}
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content="Suprik Wallet" />
       <meta name="twitter:description" content="Your Web3 Solana Wallet - Fast, Secure, Beautiful" />
-      <meta name="twitter:image" content="https://i.ibb.co/zWTXB2nZ/cropped-circle-image.png" />
+      <meta name="twitter:image" content="/sup_logo.png" />
     </>
   );
 }
