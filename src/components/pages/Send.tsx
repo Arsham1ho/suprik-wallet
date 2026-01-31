@@ -1344,7 +1344,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                         loop
                         muted
                         playsInline
-                        className="w-full h-full object-cover scale-125"
+                        className="w-full h-full object-cover"
                       >
                         <source src="/Send.mp4" type="video/mp4" />
                       </video>
@@ -1436,7 +1436,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                         loop
                         muted
                         playsInline
-                        className="w-full h-full object-cover scale-125"
+                        className="w-full h-full object-cover"
                       >
                         <source src="/failed_send.mp4" type="video/mp4" />
                       </video>
