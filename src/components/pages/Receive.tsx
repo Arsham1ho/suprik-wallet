@@ -19,7 +19,7 @@ import suiLogo from 'figma:asset/da030245be42c29c645bce0fe70fead0ffc07d97.png';
 import monadLogo from 'figma:asset/2c969460ffd1b3a61f7b1c7e67734b3fb59128c9.png';
 import baseLogo from 'figma:asset/3ed7faba6a7643bebb74b6cb6a4d47a3dcbd30e5.png';
 import hyperevmLogo from 'figma:asset/c4b44934aadf9ab9a074facc448e4c2bb3784ee5.png';
-import suprikQrLogo from 'figma:asset/5aa4d38c7eec78d8bd26f08104423d0aa0e3b5f4.png';
+const suprikQrLogo = '/cropped_circle_image (2).png';
 
 interface ReceiveProps {
   onBack: () => void;

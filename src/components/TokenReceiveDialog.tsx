@@ -10,7 +10,7 @@ import type { Token } from './pages/Home';
 import { useWallet } from '../utils/WalletContext';
 import { TOKEN_BY_ID, TOKEN_BY_SYMBOL } from '../utils/tokenRegistry';
 import { AccountManager } from '../utils/accountManager';
-import suprikQrLogo from 'figma:asset/5aa4d38c7eec78d8bd26f08104423d0aa0e3b5f4.png';
+const suprikQrLogo = '/cropped_circle_image (2).png';
 
 interface TokenReceiveDialogProps {
   open: boolean;
