@@ -98,7 +98,7 @@ export function SwapSuccessDialog({
                     loop
                     muted
                     playsInline
-                    className="w-full h-full object-cover scale-125"
+                    className="w-full h-full object-cover"
                   >
                     <source src="/swap.mp4" type="video/mp4" />
                   </video>
