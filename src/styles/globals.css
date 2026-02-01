@@ -13,11 +13,11 @@
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
   
-  /* Theme Colors - Default (Classic Purple) */
-  --color-primary: #9333ea;
-  --color-primary-dark: #7e22ce;
-  --color-secondary: #2563eb;
-  --color-accent: #a855f7;
+  /* Theme Colors - Default (Indigo) */
+  --color-primary: #5218af;
+  --color-primary-dark: #42138c;
+  --color-secondary: #6b30c9;
+  --color-accent: #8a52e0;
   
   --font-size: 16px;
   --background: #ffffff;

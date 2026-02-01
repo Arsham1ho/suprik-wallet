@@ -1,6 +1,6 @@
 import { useState, useEffect, FormEvent } from "react";
 import { motion } from "motion/react";
-import { Lock, Eye, EyeOff, AlertCircle, Fingerprint } from "lucide-react";
+import { Eye, EyeOff, AlertCircle, Fingerprint } from "lucide-react";
 import { GradientButton } from "./GradientButton";
 import { WalletStorage } from "../utils/wallet";
 import { useWallet } from "../utils/WalletContext";
@@ -287,13 +287,13 @@ export function UnlockWallet({
           animate={{ opacity: 1 }}
         >
           <div
-            className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg mx-auto"
+            className="w-24 h-24 rounded-full flex items-center justify-center shadow-lg mx-auto"
             style={{
               background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.secondary})`,
               boxShadow: `0 10px 25px -5px ${colors.primary}80`,
             }}
           >
-            <Lock className="w-10 h-10 text-white" />
+            <img src="/sup_logo.png" alt="Suprik" className="w-24 h-24 rounded-full object-cover" />
           </div>
           <div className="relative">
             <div
@@ -345,13 +345,13 @@ export function UnlockWallet({
           transition={{ delay: 0.1 }}
         >
           <div
-            className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg"
+            className="w-24 h-24 rounded-full flex items-center justify-center shadow-lg"
             style={{
               background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.secondary})`,
               boxShadow: `0 10px 25px -5px ${colors.primary}80`,
             }}
           >
-            <Lock className="w-10 h-10 text-white" />
+            <img src="/sup_logo.png" alt="Suprik" className="w-24 h-24 rounded-full object-cover" />
           </div>
           <div className="text-center">
             <h1 className="text-3xl font-bold mb-2">Welcome Back</h1>

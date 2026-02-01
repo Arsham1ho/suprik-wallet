@@ -20,15 +20,15 @@ export function GradientButton({
   type,
   onClick,
 }: GradientButtonProps) {
-  const { gradient } = useTheme();
+  const { colors } = useTheme();
 
   const baseClasses = 'text-white shadow-lg transition-all duration-300 font-semibold';
 
-  const variantClasses = {
-    default: `bg-gradient-to-r ${gradient} hover:opacity-90`,
-    solid: `bg-gradient-to-r ${gradient}`,
-    outline: `border-2 border-theme-accent bg-transparent hover:bg-gradient-to-r hover:${gradient}`,
-  };
+  const isOutline = variant === 'outline';
+
+  const style: React.CSSProperties = isOutline
+    ? { borderColor: colors.accent }
+    : { background: `linear-gradient(to right, ${colors.primaryDark}, ${colors.primary})` };
 
   return (
     <Button
@@ -37,10 +37,11 @@ export function GradientButton({
       onClick={onClick}
       className={cn(
         baseClasses,
-        variantClasses[variant],
+        isOutline ? 'border-2 bg-transparent hover:opacity-90' : 'hover:opacity-90',
         disabled && 'opacity-50 cursor-not-allowed',
         className
       )}
+      style={style}
     >
       {children}
     </Button>
