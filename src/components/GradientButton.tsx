@@ -33,6 +33,7 @@ export function GradientButton({
   return (
     <Button
       type={type}
+      variant="theme"
       disabled={disabled}
       onClick={onClick}
       className={cn(
