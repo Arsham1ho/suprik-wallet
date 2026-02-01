@@ -161,9 +161,9 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
       // For Solana tokens, try Jupiter first (no rate limits, most reliable for Solana)
       if (isSolanaMint && price === 0) {
         try {
-          console.log(`[CoinDetail] Trying Jupiter v2 for ${token.symbol}...`);
+          console.log(`[CoinDetail] Trying Jupiter v3 for ${token.symbol}...`);
           const jupResponse = await fetch(
-            `https://api.jup.ag/price/v2?ids=${actualMint}`,
+            `https://api.jup.ag/price/v3?ids=${actualMint}`,
             { signal: AbortSignal.timeout(5000) }
           );
 
@@ -172,11 +172,11 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
             const priceData = jupData.data?.[actualMint];
             if (priceData?.price) {
               price = parseFloat(priceData.price);
-              console.log(`[CoinDetail] ✅ Jupiter v2: ${token.symbol} = $${price}`);
+              console.log(`[CoinDetail] ✅ Jupiter v3: ${token.symbol} = $${price}`);
             }
           }
         } catch (jupError) {
-          console.warn('[CoinDetail] Jupiter v2 failed:', jupError);
+          console.warn('[CoinDetail] Jupiter v3 failed:', jupError);
         }
       }
 
@@ -192,21 +192,45 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
 
           if (dexResponse.ok) {
             const dexData = await dexResponse.json();
-            const pair = dexData.pairs?.[0];
-            if (pair) {
-              // Only update price if we don't have one yet
-              if (price === 0) {
-                price = parseFloat(pair.priceUsd) || 0;
-              }
-              // Get market cap and FDV from DexScreener
+            const pairs = dexData.pairs || [];
+            // DexScreener's priceUsd is always the base token's price.
+            // For tokens like SOL that are commonly the quote token, most pairs
+            // will have incorrect priceUsd. Only use DexScreener for market cap,
+            // not price, for well-known quote tokens.
+            const COMMON_QUOTE_MINTS = new Set([
+              'so11111111111111111111111111111111111111112', // Wrapped SOL
+              'epjfwdd5aufqssqem2qn1xzybapc8g4weggkzwytdt1v', // USDC
+              'es9vmfrzacermjfrf4h2fyd4kconky11mcce8benwnye', // USDT
+            ]);
+            const isCommonQuote = COMMON_QUOTE_MINTS.has(actualMint.toLowerCase());
+
+            if (pairs.length > 0) {
+              // Use any pair for market cap (usually available on quote-side pairs too)
+              const anyPair = pairs[0];
               if (marketCap === 0) {
-                marketCap = pair.marketCap || pair.fdv || 0;
+                marketCap = anyPair.marketCap || anyPair.fdv || 0;
               }
-              // Get 24h change if we don't have it
-              if (change24h === 0) {
-                change24h = pair.priceChange?.h24 || 0;
+
+              // Only use DexScreener for price on non-quote tokens
+              if (!isCommonQuote && price === 0) {
+                // Find highest-liquidity pair where our token is the base
+                const basePairs = pairs.filter((p: any) =>
+                  p.baseToken?.address?.toLowerCase() === actualMint.toLowerCase()
+                );
+                const bestBasePair = basePairs.length > 0
+                  ? basePairs.reduce((best: any, cur: any) =>
+                      (cur.liquidity?.usd || 0) > (best.liquidity?.usd || 0) ? cur : best
+                    , basePairs[0])
+                  : null;
+
+                if (bestBasePair) {
+                  price = parseFloat(bestBasePair.priceUsd) || 0;
+                  if (change24h === 0) {
+                    change24h = bestBasePair.priceChange?.h24 || 0;
+                  }
+                }
               }
-              console.log(`[CoinDetail] ✅ DexScreener: ${token.symbol} = $${price}, mcap: $${marketCap}, 24h: ${change24h}%`);
+              console.log(`[CoinDetail] ✅ DexScreener: ${token.symbol} = $${price}, mcap: $${marketCap}, 24h: ${change24h}%, isCommonQuote: ${isCommonQuote}`);
             }
           }
         } catch (dexError) {

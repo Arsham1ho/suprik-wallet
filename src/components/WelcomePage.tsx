@@ -222,8 +222,8 @@ export function WelcomePage({ onContinue }: WelcomePageProps) {
               whileTap={{ scale: 0.95 }}
               className="w-full px-8 py-4 rounded-2xl text-white font-medium shadow-lg transition-all duration-300 flex items-center justify-center gap-2 group"
               style={{
-                background: 'linear-gradient(90deg, #8b5cf6 0%, #6366f1 50%, #3b82f6 100%)',
-                boxShadow: '0 10px 30px rgba(99, 102, 241, 0.5)',
+                background: 'linear-gradient(90deg, #42138c 0%, #5218af 50%, #6b30c9 100%)',
+                boxShadow: '0 10px 30px rgba(82, 24, 175, 0.5)',
                 touchAction: 'manipulation',
               }}
             >

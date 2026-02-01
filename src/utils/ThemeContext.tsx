@@ -98,15 +98,45 @@ export const accentColorOptions: AccentColorOption[] = [
     gradient: 'from-yellow-500 to-amber-600',
     previewClass: 'bg-yellow-500',
   },
+  {
+    id: 'steel',
+    name: 'Steel Blue',
+    primary: '#2596be',
+    primaryDark: '#1e7a9c',
+    secondary: '#3bacd4',
+    accent: '#5dc4e8',
+    gradient: 'from-sky-500 to-blue-600',
+    previewClass: 'bg-sky-500',
+  },
+  {
+    id: 'violet',
+    name: 'Violet',
+    primary: '#8042e0',
+    primaryDark: '#6a35bc',
+    secondary: '#9a66e8',
+    accent: '#b48aef',
+    gradient: 'from-violet-500 to-purple-600',
+    previewClass: 'bg-violet-500',
+  },
+  {
+    id: 'indigo',
+    name: 'Indigo',
+    primary: '#5218af',
+    primaryDark: '#42138c',
+    secondary: '#6b30c9',
+    accent: '#8a52e0',
+    gradient: 'from-indigo-600 to-purple-700',
+    previewClass: 'bg-indigo-600',
+  },
 ];
 
 // Get accent color from localStorage
 export function getStoredAccentColor(walletId?: string): string {
   try {
     const key = walletId ? `${ACCENT_COLOR_STORAGE_KEY}_${walletId}` : ACCENT_COLOR_STORAGE_KEY;
-    return localStorage.getItem(key) || 'purple';
+    return localStorage.getItem(key) || 'indigo';
   } catch {
-    return 'purple';
+    return 'indigo';
   }
 }
 
@@ -181,7 +211,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children, walletId }: { children: ReactNode; walletId?: string }) {
   const [theme, setThemeState] = useState('classic');
-  const [accentColor, setAccentColorState] = useState('purple');
+  const [accentColor, setAccentColorState] = useState('indigo');
   const [isLightMode, setLightModeState] = useState(false);
 
   useEffect(() => {

@@ -91,29 +91,41 @@ export async function enhanceToken(
         const data = await response.json();
         
         if (data.pairs && data.pairs.length > 0) {
-          // Find the pair with highest liquidity
-          const bestPair = data.pairs.reduce((best: any, current: any) => {
+          // Find a pair where our token is the BASE token so priceUsd is correct.
+          // DexScreener's priceUsd is always the base token's price, so if our
+          // token is the quote (e.g. SOL in BONK/SOL), priceUsd would be wrong.
+          const basePairs = data.pairs.filter((p: any) =>
+            p.baseToken?.address?.toLowerCase() === mint.toLowerCase()
+          );
+
+          // Among base pairs, pick the one with highest liquidity
+          const bestPair = (basePairs.length > 0 ? basePairs : data.pairs).reduce((best: any, current: any) => {
             const bestLiq = best.liquidity?.usd || 0;
             const currentLiq = current.liquidity?.usd || 0;
             return currentLiq > bestLiq ? current : best;
-          }, data.pairs[0]);
-          
-          price = parseFloat(bestPair.priceUsd || '0');
-          change24h = bestPair.priceChange?.h24 || 0;
-          
-          // Get logo from DexScreener
+          }, (basePairs.length > 0 ? basePairs : data.pairs)[0]);
+
+          const isBase = basePairs.length > 0;
+
+          // Only use price/change if our token is the base token
+          if (isBase) {
+            price = parseFloat(bestPair.priceUsd || '0');
+            change24h = bestPair.priceChange?.h24 || 0;
+          }
+
+          // Get logo from DexScreener (safe regardless of base/quote)
           if (bestPair.info?.imageUrl) {
             logoUrl = bestPair.info.imageUrl;
           }
 
           // Get token name and symbol from DexScreener (for unknown tokens)
-          if (bestPair.baseToken) {
+          if (isBase && bestPair.baseToken) {
             tokenName = bestPair.baseToken.name;
             tokenSymbol = bestPair.baseToken.symbol;
             console.log(`[TokenEnhancer] 📛 DexScreener metadata: name="${tokenName}", symbol="${tokenSymbol}"`);
           }
 
-          console.log(`[TokenEnhancer] ✅ DexScreener: ${symbol} = $${price}, change: ${change24h}%`);
+          console.log(`[TokenEnhancer] ✅ DexScreener: ${symbol} = $${price}, change: ${change24h}%, isBase: ${isBase}`);
           console.log(`[TokenEnhancer] 🖼️  Logo: ${logoUrl ? 'Found' : 'Not found'}`);
         }
       }
