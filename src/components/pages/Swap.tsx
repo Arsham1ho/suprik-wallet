@@ -159,7 +159,7 @@ const SYMBOL_ALIASES: Record<string, string[]> = {
 export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
   const wallet = useWallet();
   const network = useNetwork();
-  const { colors, gradient } = useTheme();
+  const { colors } = useTheme();
 
   // Use ref to store latest tokens to avoid dependency issues
   const tokensRef = useRef(tokens);
@@ -2131,13 +2131,15 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
               fromTokenOptions.length === 0 ||
               (!network.isTestnet && !hasEnoughSolForFees)
             }
-            className={`w-full h-14 mt-6 text-white disabled:opacity-50 shadow-lg transition-all ${
-              !network.isTestnet && !hasEnoughSolForFees
-                ? 'bg-gradient-to-r from-red-600 to-red-700 shadow-red-500/30'
-                : `bg-gradient-to-r ${gradient} hover:opacity-90`
-            }`}
+            variant="theme"
+            className="w-full h-14 mt-6 text-white disabled:opacity-50 shadow-lg transition-all hover:opacity-90"
             style={{
-              boxShadow: !network.isTestnet && !hasEnoughSolForFees ? undefined : `0 10px 25px -5px ${colors.primary}50`,
+              background: !network.isTestnet && !hasEnoughSolForFees
+                ? 'linear-gradient(to right, #dc2626, #b91c1c)'
+                : `linear-gradient(to right, ${colors.primaryDark}, ${colors.primary})`,
+              boxShadow: !network.isTestnet && !hasEnoughSolForFees
+                ? '0 10px 25px -5px rgba(239, 68, 68, 0.3)'
+                : `0 10px 25px -5px ${colors.primary}50`,
             }}
           >
             {isSwapping ? (
