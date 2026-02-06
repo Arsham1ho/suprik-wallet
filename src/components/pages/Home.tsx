@@ -1045,66 +1045,9 @@ Check console for full details!
     tokenValues: tokens.map(t => ({ symbol: t.symbol, value: t.value, amount: t.amount, price: t.price }))
   });
 
-  // Animate balance changes smoothly
-  // Use a ref to track the current animated value to avoid stale closure issues
-  const animatedBalanceRef = useRef(animatedBalance);
-
+  // Set balance immediately - no animation to prevent misleading visual changes
   useEffect(() => {
-    animatedBalanceRef.current = animatedBalance;
-  }, [animatedBalance]);
-
-  useEffect(() => {
-    // Skip animation if total balance is 0 or NaN
-    if (!totalBalance || isNaN(totalBalance) || totalBalance <= 0) {
-      setAnimatedBalance(0);
-      return;
-    }
-
-    // Initial load or significant change - set immediately without animation
-    const currentAnimated = animatedBalanceRef.current;
-    if (currentAnimated === 0 || Math.abs(totalBalance - currentAnimated) > totalBalance * 0.5) {
-      // Set immediately for initial load or large changes (>50% difference)
-      setAnimatedBalance(totalBalance);
-      return;
-    }
-
-    const startValue = currentAnimated;
-    const endValue = totalBalance;
-    const duration = 1500; // 1.5 seconds for smoother animation
-    const startTime = Date.now();
-    let animationFrame: number;
-
-    // Easing function for smooth deceleration (ease-out cubic)
-    const easeOutCubic = (t: number): number => {
-      return 1 - Math.pow(1 - t, 3);
-    };
-
-    const animate = () => {
-      const currentTime = Date.now();
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-
-      // Apply easing function
-      const easedProgress = easeOutCubic(progress);
-      const currentValue = startValue + (endValue - startValue) * easedProgress;
-
-      setAnimatedBalance(currentValue);
-
-      if (progress < 1) {
-        animationFrame = requestAnimationFrame(animate);
-      } else {
-        setAnimatedBalance(endValue);
-      }
-    };
-
-    animationFrame = requestAnimationFrame(animate);
-
-    // Cleanup animation on unmount or when totalBalance changes
-    return () => {
-      if (animationFrame) {
-        cancelAnimationFrame(animationFrame);
-      }
-    };
+    setAnimatedBalance(totalBalance > 0 && !isNaN(totalBalance) ? totalBalance : 0);
   }, [totalBalance]);
 
   const filteredTokens = tokens
