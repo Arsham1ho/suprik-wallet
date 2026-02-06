@@ -63,7 +63,6 @@ import {
   resolveMintAddressAsync,
   UltraOrderResponse,
   transferSwapFee,
-  calculateSwapFee,
   PLATFORM_FEE_BPS,
 } from "../../utils/jupiterSwap";
 import { saveSwapToHistory } from "../../utils/transactionHistory";
@@ -137,6 +136,7 @@ interface SwapToken {
   hasBalance: boolean;
   mint?: string; // Token mint address for swaps
   network?: string; // Network (solana, ethereum, etc)
+  decimals?: number; // Token decimals from registry/on-chain
 }
 
 interface SwapHistory {
@@ -351,6 +351,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             hasBalance: walletToken ? walletToken.amount > 0 : false,
             mint: resolvedMint || registryToken.mint || walletToken?.mint,
             network: 'solana',
+            decimals: registryToken.decimals,
           };
         });
 
@@ -476,7 +477,9 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
       outputMint: string,
       amount: string,
       inputSymbol: string,
-      outputSymbol: string
+      outputSymbol: string,
+      inputTokenDecimals?: number,
+      outputTokenDecimals?: number
     ) => {
       if (!amount || parseFloat(amount) <= 0) {
         setJupiterQuote(null);
@@ -497,9 +500,9 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         console.log("🔄 [Swap] Amount:", amountNum);
         console.log("🔄 [Swap] Testnet mode:", network.isTestnet);
 
-        // Get input and output token decimals (using symbol and mint)
-        const inputDecimals = getTokenDecimalsForToken(inputSymbol, inputMint);
-        const outputDecimals = getTokenDecimalsForToken(outputSymbol, outputMint);
+        // Get input and output token decimals (using token data, symbol, and mint)
+        const inputDecimals = getTokenDecimalsForToken(inputSymbol, inputMint, inputTokenDecimals);
+        const outputDecimals = getTokenDecimalsForToken(outputSymbol, outputMint, outputTokenDecimals);
 
         console.log(
           "🔄 [Swap] Input symbol:",
@@ -726,9 +729,13 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     return null;
   }, []);
 
-  // Get token decimals - tries symbol first, then mint address
-  const getTokenDecimalsForToken = useCallback((symbol: string, mint?: string): number => {
-    // First try by symbol
+  // Get token decimals - tries token data first, then symbol, then mint address
+  const getTokenDecimalsForToken = useCallback((symbol: string, mint?: string, tokenDecimals?: number): number => {
+    // First use decimals from token data (from TOKEN_REGISTRY) if available
+    if (tokenDecimals !== undefined) {
+      return tokenDecimals;
+    }
+    // Then try by symbol
     const bySymbol = getTokenDecimals(symbol);
     if (bySymbol !== 9) {
       return bySymbol; // Found a specific value (9 is default)
@@ -774,7 +781,9 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             outputMint,
             value,
             fromTokenData.symbol,
-            toTokenData.symbol
+            toTokenData.symbol,
+            fromTokenData.decimals,
+            toTokenData.decimals
           );
         } else {
           // Token not supported by Jupiter, use simple calculation
@@ -1363,46 +1372,104 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         console.log("✅ [Swap] Used Ultra API:", !!ultraOrderResponse);
 
         // Transfer platform fee (0.5%) directly to fee wallet
-        // Only on mainnet - use result output or quote output as fallback
+        // Only on mainnet with a valid output amount
         const actualOutputAmount = result.outputAmount || jupiterQuote?.outputAmount || parseFloat(toAmount) || 0;
 
         if (!network.isTestnet && actualOutputAmount > 0) {
           try {
-            // Calculate fee based on the INPUT value in SOL equivalent (more reliable)
-            // This ensures we always collect fee regardless of output token
+            // Get SOL price from wallet tokens (most reliable source)
+            const solToken = tokens.find(t => t.symbol === 'SOL');
+            const solPrice = solToken?.price || 0;
+
+            // Calculate fee based on input value in SOL equivalent
             const inputAmount = parseFloat(fromAmount) || 0;
             const inputTokenPrice = fromTokenData?.price || 0;
-            const solPrice = tokens.find(t => t.symbol === 'SOL')?.price || 185;
+            let feeAmountSOL = 0;
 
-            // Calculate input value in USD, then convert to SOL
-            const inputValueUSD = inputAmount * inputTokenPrice;
-            const inputValueSOL = inputValueUSD / solPrice;
-
-            // Calculate fee (0.5% of input value in SOL)
-            const feeAmountSOL = calculateSwapFee(inputValueSOL);
-
-            console.log("💰 [Swap] Input amount:", inputAmount, fromTokenData?.symbol);
-            console.log("💰 [Swap] Input value USD:", inputValueUSD.toFixed(2));
-            console.log("💰 [Swap] Input value SOL:", inputValueSOL.toFixed(6));
-            console.log("💰 [Swap] Collecting platform fee:", feeAmountSOL.toFixed(6), "SOL");
-            console.log("💰 [Swap] Fee percentage:", PLATFORM_FEE_BPS / 100, "%");
-
-            // Transfer fee in background - don't block the UI
-            transferSwapFee({
-              mnemonic: mnemonicToUse,
-              feeAmountSOL,
-              accountIndex: accountIndexToUse,
-            }).then((feeResult) => {
-              if (feeResult.success && feeResult.signature) {
-                console.log("💰 [Swap] Fee transfer successful:", feeResult.signature);
-              } else if (feeResult.error) {
-                console.warn("💰 [Swap] Fee transfer skipped:", feeResult.error);
+            if (fromTokenData?.symbol === 'SOL') {
+              // Swapping SOL directly - fee is simply 0.5% of input
+              feeAmountSOL = inputAmount * (PLATFORM_FEE_BPS / 10000);
+            } else if (inputTokenPrice > 0 && solPrice > 0) {
+              // Have both prices - convert input value to SOL equivalent
+              const inputValueUSD = inputAmount * inputTokenPrice;
+              const inputValueSOL = inputValueUSD / solPrice;
+              feeAmountSOL = inputValueSOL * (PLATFORM_FEE_BPS / 10000);
+            } else if (solPrice > 0 && jupiterQuote?.exchangeRate) {
+              // Fallback: use Jupiter quote exchange rate to estimate value
+              // If output is USDC/USDT, we know the USD value from the output amount
+              const outputSymbol = toTokenData?.symbol?.toUpperCase();
+              if (outputSymbol === 'USDC' || outputSymbol === 'USDT') {
+                const outputValueUSD = actualOutputAmount;
+                const inputValueSOL = outputValueUSD / solPrice;
+                feeAmountSOL = inputValueSOL * (PLATFORM_FEE_BPS / 10000);
+              } else if (toTokenData?.price && toTokenData.price > 0) {
+                const outputValueUSD = actualOutputAmount * toTokenData.price;
+                const inputValueSOL = outputValueUSD / solPrice;
+                feeAmountSOL = inputValueSOL * (PLATFORM_FEE_BPS / 10000);
               }
-            }).catch((feeError) => {
-              console.warn("💰 [Swap] Fee transfer failed (non-blocking):", feeError);
-            });
+            }
+
+            // Skip if fee couldn't be calculated (no price data at all)
+            if (feeAmountSOL <= 0) {
+              console.warn("💰 [Swap] Could not calculate fee - no price data available");
+              console.warn("💰 [Swap] inputPrice:", inputTokenPrice, "solPrice:", solPrice);
+              // Store as pending fee for later collection
+              try {
+                const pendingFees = JSON.parse(localStorage.getItem('suprik_pending_fees') || '[]');
+                pendingFees.push({
+                  timestamp: Date.now(),
+                  swapSignature: result.signature,
+                  fromToken: fromTokenData?.symbol,
+                  toToken: toTokenData?.symbol,
+                  fromAmount: inputAmount,
+                  toAmount: actualOutputAmount,
+                  reason: 'no_price_data',
+                });
+                localStorage.setItem('suprik_pending_fees', JSON.stringify(pendingFees));
+              } catch { /* ignore localStorage errors */ }
+            } else {
+              console.log("💰 [Swap] Collecting platform fee:", feeAmountSOL.toFixed(6), "SOL");
+              console.log("💰 [Swap] Fee percentage:", PLATFORM_FEE_BPS / 100, "%");
+
+              // Transfer fee with retry logic
+              const attemptFeeTransfer = async (retriesLeft: number): Promise<void> => {
+                const feeResult = await transferSwapFee({
+                  mnemonic: mnemonicToUse,
+                  feeAmountSOL,
+                  accountIndex: accountIndexToUse,
+                });
+
+                if (feeResult.success && feeResult.signature) {
+                  console.log("💰 [Swap] Fee transfer successful:", feeResult.signature);
+                } else if (retriesLeft > 0) {
+                  console.warn("💰 [Swap] Fee transfer failed, retrying in 3s...", feeResult.error);
+                  await new Promise(resolve => setTimeout(resolve, 3000));
+                  return attemptFeeTransfer(retriesLeft - 1);
+                } else {
+                  // All retries exhausted - store as pending
+                  console.error("💰 [Swap] Fee transfer failed after all retries:", feeResult.error);
+                  try {
+                    const pendingFees = JSON.parse(localStorage.getItem('suprik_pending_fees') || '[]');
+                    pendingFees.push({
+                      timestamp: Date.now(),
+                      swapSignature: result.signature,
+                      fromToken: fromTokenData?.symbol,
+                      toToken: toTokenData?.symbol,
+                      feeAmountSOL,
+                      reason: feeResult.error || 'transfer_failed',
+                    });
+                    localStorage.setItem('suprik_pending_fees', JSON.stringify(pendingFees));
+                  } catch { /* ignore localStorage errors */ }
+                }
+              };
+
+              // Run fee transfer in background with 2 retries
+              attemptFeeTransfer(2).catch((feeError) => {
+                console.error("💰 [Swap] Fee transfer error:", feeError);
+              });
+            }
           } catch (feeCalcError) {
-            console.warn("💰 [Swap] Fee calculation error (non-blocking):", feeCalcError);
+            console.warn("💰 [Swap] Fee calculation error:", feeCalcError);
           }
         }
 
