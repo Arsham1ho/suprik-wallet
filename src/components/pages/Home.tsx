@@ -39,6 +39,7 @@ interface HomeProps {
   onNavigate: (page: 'swap' | 'send' | 'receive' | 'search') => void;
   walletId: string;
   onTokensLoaded?: (tokens: Token[]) => void;
+  isActive?: boolean;
 }
 
 const balanceBackgrounds: { [key: string]: string } = {
@@ -151,11 +152,16 @@ const comingSoonNetworks = [
   },
 ];
 
-export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
+export function Home({ onNavigate, walletId, onTokensLoaded, isActive }: HomeProps) {
   const { t, formatPrice } = useLanguage();
   const { gradient, colors } = useTheme();
   const wallet = useWallet();
   const network = useNetwork();
+
+  // Activity tracking refs - used to pause intervals when Home is hidden
+  const isActiveRef = useRef(isActive ?? true);
+  const lastFetchTimeRef = useRef<number>(Date.now());
+  const prevActiveRef = useRef(isActive);
   const [sendOpen, setSendOpen] = useState(false);
   const [addTokenOpen, setAddTokenOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -190,6 +196,23 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
 
   // Ref to track wallet state for interval callback (avoids recreating interval)
   const walletStateRef = useRef({ isUnlocked: wallet.isUnlocked, addresses: wallet.addresses });
+
+  // Sync isActive ref with prop
+  useEffect(() => { isActiveRef.current = isActive ?? true; }, [isActive]);
+
+  // Soft refresh when returning to Home after being hidden
+  useEffect(() => {
+    const wasInactive = prevActiveRef.current === false;
+    const isNowActive = isActive === true;
+    prevActiveRef.current = isActive;
+    if (wasInactive && isNowActive) {
+      const timeSinceLastFetch = Date.now() - lastFetchTimeRef.current;
+      if (timeSinceLastFetch > 30000) {
+        console.log('[Home] Returning to home, data stale, refreshing silently...');
+        loadBlockchainBalances(true);
+      }
+    }
+  }, [isActive]);
   const [accounts, setAccounts] = useState([
     {
       id: walletId,
@@ -269,6 +292,7 @@ export function Home({ onNavigate, walletId, onTokensLoaded }: HomeProps) {
 
     // Check periodically for same-tab updates (reduced frequency to avoid battery drain)
     const interval = setInterval(() => {
+      if (!isActiveRef.current) return; // Skip when Home is hidden
       const currentBg = localStorage.getItem('balanceBackground') || 'none';
       setBalanceBackground(prev => prev !== currentBg ? currentBg : prev);
     }, 5000); // Check every 5 seconds instead of 1
@@ -592,6 +616,8 @@ Check console for full details!
   useEffect(() => {
     // 🚀 OPTIMIZATION: Auto-refresh every 30 seconds to reduce re-renders
     const priceInterval = setInterval(() => {
+      // Skip when Home is hidden (saves battery on mobile)
+      if (!isActiveRef.current) return;
       // Use ref to get current wallet state without recreating interval
       if (walletStateRef.current.isUnlocked && walletStateRef.current.addresses) {
         console.log('[Home] ⚡ Auto-refreshing balances...');
@@ -610,8 +636,8 @@ Check console for full details!
   useEffect(() => {
     // Listen for custom event from DevModeDialog and Send page
     const handleBalanceUpdate = () => {
-      console.log('[Home] Balance update event received, refreshing...');
-      loadBlockchainBalances();
+      console.log('[Home] Balance update event received, refreshing silently...');
+      loadBlockchainBalances(true); // Silent refresh to avoid loading skeleton flash
     };
     
     // Listen for profile picture updates
@@ -859,6 +885,7 @@ Check console for full details!
         setTokens(newTokens);
         onTokensLoaded?.(newTokens);
         setLastPriceUpdate(new Date());
+        lastFetchTimeRef.current = Date.now();
       } catch (error: any) {
         console.error('[Home] Error fetching blockchain balances:', error);
         

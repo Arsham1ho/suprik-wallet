@@ -38,7 +38,6 @@ export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount 
   };
   const [tokensData, setTokensData] = useState<any[]>([]);
   const [selectedCoinForDetail, setSelectedCoinForDetail] = useState<Token | null>(null);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
   
   const handleViewCoinDetailFromSearch = (coin: CoinGeckoToken) => {
     // Convert CoinGecko token to our Token format
@@ -61,18 +60,16 @@ export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount 
     setCurrentPage('coinDetail');
   };
 
-  const handleRefreshTokens = () => {
-    setRefreshTrigger(prev => prev + 1);
-  };
-
   return (
     <div className="min-h-screen bg-black text-white w-full">
-      {currentPage === 'home' && <Home onNavigate={setCurrentPage} walletId={accessToken || ''} onTokensLoaded={setTokensData} key={refreshTrigger} />}
-      {currentPage === 'swap' && <Swap tokens={tokensData} walletId={accessToken || ''} onSwapComplete={handleRefreshTokens} />}
+      <div style={{ display: currentPage === 'home' ? 'block' : 'none' }}>
+        <Home onNavigate={setCurrentPage} walletId={accessToken || ''} onTokensLoaded={setTokensData} isActive={currentPage === 'home'} />
+      </div>
+      {currentPage === 'swap' && <Swap tokens={tokensData} walletId={accessToken || ''} />}
       {currentPage === 'activity' && <Activity walletId={accessToken || ''} />}
       {currentPage === 'settings' && <Settings onSignOut={onSignOut} walletId={accessToken || ''} onLockWallet={onLockWallet} onSwitchAccount={onSwitchAccount} onSubpageChange={setHideBottomNav} />}
       {currentPage === 'p2p' && <P2PTransfer onBack={() => setCurrentPage('home')} />}
-      {currentPage === 'send' && <Send onNavigate={setCurrentPage} tokens={tokensData} walletId={accessToken || ''} onSendComplete={handleRefreshTokens} />}
+      {currentPage === 'send' && <Send onNavigate={setCurrentPage} tokens={tokensData} walletId={accessToken || ''} />}
       {currentPage === 'receive' && <Receive onBack={() => setCurrentPage('home')} walletId={accessToken || ''} />}
       {currentPage === 'search' && (
         <Search 
