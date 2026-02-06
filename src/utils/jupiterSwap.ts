@@ -259,6 +259,7 @@ const TOKEN_DECIMALS: Record<string, number> = {
   'GST': 9,
   'PARAI': 9,
   'PAI': 9,
+  'SUPRA': 6,
   // Pump.fun tokens (most have 6 decimals)
   'PUMP': 6,
   'PNUT': 6,
@@ -293,6 +294,7 @@ const MINT_TO_DECIMALS: Record<string, number> = {
   'GJAFwWjJ3vnTsrQVabjBVK2TYB1YtRCQXRDfDgUnpump': 6, // ACT
   'Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump': 6, // CHILLGUY
   'BAGE9SrkSGQMsCxvYWg7gxHbFy9HGKqX4nSguLMAppump': 6, // ZEREBRO
+  'SupreByajmUdeJGLzvUEUm8W4xv1gF8JBqwYnvG41Dp': 6, // SUPRA
 };
 
 /**
