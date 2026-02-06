@@ -714,7 +714,13 @@ Check console for full details!
   }, []); // Only run once on mount
   
   // Network change handler - CRITICAL FIX for network switching!
+  const isInitialNetworkRef = useRef(true);
   useEffect(() => {
+    // Skip on initial mount - the walletId effect already triggers the first load
+    if (isInitialNetworkRef.current) {
+      isInitialNetworkRef.current = false;
+      return;
+    }
     console.log('[Home] 🌐 Network changed to:', network.networkMode, '(testnet:', network.isTestnet, ')');
     // Reset tokens and reload when network changes
     setTokens([]);

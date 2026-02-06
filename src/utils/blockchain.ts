@@ -338,14 +338,12 @@ export async function fetchAllBalances(addresses: {
 }
 
 /**
- * Fetch token prices - CLIENT-SIDE via CoinGecko API (primary) with Jupiter fallback
- * Uses CoinGecko for accurate price + 24h change data
+ * Fetch token prices via Jupiter Price API (fallback for tokens not on CoinGecko)
+ * NOTE: CoinGecko is called by tokenLoader.ts directly — not here, to avoid duplicate requests
+ * that trigger rate limiting (429).
  */
 export async function fetchTokenPrices(symbols: string[]): Promise<Record<string, number>> {
-  // Import CoinGecko utilities
-  const { SYMBOL_TO_COINGECKO, fetchCoinGeckoPrices } = await import('./coingecko');
-
-  // Known mint addresses for common symbols (for Jupiter fallback)
+  // Known mint addresses for common symbols
   const SYMBOL_TO_MINT: Record<string, string> = {
     'SOL': 'So11111111111111111111111111111111111111112',
     'USDC': 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
@@ -360,81 +358,53 @@ export async function fetchTokenPrices(symbols: string[]): Promise<Record<string
   const prices: Record<string, number> = {};
 
   try {
-    console.log('[Blockchain] Fetching token prices via CoinGecko API...');
+    const mints = symbols
+      .map(s => SYMBOL_TO_MINT[s.toUpperCase()])
+      .filter(Boolean);
 
-    // Convert symbols to CoinGecko IDs
-    const coinGeckoIds: string[] = [];
-    const symbolToId: Record<string, string> = {};
+    if (mints.length > 0) {
+      console.log('[Blockchain] Fetching prices via Jupiter API for', mints.length, 'tokens...');
 
-    for (const symbol of symbols) {
-      const cgId = SYMBOL_TO_COINGECKO[symbol.toUpperCase()];
-      if (cgId) {
-        coinGeckoIds.push(cgId);
-        symbolToId[symbol.toUpperCase()] = cgId;
-      }
-    }
+      // Get Jupiter API key if available
+      const { getJupiterApiKey } = await import('./env');
+      const apiKey = getJupiterApiKey();
 
-    if (coinGeckoIds.length > 0) {
-      // Fetch prices from CoinGecko (batch request)
-      const cgPrices = await fetchCoinGeckoPrices(coinGeckoIds);
-
-      // Map CoinGecko prices back to symbols
-      for (const [symbol, cgId] of Object.entries(symbolToId)) {
-        const priceData = cgPrices[cgId];
-        if (priceData?.price) {
-          prices[symbol] = priceData.price;
-        }
+      const headers: Record<string, string> = {};
+      if (apiKey) {
+        headers['x-api-key'] = apiKey;
       }
 
-      console.log('[Blockchain] ✅ CoinGecko prices fetched:', Object.keys(prices).length, 'tokens');
-    }
+      const response = await fetch(
+        `https://api.jup.ag/price/v2?ids=${mints.join(',')}`,
+        { signal: AbortSignal.timeout(5000), headers }
+      );
 
-    // FALLBACK: Jupiter API for tokens not on CoinGecko
-    const missingSymbols = symbols.filter(s => !prices[s.toUpperCase()]);
-    if (missingSymbols.length > 0) {
-      console.log('[Blockchain] Fetching remaining prices via Jupiter API...');
+      if (response.ok) {
+        const data = await response.json();
 
-      const mints = missingSymbols
-        .map(s => SYMBOL_TO_MINT[s.toUpperCase()])
-        .filter(Boolean);
-
-      if (mints.length > 0) {
-        try {
-          const response = await fetch(
-            `https://api.jup.ag/price/v2?ids=${mints.join(',')}`,
-            { signal: AbortSignal.timeout(5000) }
-          );
-
-          if (response.ok) {
-            const data = await response.json();
-
-            // Map mint addresses back to symbols
-            for (const [symbol, mint] of Object.entries(SYMBOL_TO_MINT)) {
-              if (!prices[symbol]) {
-                const priceData = data.data?.[mint];
-                if (priceData?.price) {
-                  prices[symbol] = parseFloat(priceData.price);
-                }
-              }
+        // Map mint addresses back to symbols
+        for (const [symbol, mint] of Object.entries(SYMBOL_TO_MINT)) {
+          if (!prices[symbol]) {
+            const priceData = data.data?.[mint];
+            if (priceData?.price) {
+              prices[symbol] = parseFloat(priceData.price);
             }
-
-            console.log('[Blockchain] ✅ Jupiter prices added:', Object.keys(prices).length, 'total');
           }
-        } catch (jupError) {
-          console.warn('[Blockchain] Jupiter API failed:', jupError);
         }
+
+        console.log('[Blockchain] ✅ Jupiter prices fetched:', Object.keys(prices).length, 'tokens');
+      } else {
+        console.warn('[Blockchain] Jupiter API returned', response.status);
       }
     }
 
-    // Return prices if we got any
     if (Object.keys(prices).length > 0) {
       return prices;
     }
 
     throw new Error('No prices fetched');
   } catch (error: any) {
-    console.warn('[Blockchain] ⚠️ Price APIs failed:', error.message);
-    // Re-throw so tokenLoader can use its own cached prices instead of stale hardcoded values
+    console.warn('[Blockchain] ⚠️ Jupiter price API failed:', error.message);
     throw error;
   }
 }
