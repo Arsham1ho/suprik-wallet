@@ -90,6 +90,32 @@ const VERIFIED_TOKEN_METADATA: Record<string, TokenMetadata> = {
 };
 
 
+// Module-level cache for last successful prices - used as fallback when API fails
+let lastSuccessfulPrices: Record<string, number> = {};
+let lastSuccessfulChanges: Record<string, number> = {};
+
+const PRICE_CACHE_KEY = 'suprik_last_good_prices';
+
+function saveLastGoodPrices(prices: Record<string, number>, changes: Record<string, number>) {
+  try {
+    localStorage.setItem(PRICE_CACHE_KEY, JSON.stringify({ prices, changes, ts: Date.now() }));
+  } catch (e) { /* ignore */ }
+}
+
+function loadLastGoodPrices(): { prices: Record<string, number>; changes: Record<string, number> } {
+  try {
+    const cached = localStorage.getItem(PRICE_CACHE_KEY);
+    if (cached) {
+      const data = JSON.parse(cached);
+      // Use cached prices up to 1 hour old
+      if (Date.now() - data.ts < 60 * 60 * 1000) {
+        return { prices: data.prices || {}, changes: data.changes || {} };
+      }
+    }
+  } catch (e) { /* ignore */ }
+  return { prices: {}, changes: {} };
+}
+
 /**
  * Fetch token logos - CLIENT-SIDE ONLY (Phantom-like architecture)
  * Uses pre-cached TOKEN_REGISTRY - no server calls needed
@@ -175,8 +201,8 @@ export async function loadAllTokens(
     let prices: Record<string, number> = {};
     let changes24h: Record<string, number> = {};
 
+    // Step 1: Try CoinGecko (primary price source - separate try-catch to preserve partial results)
     try {
-      // Build list of CoinGecko IDs for batch price fetch
       const coinGeckoIds: string[] = [];
       const symbolToId: Record<string, string> = {};
 
@@ -192,7 +218,6 @@ export async function loadAllTokens(
         console.log('[TokenLoader] 🔥 Fetching prices from CoinGecko for', coinGeckoIds.length, 'tokens...');
         const cgPrices = await fetchCoinGeckoPrices(coinGeckoIds);
 
-        // Map CoinGecko data back to symbols
         for (const [symbol, cgId] of Object.entries(symbolToId)) {
           const priceData = cgPrices[cgId];
           if (priceData) {
@@ -203,28 +228,49 @@ export async function loadAllTokens(
 
         console.log('[TokenLoader] ✅ CoinGecko prices fetched:', Object.keys(prices).length, 'tokens');
       }
+    } catch (error) {
+      console.warn('[TokenLoader] ⚠️ CoinGecko fetch failed:', error);
+    }
 
-      // Fallback to fetchTokenPrices for any missing symbols
+    // Step 2: Try fallback API for missing symbols (separate try-catch to preserve CoinGecko prices)
+    try {
       const missingSymbols = uniqueSymbols.filter(s => !prices[s.toUpperCase()]);
       if (missingSymbols.length > 0) {
         console.log('[TokenLoader] Fetching remaining', missingSymbols.length, 'prices via fallback...');
         const fallbackPrices = await fetchTokenPrices(missingSymbols);
-        prices = { ...prices, ...fallbackPrices };
+        for (const [symbol, price] of Object.entries(fallbackPrices)) {
+          if (!prices[symbol]) {
+            prices[symbol] = price;
+          }
+        }
       }
-
-      console.log('[TokenLoader] ✅ Total prices fetched:', Object.keys(prices).length, 'symbols');
     } catch (error) {
-      console.warn('[TokenLoader] ⚠️ Using cached prices (API temporarily unavailable)');
-      // Fallback prices
-      prices = {
-        'SOL': 245.00,
-        'ETH': 3200.00,
-        'BTC': 97000.00,
-        'USDC': 1.00,
-        'USDT': 1.00,
-        'MATIC': 0.85,
-        'PARAI': 0.05938,
-      };
+      console.warn('[TokenLoader] ⚠️ Fallback price fetch failed:', error);
+    }
+
+    // Step 3: If we got prices, cache them. If not, use last known good prices.
+    if (Object.keys(prices).length >= 2) {
+      console.log('[TokenLoader] ✅ Total prices fetched:', Object.keys(prices).length, 'symbols');
+      lastSuccessfulPrices = { ...prices };
+      lastSuccessfulChanges = { ...changes24h };
+      saveLastGoodPrices(prices, changes24h);
+    } else if (Object.keys(lastSuccessfulPrices).length > 0) {
+      console.warn('[TokenLoader] ⚠️ Using in-memory cached prices (APIs temporarily unavailable)');
+      prices = { ...lastSuccessfulPrices };
+      changes24h = { ...lastSuccessfulChanges };
+    } else {
+      // Try localStorage (survives page refreshes)
+      const stored = loadLastGoodPrices();
+      if (Object.keys(stored.prices).length > 0) {
+        console.warn('[TokenLoader] ⚠️ Using localStorage cached prices');
+        prices = stored.prices;
+        changes24h = stored.changes;
+        lastSuccessfulPrices = { ...prices };
+        lastSuccessfulChanges = { ...changes24h };
+      } else {
+        console.warn('[TokenLoader] ⚠️ No prices available - using stablecoins only');
+        prices = { 'USDC': 1.00, 'USDT': 1.00 };
+      }
     }
     
     // Fetch token logos (with error handling)

@@ -433,39 +433,9 @@ export async function fetchTokenPrices(symbols: string[]): Promise<Record<string
 
     throw new Error('No prices fetched');
   } catch (error: any) {
-    console.warn('[Blockchain] ⚠️ Price APIs failed, using fallback prices:', error.message);
-
-    // Fallback prices (always available)
-    const fallbackPrices: Record<string, number> = {
-      'SOL': 245.00,
-      'ETH': 3200.00,
-      'BTC': 97000.00,
-      'USDC': 1.00,
-      'USDT': 1.00,
-      'BNB': 620.00,
-      'XRP': 0.52,
-      'ADA': 0.45,
-      'DOGE': 0.08,
-      'MATIC': 0.85,
-      'DOT': 7.20,
-      'SHIB': 0.000024,
-      'AVAX': 38.50,
-      'LINK': 15.80,
-      'UNI': 8.90,
-      'ATOM': 9.40,
-      'LTC': 102.50,
-      'BONK': 0.00003,
-      'PARAI': 0.059,
-      'PAI': 0.059,
-    };
-
-    // Return only requested symbols
-    const result: Record<string, number> = {};
-    symbols.forEach(symbol => {
-      result[symbol] = fallbackPrices[symbol] || 0;
-    });
-
-    return result;
+    console.warn('[Blockchain] ⚠️ Price APIs failed:', error.message);
+    // Re-throw so tokenLoader can use its own cached prices instead of stale hardcoded values
+    throw error;
   }
 }
 
