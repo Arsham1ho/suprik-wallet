@@ -162,6 +162,8 @@ export function Home({ onNavigate, walletId, onTokensLoaded, isActive }: HomePro
   const isActiveRef = useRef(isActive ?? true);
   const lastFetchTimeRef = useRef<number>(Date.now());
   const prevActiveRef = useRef(isActive);
+  // Ref to track last confirmed balances for change detection (avoids stale closure issues)
+  const lastConfirmedBalancesRef = useRef<Map<string, number>>(new Map());
   const [sendOpen, setSendOpen] = useState(false);
   const [addTokenOpen, setAddTokenOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -409,11 +411,16 @@ export function Home({ onNavigate, walletId, onTokensLoaded, isActive }: HomePro
       if (cachedTokens && cachedTokens.length > 0) {
         console.log('[Home] ⚡ Using cached balances for instant display');
         setTokens(cachedTokens);
+        // Update confirmed balances ref for new account
+        const cacheMap = new Map<string, number>();
+        cachedTokens.forEach(t => cacheMap.set(t.symbol, t.amount));
+        lastConfirmedBalancesRef.current = cacheMap;
         setLoading(false);
         // Refresh in background
         loadBlockchainBalances(true);
       } else {
         // No cache - show loading and fetch
+        lastConfirmedBalancesRef.current = new Map(); // Reset for new account
         setLoading(true);
         await loadBlockchainBalances();
       }
@@ -598,6 +605,10 @@ Check console for full details!
       if (cachedTokens && cachedTokens.length > 0) {
         console.log('[Home] ⚡ Using cached balances on mount for instant display');
         setTokens(cachedTokens);
+        // Initialize confirmed balances ref from cache so first refresh doesn't false-trigger
+        const cacheMap = new Map<string, number>();
+        cachedTokens.forEach(t => cacheMap.set(t.symbol, t.amount));
+        lastConfirmedBalancesRef.current = cacheMap;
         setLoading(false);
         // Mark animations as complete after a short delay
         setTimeout(() => setHasAnimated(true), 1000);
@@ -871,35 +882,18 @@ Check console for full details!
           cacheBalances(addressesToUse.solana, newTokens);
         }
         
-        // 🚀 CHECK FOR BALANCE CHANGES - emit event if balances changed
-        if (isAutoRefresh && tokens.length > 0) {
-          // Check if any token balance increased (receive)
-          const balanceIncreases: string[] = [];
-          
-          newTokens.forEach(newToken => {
-            const oldToken = tokens.find(t => t.symbol === newToken.symbol);
-            if (oldToken && newToken.amount > oldToken.amount) {
-              const increase = newToken.amount - oldToken.amount;
-              balanceIncreases.push(`+${increase.toFixed(6)} ${newToken.symbol}`);
-            }
-          });
-          
-          // If balance increased, notify user
-          if (balanceIncreases.length > 0) {
-            console.log('[Home] 💰 Incoming transaction detected:', balanceIncreases.join(', '));
-            toast.success(`Received: ${balanceIncreases.join(', ')}`, { duration: 5000 });
+        // Notify Activity page if balances changed
+        if (isAutoRefresh && lastConfirmedBalancesRef.current.size > 0) {
+          const changed = newTokens.some(t => lastConfirmedBalancesRef.current.get(t.symbol) !== t.amount);
+          if (changed) {
             window.dispatchEvent(new Event('walletBalanceUpdated'));
-          } else {
-            // Check if any balance changed at all
-            const oldBalances = tokens.map(t => `${t.symbol}:${t.amount}`).sort().join(',');
-            const newBalances = newTokens.map(t => `${t.symbol}:${t.amount}`).sort().join(',');
-            
-            if (oldBalances !== newBalances) {
-              console.log('[Home] 💰 Balance changed detected! Notifying Activity page...');
-              window.dispatchEvent(new Event('walletBalanceUpdated'));
-            }
           }
         }
+
+        // Update confirmed balances ref
+        const newBalanceMap = new Map<string, number>();
+        newTokens.forEach(t => newBalanceMap.set(t.symbol, t.amount));
+        lastConfirmedBalancesRef.current = newBalanceMap;
         
         setTokens(newTokens);
         onTokensLoaded?.(newTokens);

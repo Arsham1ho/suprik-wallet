@@ -8,10 +8,9 @@ import { toast } from 'sonner';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
 import { useTheme } from '../../utils/ThemeContext';
 import { getLocalSwapHistory, clearTransactionCache, fetchSolanaTransactionHistory, type TransactionItem } from '../../utils/transactionHistory';
-import { useWallet } from '../../utils/WalletContext';
 import { useNetwork } from '../../utils/NetworkContext';
 import { AccountManager } from '../../utils/accountManager';
-import { TokenLogo } from '../TokenLogo';
+import { TokenLogo, getSymbolByMint } from '../TokenLogo';
 
 interface ActivityProps {
   walletId: string;
@@ -20,13 +19,16 @@ interface ActivityProps {
 export function Activity({ walletId }: ActivityProps) {
   const { t } = useLanguage();
   const { colors } = useTheme();
-  const { wallet } = useWallet();
   const { network } = useNetwork();
   const [activities, setActivities] = useState<TransactionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedActivity, setSelectedActivity] = useState<TransactionItem | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
+
+  // Track active account so we re-fetch when user switches accounts
+  const activeAccount = AccountManager.getActiveAccount();
+  const activeAccountId = activeAccount?.id || '';
 
   useEffect(() => {
     // Load transaction history
@@ -43,7 +45,7 @@ export function Activity({ walletId }: ActivityProps) {
     return () => {
       window.removeEventListener('swapHistoryUpdated', handleSwapHistoryUpdate);
     };
-  }, [walletId, network]);
+  }, [walletId, network, activeAccountId]);
 
   const fetchActivities = async (backgroundRefresh = false) => {
     try {
@@ -64,9 +66,9 @@ export function Activity({ walletId }: ActivityProps) {
       const localSwaps = getLocalSwapHistory();
       console.log('[Activity] 📱 Local swap history:', localSwaps.length, 'transactions');
 
-      // Get the wallet address
-      const activeAccount = AccountManager.getActiveAccount();
-      const solanaAddress = activeAccount?.addresses?.solana || wallet.addresses?.solana;
+      // Get the active account's address
+      const account = AccountManager.getActiveAccount();
+      const solanaAddress = account?.addresses?.solana;
 
       let blockchainTxs: TransactionItem[] = [];
 
@@ -84,27 +86,25 @@ export function Activity({ walletId }: ActivityProps) {
       }
 
       // Merge local swaps and blockchain transactions
-      // Use a Map to deduplicate by signature
+      // Use tx.id as key (unique per token per direction, e.g. "sig_mint_receive")
+      // This preserves multiple token transfers from the same transaction
       const txMap = new Map<string, TransactionItem>();
+      // Track which signatures have local swap data (for dedup)
+      const localSwapSignatures = new Set<string>();
 
-      // Add blockchain transactions first
-      for (const tx of blockchainTxs) {
-        if (tx.signature) {
-          txMap.set(tx.signature, tx);
-        } else {
-          txMap.set(tx.id, tx);
-        }
-      }
-
-      // Add local swaps (will override blockchain if same signature - local has more details)
+      // Add local swaps first (they have more details like token names)
       // Filter to only include swaps from the current account
       const accountSwaps = localSwaps.filter(tx => tx.from === solanaAddress);
       for (const tx of accountSwaps) {
-        if (tx.signature) {
-          txMap.set(tx.signature, tx);
-        } else {
-          txMap.set(tx.id, tx);
-        }
+        txMap.set(tx.id, tx);
+        if (tx.signature) localSwapSignatures.add(tx.signature);
+      }
+
+      // Add blockchain transactions (skip if local swap already has this signature)
+      for (const tx of blockchainTxs) {
+        // If local swap already covers this signature, skip blockchain version
+        if (tx.signature && localSwapSignatures.has(tx.signature)) continue;
+        txMap.set(tx.id, tx);
       }
 
       // Convert to array and sort by timestamp (most recent first)
@@ -127,7 +127,13 @@ export function Activity({ walletId }: ActivityProps) {
   };
 
   const getTokenSymbol = (activity: TransactionItem): string => {
-    return activity.token || activity.coin || 'Unknown';
+    const symbol = activity.token || activity.coin || 'Unknown';
+    // If symbol is "TOKEN" (unresolved), try to resolve from Jupiter's mint cache
+    if (symbol === 'TOKEN' && activity.mint) {
+      const resolved = getSymbolByMint(activity.mint);
+      if (resolved) return resolved;
+    }
+    return symbol;
   };
 
   const formatDate = (timestamp: string): string => {
@@ -417,6 +423,7 @@ export function Activity({ walletId }: ActivityProps) {
                                       <TokenLogo
                                         symbol={tokenSymbol}
                                         name={tokenSymbol}
+                                        mint={activity.mint}
                                         size="md"
                                       />
                                     ) : (
