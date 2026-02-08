@@ -48,6 +48,9 @@ export interface TransactionItem {
   feeAmount?: number;
   totalDeducted?: number;
   
+  // Token mint address (for logo resolution)
+  mint?: string;
+
   // Dev/Test mode
   isDevMode?: boolean;
 }
@@ -628,12 +631,98 @@ export async function fetchSolanaTransactionHistory(
       return [];
     }
 
-    const data = await response.json();
+    let data = await response.json();
     const transactions: TransactionItem[] = [];
     const processedSignatures = new Set<string>(); // Avoid duplicates
 
     console.log('[TxHistory] Raw API response:', data.length, 'transactions');
     console.log('[TxHistory] Looking for address:', address);
+
+    // Collect signatures we already have from the main query
+    const existingSignatures = new Set<string>();
+    if (Array.isArray(data)) {
+      for (const tx of data) {
+        if (tx.signature) existingSignatures.add(tx.signature);
+      }
+    }
+
+    // Fetch wallet's token accounts and query their transactions
+    // This catches SPL token receives (where only the ATA is in the tx, not the wallet)
+    try {
+      const heliusRpc = isTestnet
+        ? `https://api-devnet.helius.xyz/v0`
+        : `https://rpc.helius.xyz/?api-key=${apiKey}`;
+
+      const tokenAccountsRes = await fetch(isTestnet ? `https://api.devnet.solana.com` : heliusRpc, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1,
+          method: 'getTokenAccountsByOwner',
+          params: [address, { programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' }, { encoding: 'jsonParsed' }]
+        })
+      });
+      const tokenAccountsData = await tokenAccountsRes.json();
+      // Filter to only token accounts with balance > 0 (prioritize active accounts)
+      const allTokenAccounts = tokenAccountsData.result?.value || [];
+      const tokenAccounts: string[] = allTokenAccounts
+        .filter((a: any) => {
+          const amount = a.account?.data?.parsed?.info?.tokenAmount?.uiAmount;
+          return amount && amount > 0;
+        })
+        .map((a: any) => a.pubkey);
+      console.log('[TxHistory] Found', tokenAccounts.length, 'active token accounts (of', allTokenAccounts.length, 'total) for receive detection');
+
+      // Get recent signatures for each token account in parallel
+      const rpcUrl = isTestnet ? `https://api.devnet.solana.com` : heliusRpc;
+      const sigResults = await Promise.allSettled(
+        tokenAccounts.slice(0, 20).map(async (ata) => {
+          const sigsRes = await fetch(rpcUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0', id: 1,
+              method: 'getSignaturesForAddress',
+              params: [ata, { limit: 15 }]
+            })
+          });
+          return sigsRes.json();
+        })
+      );
+      const newSignatures: string[] = [];
+      for (const result of sigResults) {
+        if (result.status === 'fulfilled' && result.value?.result) {
+          for (const s of result.value.result) {
+            if (!existingSignatures.has(s.signature)) {
+              newSignatures.push(s.signature);
+              existingSignatures.add(s.signature);
+            }
+          }
+        }
+      }
+
+      // Batch parse new signatures via Helius Enhanced API
+      if (newSignatures.length > 0) {
+        console.log('[TxHistory] Found', newSignatures.length, 'additional token account transactions');
+        const parseUrl = isTestnet
+          ? `https://api-devnet.helius.xyz/v0/transactions?api-key=${apiKey}`
+          : `https://api.helius.xyz/v0/transactions?api-key=${apiKey}`;
+        const parseRes = await fetch(parseUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transactions: newSignatures.slice(0, 30) })
+        });
+        if (parseRes.ok) {
+          const parsedTxs = await parseRes.json();
+          if (Array.isArray(parsedTxs)) {
+            data = [...data, ...parsedTxs];
+            console.log('[TxHistory] Merged', parsedTxs.length, 'token account transactions');
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[TxHistory] Token account fetch failed (non-critical):', e);
+    }
 
     // Lowercase address for case-insensitive comparison
     const addressLower = address.toLowerCase();
@@ -659,9 +748,16 @@ export async function fetchSolanaTransactionHistory(
           const sentTokens = tokenTransfers.filter((t: any) =>
             t.fromUserAccount?.toLowerCase() === addressLower && (t.tokenAmount || 0) > 0
           );
-          const receivedTokens = tokenTransfers.filter((t: any) =>
-            t.toUserAccount?.toLowerCase() === addressLower && (t.tokenAmount || 0) > 0
-          );
+          // Detect received tokens: exact wallet match, OR we're not the sender
+          // (Helius may put ATA address in toUserAccount instead of wallet address,
+          //  or leave it null for newly created ATAs)
+          const receivedTokens = tokenTransfers.filter((t: any) => {
+            if ((t.tokenAmount || 0) <= 0) return false;
+            if (t.toUserAccount?.toLowerCase() === addressLower) return true;
+            // If we're not the sender, we're likely the receiver (tx was returned for our address/ATAs)
+            if (t.fromUserAccount?.toLowerCase() !== addressLower) return true;
+            return false;
+          });
 
           // Check native SOL transfers too (case-insensitive)
           const sentSOL = nativeTransfers.find((t: any) =>
@@ -733,8 +829,11 @@ export async function fetchSolanaTransactionHistory(
           // Only process if this wasn't already handled as a swap
           if (tokenTransfers.length > 0 && !processedSignatures.has(signature)) {
             for (const transfer of tokenTransfers) {
-              const isReceive = transfer.toUserAccount?.toLowerCase() === addressLower;
               const isSend = transfer.fromUserAccount?.toLowerCase() === addressLower;
+              const isReceiveExact = transfer.toUserAccount?.toLowerCase() === addressLower;
+              // Helius may not populate toUserAccount for some token receives;
+              // if we're not the sender and this tx was returned for our address, it's likely a receive
+              const isReceive = isReceiveExact || !isSend;
               const amount = transfer.tokenAmount || 0;
 
               // Skip zero-amount transfers
@@ -754,10 +853,11 @@ export async function fetchSolanaTransactionHistory(
                     date: timestamp,
                     timestamp,
                     status: tx.transactionError ? 'failed' : 'confirmed',
-                    from: transfer.fromUserAccount || 'Unknown',
-                    to: transfer.toUserAccount || 'Unknown',
+                    from: isSend ? address : (transfer.fromUserAccount || 'Unknown'),
+                    to: isReceive ? address : (transfer.toUserAccount || 'Unknown'),
                     signature,
                     network: isTestnet ? 'devnet' : 'solana',
+                    mint: transfer.mint || undefined,
                   });
                   processedSignatures.add(txId);
                 }
@@ -835,6 +935,53 @@ export async function fetchSolanaTransactionHistory(
               }
             }
           }
+          // Fallback: use accountData.tokenBalanceChanges to catch token receives
+          // that tokenTransfers missed (e.g., when ATA is created in the same tx)
+          if (tx.accountData && Array.isArray(tx.accountData)) {
+            for (const accountEntry of tx.accountData) {
+              if (!accountEntry.tokenBalanceChanges) continue;
+              for (const change of accountEntry.tokenBalanceChanges) {
+                // Check if this balance change is for our wallet
+                // userAccount may be wallet address OR ATA address depending on Helius response
+                const changeAccount = change.userAccount?.toLowerCase() || '';
+                if (changeAccount !== addressLower && accountEntry.account?.toLowerCase() !== addressLower) continue;
+                const rawAmount = change.rawTokenAmount;
+                if (!rawAmount) continue;
+                const amount = parseFloat(rawAmount.tokenAmount) / Math.pow(10, rawAmount.decimals || 0);
+                if (amount === 0) continue;
+
+                const isReceive = amount > 0;
+                const mint = change.mint || '';
+                const txId = `${signature}_${mint}_${isReceive ? 'receive' : 'send'}`;
+
+                // Skip if already processed (from tokenTransfers or swap)
+                if (processedSignatures.has(txId) || processedSignatures.has(signature)) continue;
+
+                // Skip SOL (already handled by nativeTransfers)
+                if (mint === 'So11111111111111111111111111111111111111112') continue;
+
+                const tokenSymbol = getTokenSymbol({ mint, symbol: change.symbol });
+                console.log(`[TxHistory] 📊 Balance change fallback: ${isReceive ? '📥 RECEIVE' : '📤 SEND'}`, Math.abs(amount), tokenSymbol);
+
+                transactions.push({
+                  id: txId,
+                  type: isReceive ? 'receive' : 'send',
+                  token: tokenSymbol,
+                  amount: Math.abs(amount),
+                  date: timestamp,
+                  timestamp,
+                  status: tx.transactionError ? 'failed' : 'confirmed',
+                  from: isReceive ? 'Unknown' : address,
+                  to: isReceive ? address : 'Unknown',
+                  signature,
+                  network: isTestnet ? 'devnet' : 'solana',
+                  mint: mint || undefined,
+                });
+                processedSignatures.add(txId);
+              }
+            }
+          }
+
         } catch (parseError) {
           console.error('[TxHistory] Error parsing transaction:', parseError);
         }

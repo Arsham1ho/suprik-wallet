@@ -27,6 +27,7 @@ const PARABOLIC_TOKENS = ['PARAI', 'PAI', 'PARAB'];
 // In-memory cache for Jupiter token logos (persists during session)
 const jupiterLogoCache: Record<string, string> = {};
 const jupiterSymbolCache: Record<string, string> = {}; // Cache by symbol
+const jupiterMintToSymbol: Record<string, string> = {}; // Cache mint → symbol
 const failedLogos = new Set<string>(); // Track logos that failed to load
 let jupiterListLoaded = false;
 
@@ -57,6 +58,8 @@ async function preloadJupiterLogos(): Promise<void> {
             if (!jupiterSymbolCache[token.symbol.toUpperCase()]) {
               jupiterSymbolCache[token.symbol.toUpperCase()] = token.logoURI;
             }
+            // Store mint → symbol mapping
+            jupiterMintToSymbol[token.address] = token.symbol;
           }
           loadedCount++;
         }
@@ -73,6 +76,11 @@ async function preloadJupiterLogos(): Promise<void> {
 
 // Start preloading in background (don't block rendering)
 setTimeout(() => preloadJupiterLogos(), 100);
+
+/** Look up token symbol by mint address from Jupiter cache */
+export function getSymbolByMint(mint: string): string | null {
+  return jupiterMintToSymbol[mint] || null;
+}
 
 // Token logo mapping - Direct CDN URLs for major tokens
 const TOKEN_LOGO_MAP: Record<string, string> = {
@@ -273,6 +281,7 @@ async function fetchJupiterLogo(mint: string): Promise<string | null> {
           jupiterLogoCache[token.address] = token.logoURI;
           if (token.symbol) {
             jupiterSymbolCache[token.symbol.toUpperCase()] = token.logoURI;
+            jupiterMintToSymbol[token.address] = token.symbol;
           }
         }
       });
