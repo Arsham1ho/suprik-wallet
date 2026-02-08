@@ -94,14 +94,13 @@ export function SwapSuccessDialog({
               >
                 <div className="w-28 h-28 rounded-full overflow-hidden flex items-center justify-center">
                   <video
+                    src="/swap.mp4"
                     autoPlay
                     loop
                     muted
                     playsInline
                     className="w-full h-full object-cover"
-                  >
-                    <source src="/swap.mp4" type="video/mp4" />
-                  </video>
+                  />
                 </div>
               </motion.div>
 

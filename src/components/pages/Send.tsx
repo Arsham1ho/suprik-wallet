@@ -1340,14 +1340,13 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                   >
                     <div className="w-28 h-28 mx-auto rounded-full overflow-hidden flex items-center justify-center">
                       <video
+                        src="/Send.mp4"
                         autoPlay
                         loop
                         muted
                         playsInline
                         className="w-full h-full object-cover"
-                      >
-                        <source src="/Send.mp4" type="video/mp4" />
-                      </video>
+                      />
                     </div>
                   </motion.div>
 
@@ -1432,14 +1431,13 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                   >
                     <div className="w-28 h-28 mx-auto rounded-full overflow-hidden flex items-center justify-center">
                       <video
+                        src="/failed_send.mp4"
                         autoPlay
                         loop
                         muted
                         playsInline
                         className="w-full h-full object-cover"
-                      >
-                        <source src="/failed_send.mp4" type="video/mp4" />
-                      </video>
+                      />
                     </div>
                   </motion.div>
 
