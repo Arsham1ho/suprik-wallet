@@ -429,8 +429,21 @@ export function Home({ onNavigate, walletId, onTokensLoaded, isActive }: HomePro
   // Handle create new account
   const handleCreateAccount = useCallback(async () => {
     try {
-      if (!wallet.mnemonic || !wallet.isUnlocked) {
+      if (!wallet.isUnlocked) {
         toast.error('Please unlock your wallet first');
+        return;
+      }
+
+      if (!wallet.mnemonic) {
+        toast.error('Cannot create accounts from a private key wallet. Import a seed phrase wallet instead.');
+        return;
+      }
+
+      // Validate mnemonic before deriving
+      const { validateMnemonic } = await import('../../utils/wallet');
+      const isValid = await validateMnemonic(wallet.mnemonic);
+      if (!isValid) {
+        toast.error('Cannot create accounts from a private key wallet. Import a seed phrase wallet instead.');
         return;
       }
 
