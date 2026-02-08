@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { motion, AnimatePresence } from 'motion/react';
-import { Check, Plus, ChevronRight, Copy, Key, FileText, Sparkles } from 'lucide-react';
+import { Check, Plus, ChevronRight, Copy, Key, FileText, UserPlus } from 'lucide-react';
 import { AnimalAvatar } from './AnimalAvatar';
 import { toast } from 'sonner';
 import { copyToClipboard } from '../utils/clipboard';
@@ -205,7 +205,7 @@ export function AccountSwitcher({
                     className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
                     style={{ background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.secondary})` }}
                   >
-                    <Sparkles className="w-6 h-6 text-white" />
+                    <UserPlus className="w-6 h-6 text-white" />
                   </div>
                   <div className="text-left flex-1">
                     <h4 className="text-white font-semibold">Create New Account</h4>
