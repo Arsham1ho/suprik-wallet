@@ -97,7 +97,9 @@ export function Activity({ walletId }: ActivityProps) {
       }
 
       // Add local swaps (will override blockchain if same signature - local has more details)
-      for (const tx of localSwaps) {
+      // Filter to only include swaps from the current account
+      const accountSwaps = localSwaps.filter(tx => tx.from === solanaAddress);
+      for (const tx of accountSwaps) {
         if (tx.signature) {
           txMap.set(tx.signature, tx);
         } else {
