@@ -209,13 +209,13 @@ export const TOKEN_REGISTRY: TokenMetadata[] = [
   { id: 'ondo-finance', symbol: 'ONDO', name: 'Ondo', image: 'https://assets.coingecko.com/coins/images/26580/large/ONDO.png', decimals: 18, coingeckoId: 'ondo-finance', verified: true },
   { id: 'ethena', symbol: 'ENA', name: 'Ethena', image: 'https://assets.coingecko.com/coins/images/36530/large/ethena.png', decimals: 18, coingeckoId: 'ethena', verified: true },
   { id: 'ethena-usde', symbol: 'USDE', name: 'USDe', image: 'https://assets.coingecko.com/coins/images/33613/large/usde.png', decimals: 18, coingeckoId: 'ethena-usde', verified: true },
-  { id: 'jupiter-perpetuals-liquidity-provider-token', symbol: 'JLP', name: 'Jupiter Perps LP', image: 'https://assets.coingecko.com/coins/images/34188/large/jup.png', decimals: 6, coingeckoId: 'jupiter-perpetuals-liquidity-provider-token', verified: true },
-  { id: 'parcl', symbol: 'PRCL', name: 'Parcl', image: 'https://assets.coingecko.com/coins/images/36498/large/parcl.jpg', decimals: 6, coingeckoId: 'parcl', verified: true },
-  { id: 'tensor', symbol: 'TNSR', name: 'Tensor', image: 'https://assets.coingecko.com/coins/images/36227/large/tensor.jpg', decimals: 9, coingeckoId: 'tensor', verified: true },
-  { id: 'kamino', symbol: 'KMNO', name: 'Kamino', image: 'https://assets.coingecko.com/coins/images/37146/large/kamino.png', decimals: 6, coingeckoId: 'kamino', verified: true },
-  { id: 'drift-protocol', symbol: 'DRIFT', name: 'Drift Protocol', image: 'https://assets.coingecko.com/coins/images/38066/large/drift.png', decimals: 6, coingeckoId: 'drift-protocol', verified: true },
-  { id: 'io', symbol: 'IO', name: 'io.net', image: 'https://assets.coingecko.com/coins/images/37505/large/io.png', decimals: 8, coingeckoId: 'io', verified: true },
-  { id: 'sanctum-2', symbol: 'CLOUD', name: 'Sanctum', image: 'https://assets.coingecko.com/coins/images/38067/large/cloud.png', decimals: 9, coingeckoId: 'sanctum-2', verified: true },
+  { id: 'jupiter-perpetuals-liquidity-provider-token', symbol: 'JLP', name: 'Jupiter Perps LP', image: 'https://assets.coingecko.com/coins/images/34188/large/jup.png', decimals: 6, mint: '27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4', coingeckoId: 'jupiter-perpetuals-liquidity-provider-token', verified: true },
+  { id: 'parcl', symbol: 'PRCL', name: 'Parcl', image: 'https://assets.coingecko.com/coins/images/36498/large/parcl.jpg', decimals: 6, mint: '4LLbsb5ReP3yEtYzmXewyGjcir5uXtKFURtaEUVC2AHs', coingeckoId: 'parcl', verified: true },
+  { id: 'tensor', symbol: 'TNSR', name: 'Tensor', image: 'https://assets.coingecko.com/coins/images/36227/large/tensor.jpg', decimals: 9, mint: 'TNSRxcUxoT9xBG3de7PiJyTDYu7kskLqcpddxnEJAS6', coingeckoId: 'tensor', verified: true },
+  { id: 'kamino', symbol: 'KMNO', name: 'Kamino', image: 'https://assets.coingecko.com/coins/images/37146/large/kamino.png', decimals: 6, mint: 'KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS', coingeckoId: 'kamino', verified: true },
+  { id: 'drift-protocol', symbol: 'DRIFT', name: 'Drift Protocol', image: 'https://assets.coingecko.com/coins/images/38066/large/drift.png', decimals: 6, mint: 'DriFtupJYLTosbwoN8koMbEYSx54aFAVLddWsbksjwg7', coingeckoId: 'drift-protocol', verified: true },
+  { id: 'io', symbol: 'IO', name: 'io.net', image: 'https://assets.coingecko.com/coins/images/37505/large/io.png', decimals: 8, mint: 'BZLbGTNCSFfoth2GYDtwr7e4imWzpR5jqcUuGEwr646K', coingeckoId: 'io', verified: true },
+  { id: 'sanctum-2', symbol: 'CLOUD', name: 'Sanctum', image: 'https://assets.coingecko.com/coins/images/38067/large/cloud.png', decimals: 9, mint: 'CLoUDKc4Ane7HeQcPpE3YHnznRxhMimJ4MyaUqyHFzAu', coingeckoId: 'sanctum-2', verified: true },
   { id: 'zeta', symbol: 'ZETA', name: 'ZetaChain', image: 'https://assets.coingecko.com/coins/images/34007/large/zeta.png', decimals: 18, coingeckoId: 'zeta', verified: true },
   { id: 'jupiter-exchange-solana', symbol: 'JUP', name: 'Jupiter', image: 'https://assets.coingecko.com/coins/images/34188/large/jup.png', decimals: 6, coingeckoId: 'jupiter-exchange-solana', verified: true },
   { id: 'altlayer', symbol: 'ALT', name: 'AltLayer', image: 'https://assets.coingecko.com/coins/images/34608/large/altlayer.jpeg', decimals: 18, coingeckoId: 'altlayer', verified: true },
@@ -239,7 +239,23 @@ export const TOKEN_REGISTRY: TokenMetadata[] = [
   { id: 'usual', symbol: 'USUAL', name: 'Usual', image: 'https://assets.coingecko.com/coins/images/52304/large/usual.jpg', decimals: 18, coingeckoId: 'usual', verified: true },
   { id: 'virtual-protocol', symbol: 'VIRTUAL', name: 'Virtuals Protocol', image: 'https://assets.coingecko.com/coins/images/36285/large/virtuals.jpeg', decimals: 18, coingeckoId: 'virtual-protocol', verified: true },
 
+  // === SOLANA LIQUID STAKING ===
+  { id: 'binance-staked-sol', symbol: 'BNSOL', name: 'Binance Staked SOL', image: 'https://assets.coingecko.com/coins/images/40069/large/bnsol.png', decimals: 9, mint: 'BNso1VUJnh4zcfpZa6986Ea66P6TCp59hvtNJ8b1X85', coingeckoId: 'binance-staked-sol', verified: true },
+  { id: 'jupiter-staked-sol', symbol: 'JUPSOL', name: 'Jupiter Staked SOL', image: 'https://assets.coingecko.com/coins/images/38158/large/jupsol.png', decimals: 9, mint: 'jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v', coingeckoId: 'jupiter-staked-sol', verified: true },
+  { id: 'blazestake-staked-sol', symbol: 'BSOL', name: 'BlazeStake Staked SOL', image: 'https://assets.coingecko.com/coins/images/26636/large/bSOL.png', decimals: 9, mint: 'bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1', coingeckoId: 'blazestake-staked-sol', verified: true },
+
+  // === SOLANA DEFI & INFRASTRUCTURE ===
+  { id: 'magic-eden', symbol: 'ME', name: 'Magic Eden', image: 'https://assets.coingecko.com/coins/images/52645/large/me.jpg', decimals: 6, mint: 'MEFNBXixkEbait3xn9bkm8WsJzXtVsaJEn4c8Sam21u', coingeckoId: 'magic-eden', verified: true },
+  { id: 'zeus-network', symbol: 'ZEUS', name: 'Zeus Network', image: 'https://assets.coingecko.com/coins/images/37264/large/zeus.png', decimals: 6, mint: 'ZEUS1aR7aX8DFFJf5QjWj2ftDDdNTroMNGo8YoQm3Gq', coingeckoId: 'zeus-network', verified: true },
+  { id: 'debridge', symbol: 'DBR', name: 'deBridge', image: 'https://assets.coingecko.com/coins/images/39834/large/dbr.png', decimals: 6, mint: 'DBRiDgJAMsM95moTzJs7M9LnkGErpbv9v6CUR1DXnUu5', coingeckoId: 'debridge', verified: true },
+  { id: 'step-finance', symbol: 'STEP', name: 'Step Finance', image: 'https://assets.coingecko.com/coins/images/14988/large/step.png', decimals: 9, mint: 'StepAscQoEioFxxWGnh2sLBDFp9d8rvKz2Yp39iDpyT', coingeckoId: 'step-finance', verified: true },
+  { id: 'pump-fun', symbol: 'PUMP', name: 'Pump.fun', image: 'https://assets.coingecko.com/coins/images/54899/large/pump.jpg', decimals: 6, mint: 'pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn', coingeckoId: 'pump-fun', verified: true },
+  { id: 'solayer', symbol: 'LAYER', name: 'Solayer', image: 'https://assets.coingecko.com/coins/images/54786/large/solayer.jpg', decimals: 9, mint: 'LAYER4xPpTCb3QL8S9u41EAhAX7mhBn8Q6xMTwY2Yzc', coingeckoId: 'solayer', verified: true },
+
   // === MORE SOLANA MEMECOINS ===
+  { id: 'melania-meme', symbol: 'MELANIA', name: 'Melania Meme', image: 'https://coin-images.coingecko.com/coins/images/53776/large/melania.jpg', decimals: 6, mint: 'FUAfBo2jgks6gB4Z4LfZkqSZgzNucisEHqnNebaRxM1P', coingeckoId: 'melania-meme', verified: true },
+  { id: 'vine', symbol: 'VINE', name: 'Vine', image: 'https://coin-images.coingecko.com/coins/images/53857/large/vine.jpg', decimals: 6, mint: '6AJcP7wuLwmRYLBNbi825wgguaPsWzPBEHcHndpRpump', coingeckoId: 'vine', verified: true },
+  { id: 'pippin', symbol: 'PIPPIN', name: 'Pippin', image: 'https://coin-images.coingecko.com/coins/images/52519/large/pippin.jpg', decimals: 6, mint: 'Dfh5DzRgSvvCFDoYc2ciTkMrbDfRKybA4SoFbPmApump', coingeckoId: 'pippin', verified: true },
   { id: 'slerf', symbol: 'SLERF', name: 'SLERF', image: 'https://assets.coingecko.com/coins/images/36299/large/slerf.jpg', decimals: 9, mint: '7BgBvyjrZX1YKz4oh9mjb8ZScatkkwb8DzFx7LoiVkM3', coingeckoId: 'slerf', verified: true },
   { id: 'wen-4', symbol: 'WEN', name: 'Wen', image: 'https://assets.coingecko.com/coins/images/34856/large/wen.jpg', decimals: 5, mint: 'WENWENvqqNya429ubCdR81ZmD69brwQaaBYY6p3LCpk', coingeckoId: 'wen-4', verified: true },
   { id: 'myro', symbol: 'MYRO', name: 'Myro', image: 'https://assets.coingecko.com/coins/images/32979/large/Myro_token.png', decimals: 9, mint: 'HhJpBhRRn4g56VsyLuT8DL5Bv31HkXqsrahTTUCZeZg4', coingeckoId: 'myro', verified: true },
@@ -342,7 +358,7 @@ export const TOKEN_REGISTRY: TokenMetadata[] = [
   { id: 'arkham', symbol: 'ARKM', name: 'Arkham', image: 'https://assets.coingecko.com/coins/images/30929/large/Arkham_Logo_CG.png', decimals: 18, coingeckoId: 'arkham', verified: true },
   { id: 'openfabric-ai', symbol: 'OFN', name: 'Openfabric AI', image: 'https://assets.coingecko.com/coins/images/38147/large/ofn.png', decimals: 18, coingeckoId: 'openfabric-ai', verified: true },
   { id: 'grass', symbol: 'GRASS', name: 'Grass', image: 'https://assets.coingecko.com/coins/images/40433/large/grass.png', decimals: 9, coingeckoId: 'grass', verified: true },
-  { id: 'griffain', symbol: 'GRIFFAIN', name: 'Griffain', image: 'https://assets.coingecko.com/coins/images/52549/large/griffain.png', decimals: 6, coingeckoId: 'griffain', verified: true },
+  { id: 'griffain', symbol: 'GRIFFAIN', name: 'Griffain', image: 'https://assets.coingecko.com/coins/images/52549/large/griffain.png', decimals: 6, mint: 'KENJSUYLASHUMfHyy5o4Hp2FdNqZg1AsUPhfH2kYvEP', coingeckoId: 'griffain', verified: true },
 
   // === EXCHANGE TOKENS ===
   { id: 'ftx-token', symbol: 'FTT', name: 'FTX Token', image: 'https://assets.coingecko.com/coins/images/4195/large/FTT.png', decimals: 18, coingeckoId: 'ftx-token', verified: true },
