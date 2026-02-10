@@ -46,6 +46,7 @@ export interface Translations {
     activity: string;
     settings: string;
     chat: string;
+    stocks: string;
   };
   
   // Home Page
@@ -380,6 +381,7 @@ export const translations: Record<string, Translations> = {
       activity: 'Activity',
       settings: 'Settings',
       chat: 'Chat',
+      stocks: 'Stocks',
     },
     home: {
       totalBalance: 'Total Balance',
@@ -672,6 +674,7 @@ export const translations: Record<string, Translations> = {
       activity: 'فعالیت',
       settings: 'تنظیمات',
       chat: 'چت',
+      stocks: 'سهام',
     },
     home: {
       totalBalance: 'موجودی کل',
@@ -965,6 +968,7 @@ export const translations: Record<string, Translations> = {
       activity: 'Actividad',
       settings: 'Ajustes',
       chat: 'Chat',
+      stocks: 'Acciones',
     },
     home: {
       totalBalance: 'Saldo total',

@@ -848,6 +848,31 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
     }
   }, [fromToken, fromTokenData?.id, fromTokenData?.mint]); // Trigger on fromToken change AND when fromTokenData updates
 
+  // Derive missing token prices from Jupiter quote
+  // When a token has price=0 (e.g. xStock tokens from Search), calculate implied price from the quote
+  useEffect(() => {
+    if (!jupiterQuote || !fromTokenData || !toTokenData || !fromAmount) return;
+    const fromAmt = parseFloat(fromAmount);
+    const toAmt = jupiterQuote.outputAmount;
+    if (!fromAmt || fromAmt <= 0 || !toAmt || toAmt <= 0) return;
+
+    if (toTokenData.price === 0 && fromTokenData.price > 0) {
+      const impliedPrice = (fromAmt * fromTokenData.price) / toAmt;
+      if (impliedPrice > 0) {
+        setAllCoins(prev => prev.map(t =>
+          t.id === toTokenData.id ? { ...t, price: impliedPrice } : t
+        ));
+      }
+    } else if (fromTokenData.price === 0 && toTokenData.price > 0) {
+      const impliedPrice = (toAmt * toTokenData.price) / fromAmt;
+      if (impliedPrice > 0) {
+        setAllCoins(prev => prev.map(t =>
+          t.id === fromTokenData.id ? { ...t, price: impliedPrice } : t
+        ));
+      }
+    }
+  }, [jupiterQuote, fromAmount, fromTokenData?.id, toTokenData?.id, fromTokenData?.price, toTokenData?.price]);
+
   // Quick swap function for popular pairs
   const quickSwap = useCallback(
     (fromSym: string, toSym: string) => {

@@ -9,6 +9,7 @@ import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { addCustomToken, removeCustomToken, isTokenAdded, getCustomTokens } from '../../utils/customTokens';
 import { TOKEN_REGISTRY, searchTokens as searchTokenRegistry } from '../../utils/tokenRegistry';
 import { getJupiterTokens, searchJupiterTokens, jupiterToCoinGeckoFormat } from '../../utils/jupiterTokens';
+import { STOCK_TOKENS, STOCK_BY_MINT } from '../../utils/stockTokens';
 import { fetchTopTokens } from '../../utils/coingecko';
 import cosmicBg from 'figma:asset/d1566f8943179b67e87faa45cecace8e6cc289ed.png';
 
@@ -136,7 +137,7 @@ const CoinItem = memo(({
     >
       <div className="flex items-center gap-3">
         {/* Token Logo */}
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 relative">
           <TokenLogo
             logoUrl={coin.image}
             symbol={coin.symbol}
@@ -144,6 +145,11 @@ const CoinItem = memo(({
             size="md"
             coinGeckoId={coin.id}
           />
+          {coin.mint && STOCK_BY_MINT.has(coin.mint) && (
+            <div className="absolute bottom-0 right-0 translate-x-1 translate-y-1 z-10 bg-green-600 rounded-full w-5 h-5 flex items-center justify-center border-2 border-black shadow-md">
+              <TrendingUp className="w-3 h-3 text-white stroke-[2.5]" />
+            </div>
+          )}
         </div>
 
         {/* Token Info - Name, then balance */}
@@ -248,6 +254,17 @@ const detectBlockchain = (coin: CoinGeckoToken): string[] => {
 
   const blockchains: string[] = [];
 
+  // xStock tokenized stocks (check mint against STOCK_BY_MINT or name pattern)
+  if (
+    (coin.mint && STOCK_BY_MINT.has(coin.mint)) ||
+    name.includes('xstock') ||
+    (symbol.endsWith('x') && name.includes('xstock'))
+  ) {
+    blockchains.push('stocks');
+    blockchains.push('solana'); // xStocks are also Solana SPL tokens
+    return blockchains;
+  }
+
   // Solana tokens - check comprehensive lists
   if (
     SOLANA_TOKEN_IDS.has(id) ||
@@ -257,18 +274,6 @@ const detectBlockchain = (coin: CoinGeckoToken): string[] => {
     (coin.mint && coin.mint.length > 30) // Has Solana mint address
   ) {
     blockchains.push('solana');
-  }
-
-  // Ethereum tokens (most popular tokens are on Ethereum)
-  if (
-    id.includes('ethereum') ||
-    symbol === 'eth' ||
-    ['usdt', 'usdc', 'dai', 'uni', 'link', 'aave', 'comp', 'snx', 'mkr', 'crv', 'ens', 'ldo', 'wbtc', 'weth', 'shib', 'pepe', 'ape', 'sand', 'mana', 'axs', 'gala', 'imx', 'blur'].includes(symbol) ||
-    name.includes('ethereum') ||
-    name.includes('erc-20') ||
-    name.includes('erc20')
-  ) {
-    blockchains.push('ethereum');
   }
 
   // Polygon tokens
@@ -292,9 +297,9 @@ const detectBlockchain = (coin: CoinGeckoToken): string[] => {
     blockchains.push('bsc');
   }
 
-  // If no specific blockchain detected, assume it's multi-chain or ethereum (most common)
+  // If no specific blockchain detected, assume it's multi-chain
   if (blockchains.length === 0) {
-    blockchains.push('ethereum');
+    blockchains.push('solana');
   }
 
   return blockchains;
@@ -314,7 +319,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
   const [addingCoin, setAddingCoin] = useState<string | null>(null);
   const [addedCoins, setAddedCoins] = useState<Set<string>>(new Set());
   const [walletTokenSymbols, setWalletTokenSymbols] = useState<Set<string>>(new Set());
-  const [blockchainFilter, setBlockchainFilter] = useState<'all' | 'solana' | 'ethereum' | 'polygon' | 'bsc'>('all');
+  const [blockchainFilter, setBlockchainFilter] = useState<'all' | 'solana' | 'stocks' | 'polygon' | 'bsc'>('all');
   const [featuredTokensData, setFeaturedTokensData] = useState<CoinGeckoToken[]>([]);
   const [searchResults, setSearchResults] = useState<CoinGeckoToken[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -650,6 +655,31 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
       } catch (cgError) {
         console.warn('[Search] CoinGecko fetch failed:', cgError);
       }
+
+      // 4. Add xStock tokenized stocks
+      const stockCoins: CoinGeckoToken[] = STOCK_TOKENS
+        .filter(st => !existingMints.has(st.mint) && !existingSymbols.has(st.symbol.toUpperCase()))
+        .map((st, index) => ({
+          id: `xstock-${st.stockSymbol.toLowerCase()}`,
+          symbol: st.symbol.toUpperCase(),
+          name: st.name,
+          image: st.logo,
+          current_price: 0,
+          market_cap: 0,
+          market_cap_rank: allCoins.length + index + 1,
+          price_change_percentage_24h: 0,
+          total_volume: 0,
+          mint: st.mint,
+        }));
+
+      stockCoins.forEach(sc => {
+        if (sc.mint) existingMints.add(sc.mint);
+        existingSymbols.add(sc.symbol.toUpperCase());
+        existingIds.add(sc.id);
+      });
+
+      allCoins = [...allCoins, ...stockCoins];
+      console.log(`[Search] Added ${stockCoins.length} xStock tokenized stocks`);
 
       // Update state with all tokens
       setCoins(allCoins);
@@ -1008,16 +1038,16 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
             </motion.button>
 
             <motion.button
-              onClick={() => setBlockchainFilter('ethereum')}
+              onClick={() => setBlockchainFilter('stocks')}
               className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
-                blockchainFilter === 'ethereum'
-                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25'
+                blockchainFilter === 'stocks'
+                  ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-lg shadow-green-500/25'
                   : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 border border-slate-700/50'
               }`}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              ⚪ Ethereum
+              📈 Stocks
             </motion.button>
 
             <motion.button
