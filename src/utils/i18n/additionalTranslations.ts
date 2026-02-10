@@ -44,6 +44,7 @@ export const additionalTranslations: Record<string, Translations> = {
       activity: 'Activité',
       settings: 'Paramètres',
       chat: 'Chat',
+      stocks: 'Actions',
     },
     home: {
       totalBalance: 'Solde total',
@@ -337,6 +338,7 @@ export const additionalTranslations: Record<string, Translations> = {
       activity: 'Toiminta',
       settings: 'Asetukset',
       chat: 'Chat',
+      stocks: 'Osakkeet',
     },
     home: {
       totalBalance: 'Kokonaissaldo',

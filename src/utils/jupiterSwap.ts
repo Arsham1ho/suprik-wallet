@@ -314,6 +314,12 @@ export function getDecimalsForMint(mint: string): number {
     return 6;
   }
 
+  // xStock tokenized stocks (Backed Finance) use 8 decimals - mints start with 'Xs'
+  if (mint.startsWith('Xs')) {
+    console.log('[Jupiter] Detected xStock token, using 8 decimals:', mint);
+    return 8;
+  }
+
   // Default to 9 for standard SPL tokens
   return 9;
 }

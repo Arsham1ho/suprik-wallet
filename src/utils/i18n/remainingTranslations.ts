@@ -44,6 +44,7 @@ export const remainingTranslations: Record<string, Translations> = {
       activity: 'Aktivität',
       settings: 'Einstellungen',
       chat: 'Chat',
+      stocks: 'Aktien',
     },
     home: {
       totalBalance: 'Gesamtguthaben',
@@ -337,6 +338,7 @@ export const remainingTranslations: Record<string, Translations> = {
       activity: '活动',
       settings: '设置',
       chat: '聊天',
+      stocks: '股票',
     },
     home: {
       totalBalance: '总余额',
@@ -630,6 +632,7 @@ export const remainingTranslations: Record<string, Translations> = {
       activity: 'النشاط',
       settings: 'الإعدادات',
       chat: 'الدردشة',
+      stocks: 'الأسهم',
     },
     home: {
       totalBalance: 'الرصيد الإجمالي',

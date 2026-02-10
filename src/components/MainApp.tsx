@@ -7,7 +7,7 @@ import { Send } from './pages/Send';
 import { Receive } from './pages/Receive';
 import { Search, CoinGeckoToken } from './pages/Search';
 import { CoinDetail } from './pages/CoinDetail';
-import { P2PTransfer } from './pages/P2PTransfer';
+import { StockMarket } from './pages/StockMarket';
 import { BottomNav } from './BottomNav';
 import { scrollToTop } from '../utils/scrollToTop';
 import type { Token } from './pages/Home';
@@ -20,7 +20,8 @@ interface MainAppProps {
 }
 
 export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount }: MainAppProps) {
-  const [currentPage, setCurrentPage] = useState<'home' | 'swap' | 'activity' | 'settings' | 'p2p' | 'send' | 'receive' | 'search' | 'coinDetail'>('home');
+  const [currentPage, setCurrentPage] = useState<'home' | 'swap' | 'activity' | 'settings' | 'stocks' | 'send' | 'receive' | 'search' | 'coinDetail'>('home');
+  const [coinDetailBackPage, setCoinDetailBackPage] = useState<string>('search');
   const [hideBottomNav, setHideBottomNav] = useState(false);
   
   // Scroll to top when page changes
@@ -28,7 +29,7 @@ export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount 
     scrollToTop();
   }, [currentPage]);
   
-  const handleNavigate = (page: 'home' | 'swap' | 'activity' | 'settings' | 'p2p') => {
+  const handleNavigate = (page: 'home' | 'swap' | 'activity' | 'settings' | 'stocks') => {
     console.log('[MainApp] Navigating to:', page);
     setCurrentPage(page);
     // Reset hideBottomNav when navigating to a different main page
@@ -57,6 +58,13 @@ export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount 
     };
     
     setSelectedCoinForDetail(token);
+    setCoinDetailBackPage('search');
+    setCurrentPage('coinDetail');
+  };
+
+  const handleViewStockDetail = (token: Token) => {
+    setSelectedCoinForDetail(token);
+    setCoinDetailBackPage('stocks');
     setCurrentPage('coinDetail');
   };
 
@@ -68,7 +76,7 @@ export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount 
       {currentPage === 'swap' && <Swap tokens={tokensData} walletId={accessToken || ''} />}
       {currentPage === 'activity' && <Activity walletId={accessToken || ''} />}
       {currentPage === 'settings' && <Settings onSignOut={onSignOut} walletId={accessToken || ''} onLockWallet={onLockWallet} onSwitchAccount={onSwitchAccount} onSubpageChange={setHideBottomNav} />}
-      {currentPage === 'p2p' && <P2PTransfer onBack={() => setCurrentPage('home')} />}
+      {currentPage === 'stocks' && <StockMarket walletId={accessToken || ''} onViewStock={handleViewStockDetail} />}
       {currentPage === 'send' && <Send onNavigate={setCurrentPage} tokens={tokensData} walletId={accessToken || ''} />}
       {currentPage === 'receive' && <Receive onBack={() => setCurrentPage('home')} walletId={accessToken || ''} />}
       {currentPage === 'search' && (
@@ -81,7 +89,7 @@ export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount 
       {currentPage === 'coinDetail' && selectedCoinForDetail && (
         <CoinDetail 
           token={selectedCoinForDetail} 
-          onBack={() => setCurrentPage('search')} 
+          onBack={() => setCurrentPage(coinDetailBackPage as any)}
           walletId={accessToken || ''}
           onNavigateToSend={(token) => {
             setCurrentPage('send');

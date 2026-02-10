@@ -8,7 +8,7 @@ import { loadAllTokens } from '../../utils/tokenLoader';
 import { useNetwork } from '../../utils/NetworkContext';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
 import { useTheme } from '../../utils/ThemeContext';
-import { Wrench } from 'lucide-react';
+import { Wrench, TrendingUp } from 'lucide-react';
 import { SendReceiveDialog } from '../SendReceiveDialog';
 import { AddTokenDialog } from '../AddTokenDialog';
 import { CoinDetail } from './CoinDetail';
@@ -23,6 +23,7 @@ import { deriveAddresses } from '../../utils/wallet';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { getCustomTokens, removeDuplicateParabolic, type CustomToken } from '../../utils/customTokens';
 import { TOKEN_REGISTRY, TOKEN_BY_SYMBOL } from '../../utils/tokenRegistry';
+import { STOCK_BY_MINT } from '../../utils/stockTokens';
 import balanceBackgroundImg from '../../assets/balance-bg.png';
 import dollarBgImage from 'figma:asset/03e3917f15913824a7f09aea55d83b590255a690.png';
 import chartGrowthImg from 'figma:asset/cf0c640acfd7594fc19f2f68c33b585fb257787d.png';
@@ -1585,15 +1586,22 @@ Check console for full details!
                     className="w-full p-3 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 transition-all flex items-center justify-between border border-slate-800/30"
                   >
                     <div className="flex items-center gap-3">
-                      <TokenLogo
-                        logoUrl={token.logoUrl}
-                        logo={token.logo}
-                        name={token.name}
-                        color={token.color}
-                        symbol={token.symbol}
-                        mint={token.mint}
-                        size="md"
-                      />
+                      <div className="relative flex-shrink-0">
+                        <TokenLogo
+                          logoUrl={token.logoUrl}
+                          logo={token.logo}
+                          name={token.name}
+                          color={token.color}
+                          symbol={token.symbol}
+                          mint={token.mint}
+                          size="md"
+                        />
+                        {token.mint && STOCK_BY_MINT.has(token.mint) && (
+                          <div className="absolute bottom-0 right-0 translate-x-1 translate-y-1 z-10 bg-green-600 rounded-full w-5 h-5 flex items-center justify-center border-2 border-black shadow-md">
+                            <TrendingUp className="w-3 h-3 text-white stroke-[2.5]" />
+                          </div>
+                        )}
+                      </div>
                       <div className="text-left">
                         <h4 className="text-white font-semibold">{token.name}</h4>
                         <p className="text-slate-400 text-sm">

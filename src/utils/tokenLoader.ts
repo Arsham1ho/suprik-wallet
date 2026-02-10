@@ -3,6 +3,7 @@ import { enhanceTokens } from './tokenEnhancer';
 import { getCustomTokens, type CustomToken } from './customTokens';
 import { dedupe } from './requestDeduplication';
 import { TOKEN_BY_MINT, TOKEN_BY_SYMBOL } from './tokenRegistry';
+import { STOCK_BY_MINT } from './stockTokens';
 import { fetchCoinGeckoPrices, SYMBOL_TO_COINGECKO } from './coingecko';
 
 export interface Token {
@@ -345,10 +346,12 @@ export async function loadAllTokens(
           const verifiedMeta = token.mint ? VERIFIED_TOKEN_METADATA[token.mint] : null;
           // Also check token registry (pre-cached data like Phantom)
           const registryMeta = token.mint ? TOKEN_BY_MINT.get(token.mint) : null;
+          // Check xStock tokenized stocks registry
+          const stockMeta = token.mint ? STOCK_BY_MINT.get(token.mint) : null;
 
-          // Use verified metadata if available, then registry, then fall back to blockchain data
-          let finalSymbol = verifiedMeta?.symbol || registryMeta?.symbol || token.symbol || 'UNKNOWN';
-          let finalName = verifiedMeta?.name || registryMeta?.name || token.name || finalSymbol || 'Unknown Token';
+          // Use verified metadata if available, then registry, then stock registry, then fall back to blockchain data
+          let finalSymbol = verifiedMeta?.symbol || registryMeta?.symbol || stockMeta?.symbol || token.symbol || 'UNKNOWN';
+          let finalName = verifiedMeta?.name || registryMeta?.name || stockMeta?.name || token.name || finalSymbol || 'Unknown Token';
 
           console.log(`[TokenLoader] ✅ Adding token #${idx + 1}:`, {
             symbol: finalSymbol,
@@ -372,6 +375,11 @@ export async function loadAllTokens(
           // Then try token registry (pre-cached like Phantom)
           if (!tokenLogoUrl && registryMeta?.image) {
             tokenLogoUrl = registryMeta.image;
+          }
+
+          // Then try xStock tokenized stocks registry
+          if (!tokenLogoUrl && stockMeta?.logo) {
+            tokenLogoUrl = stockMeta.logo;
           }
 
           // Then try verified logos by symbol
