@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import { createSupabaseClient } from '../utils/supabase/client';
 import { generateMnemonic, deriveWalletId, SecureStorage, WalletStorage } from '../utils/wallet';
 import { useWallet } from '../utils/WalletContext';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
 
 interface OAuthSignUpProps {
   provider: 'google' | 'apple';
@@ -79,27 +78,6 @@ export function OAuthSignUp({ provider, onSuccess, onBack }: OAuthSignUpProps) {
             const emailPrefix = session.user.email?.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user';
             const defaultUsername = `@${emailPrefix}${walletId.substring(0, 4)}`;
             localStorage.setItem('saturn_username', defaultUsername);
-            
-            // Store encrypted recovery phrase in backend for export later
-            setStatus('Securing your recovery phrase...');
-            
-            const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/oauth/store-phrase`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`,
-              },
-              body: JSON.stringify({
-                userId: session.user.id,
-                seedPhrase: seedPhrase,
-                provider: provider,
-                email: session.user.email,
-              }),
-            });
-
-            if (!response.ok) {
-              console.warn('[OAuth] Failed to store phrase in backend, but continuing...');
-            }
             
             setStatus('Unlocking wallet...');
             

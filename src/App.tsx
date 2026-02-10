@@ -11,6 +11,7 @@ import { SignUp } from './components/SignUp';
 import { SignUpOptions } from './components/SignUpOptions';
 import { EmailSignIn } from './components/EmailSignIn';
 import { OAuthSignUp } from './components/OAuthSignUp';
+import { SetupPassword } from './components/SetupPassword';
 import { MainApp } from './components/MainApp';
 import { BiometricLock } from './components/BiometricLock';
 import { InstallPWA } from './components/mobile/InstallPWA';
@@ -41,7 +42,7 @@ export default function App() {
   const [showAccountCreated, setShowAccountCreated] = useState(false);
   const [showPageTransition, setShowPageTransition] = useState(false);
   const [nextPage, setNextPage] = useState<'signin-options' | 'signup-options' | null>(null);
-  const [currentPage, setCurrentPage] = useState<'landing' | 'signin' | 'signin-options' | 'signin-email' | 'signup' | 'signup-options' | 'signup-email' | 'signup-oauth-google' | 'signup-oauth-apple' | 'unlock' | 'app'>('landing');
+  const [currentPage, setCurrentPage] = useState<'landing' | 'signin' | 'signin-options' | 'signin-email' | 'signup' | 'signup-options' | 'signup-email' | 'signup-oauth-google' | 'signup-oauth-apple' | 'setup-password' | 'unlock' | 'app'>('landing');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [walletId, setWalletId] = useState<string | null>(null);
   const [biometricSettings, setBiometricSettings] = useState<BiometricSettings | null>(null);
@@ -72,6 +73,7 @@ export default function App() {
                             searchParams.has('error');
       
       if (hasOAuthParams) {
+        sessionStorage.removeItem('justSignedOut'); // Clear sign-out flag - user is signing in
         setProcessingOAuth(true);
         setShowWelcome(false);
         setShowWelcomePage(false);
@@ -107,17 +109,23 @@ export default function App() {
             const existingWalletId = localStorage.getItem(socialWalletKey);
             
             if (existingWalletId && SecureStorage.hasWallet()) {
-              // User has existing wallet from social login - try to auto-unlock
-              const storedPassword = await WalletStorage.getOAuthPassword();
-              if (storedPassword) {
-                WalletStorage.setWalletId(existingWalletId);
-              }
-              
-              toast.success(`Welcome back, ${session.user.email}! 👋`);
-              handleAuthSuccess(session.access_token, existingWalletId, false);
+              // User has existing wallet from social login - route to unlock screen
+              WalletStorage.setWalletId(existingWalletId);
+              setWalletId(existingWalletId);
+              setNeedsUnlock(true);
+              setCurrentPage('unlock');
             } else {
-              // New social login - need to create wallet
-              // Import wallet utilities
+              // New social login or stale reference (wallet was deleted after sign out)
+              if (existingWalletId) {
+                // Clean up stale social wallet link
+                localStorage.removeItem(socialWalletKey);
+                localStorage.removeItem(`${existingWalletId}_auth_method`);
+                localStorage.removeItem(`${existingWalletId}_social_provider`);
+                localStorage.removeItem(`${existingWalletId}_social_email`);
+                localStorage.removeItem(`${existingWalletId}_password_hint`);
+              }
+
+              // Create new wallet
               const { generateMnemonic } = await import('./utils/wallet');
               const mnemonic = await generateMnemonic();
               // Generate cryptographically secure wallet ID
@@ -143,11 +151,15 @@ export default function App() {
               localStorage.setItem(`${walletId}_social_provider`, session.user.app_metadata.provider || 'unknown');
               localStorage.setItem(`${walletId}_social_email`, session.user.email || '');
               
-              // Store wallet ID
+              // Store wallet ID and set initial account
               WalletStorage.setWalletId(walletId);
-              
-              toast.success(`Account created! Welcome to Suprik! 🚀`);
-              handleAuthSuccess(session.access_token, walletId, true);
+              WalletStorage.setCurrentAccount(0);
+
+              // Set wallet state, go to password setup first (like recovery phrase flow)
+              // After password setup → account created animation → app
+              setWalletId(walletId);
+              setNeedsUnlock(true);
+              setCurrentPage('setup-password');
             }
             
             // Clean up URL
@@ -200,10 +212,31 @@ export default function App() {
       setShowIntroVideo(false);
     }
 
+    // Skip wallet check if OAuth callback is pending (URL has OAuth params)
+    // The OAuth handler will take care of wallet setup
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
+    const searchParams = new URLSearchParams(window.location.search);
+    const hasOAuthParams = hashParams.has('access_token') ||
+                          searchParams.has('code') ||
+                          searchParams.has('error');
+
+    if (hasOAuthParams) {
+      // Let the OAuth callback handler (other useEffect) deal with everything
+      sessionStorage.removeItem('justSignedOut'); // Clear flag - user is actively signing in
+      setCheckingLock(false);
+      return;
+    }
+
+    // If user just signed out, stay at landing page (don't auto-redirect to unlock)
+    if (sessionStorage.getItem('justSignedOut')) {
+      setCheckingLock(false);
+      return;
+    }
+
     // Check if wallet exists in localStorage (new client-side architecture)
     const hasWallet = SecureStorage.hasWallet();
     const savedWalletId = WalletStorage.getWalletId();
-    
+
     if (hasWallet && savedWalletId) {
       // Check for wallet format migration
       SecureStorage.migrateIfNeeded().then(migrated => {
@@ -292,7 +325,7 @@ export default function App() {
       const biometric: BiometricSettings | null = settings.biometricEnabled ? {
         enabled: true,
         autoLockMinutes: settings.autoLockMinutes || 5,
-        requireForTransactions: true,
+        requireForTransactions: settings.requireBiometricForTransactions || false,
       } : null;
 
       setBiometricSettings(biometric);
@@ -314,6 +347,7 @@ export default function App() {
 
   const handleUnlock = () => {
     setIsLocked(false);
+    sessionStorage.removeItem('justSignedOut'); // Clear sign-out flag
     if (needsUnlock) {
       // User unlocked wallet from unlock screen
       setNeedsUnlock(false);
@@ -324,7 +358,7 @@ export default function App() {
 
   const handleAuthSuccess = (token: string, wId: string, isNewAccount: boolean = false) => {
     // Note: In new architecture, token is walletId and authentication happens client-side
-    // No need to store wallet_id separately as WalletStorage handles it
+    sessionStorage.removeItem('justSignedOut'); // Clear sign-out flag
     setWalletId(wId);
     setIsAuthenticated(true);
     
@@ -339,13 +373,27 @@ export default function App() {
 
   const handleAccountCreatedComplete = () => {
     setShowAccountCreated(false);
-    setCurrentPage('app');
+    if (needsUnlock) {
+      // OAuth wallets: ask user to set their own password first
+      setCurrentPage('setup-password');
+    } else {
+      // Recovery phrase wallets: already unlocked, go to app
+      setCurrentPage('app');
+    }
   };
 
   const handleSignOut = () => {
-    // Clear all wallet data
-    WalletStorage.clear();
-    localStorage.removeItem('wallet_id'); // Clear legacy key too
+    // Soft sign out: preserve wallet data in localStorage so user can sign back in
+    // with Google/Apple/email and recover the same wallet (same address)
+    // The encrypted mnemonic + social_wallet links stay intact
+
+    // Sign out from Supabase session
+    import('./utils/supabase/client').then(({ createSupabaseClient }) => {
+      createSupabaseClient().auth.signOut();
+    }).catch(() => {});
+
+    // Mark as signed out so wallet check effect doesn't auto-redirect to unlock
+    sessionStorage.setItem('justSignedOut', 'true');
     sessionStorage.removeItem('hasSeenWelcome'); // Reset welcome animation
     sessionStorage.removeItem('hasSeenWelcomePage'); // Reset welcome page
     sessionStorage.removeItem('hasSeenVideo'); // Reset intro video
@@ -513,6 +561,19 @@ export default function App() {
                       />
                     )}
                     
+                    {/* Password Setup - for new OAuth wallets */}
+                    {currentPage === 'setup-password' && walletId && (
+                      <SetupPassword
+                        walletId={walletId}
+                        onComplete={() => {
+                          setNeedsUnlock(false);
+                          setIsAuthenticated(true);
+                          // Show account created animation (same as recovery phrase flow)
+                          setShowAccountCreated(true);
+                        }}
+                      />
+                    )}
+
                     {/* Unlock Screen - for existing wallet */}
                     {currentPage === 'unlock' && needsUnlock && walletId && (
                       <UnlockWallet 
