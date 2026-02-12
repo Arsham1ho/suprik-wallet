@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { RefreshCw, TrendingUp, TrendingDown, Loader2 } from 'lucide-react';
+import { RefreshCw, TrendingUp, TrendingDown, Loader2, Bot } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useLanguage } from '../../utils/i18n/LanguageContext';
 import { useTheme } from '../../utils/ThemeContext';
 import { STOCK_TOKENS, INDEX_ETFS, STOCKS_ONLY, type StockToken } from '../../utils/stockTokens';
+import { StockAIChat } from './StockAIChat';
 import type { Token } from './Home';
 
 interface StockMarketProps {
@@ -16,9 +17,12 @@ interface StockPrice {
   change24h: number;
 }
 
+type Tab = 'stocks' | 'ai';
+
 export function StockMarket({ walletId, onViewStock }: StockMarketProps) {
   const { t } = useLanguage();
   const { colors } = useTheme();
+  const [tab, setTab] = useState<Tab>('stocks');
   const [prices, setPrices] = useState<Map<string, StockPrice>>(new Map());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -193,13 +197,49 @@ export function StockMarket({ walletId, onViewStock }: StockMarketProps) {
           animate={{ opacity: 1, y: 0 }}
         >
           <h1 className="text-2xl font-bold">{t.nav.stocks}</h1>
-          <button
-            onClick={() => fetchAllPrices()}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900/50 transition-colors"
-          >
-            <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
+          {tab === 'stocks' && (
+            <button
+              onClick={() => fetchAllPrices()}
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900/50 transition-colors"
+            >
+              <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+          )}
         </motion.div>
+
+        {/* Tab Switcher */}
+        <div className="flex gap-2 mb-5">
+          <button
+            onClick={() => setTab('stocks')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+              tab === 'stocks'
+                ? 'text-white'
+                : 'bg-slate-900/50 text-slate-400 hover:text-white border border-slate-800/30'
+            }`}
+            style={tab === 'stocks' ? { backgroundColor: colors.primary } : undefined}
+          >
+            <TrendingUp className="w-4 h-4" />
+            Stocks
+          </button>
+          <button
+            onClick={() => setTab('ai')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all ${
+              tab === 'ai'
+                ? 'text-white'
+                : 'bg-slate-900/50 text-slate-400 hover:text-white border border-slate-800/30'
+            }`}
+            style={tab === 'ai' ? { backgroundColor: colors.primary } : undefined}
+          >
+            <Bot className="w-4 h-4" />
+            AI Chat
+          </button>
+        </div>
+
+        {/* AI Chat Tab */}
+        {tab === 'ai' && <StockAIChat walletId={walletId} />}
+
+        {/* Stocks Tab */}
+        {tab === 'stocks' && <>
 
         {/* Powered by badge */}
         <motion.div
@@ -294,6 +334,8 @@ export function StockMarket({ walletId, onViewStock }: StockMarketProps) {
         <p className="text-center text-xs text-slate-600 mt-6 mb-2 px-4">
           xStock tokens are backed 1:1 by real shares held in custody by Backed Finance. Trade via Jupiter swap.
         </p>
+
+        </>}
       </div>
     </div>
   );
