@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
 import { SecureStorage, WalletStorage, deriveAddresses } from './wallet';
+import { getUserSettings } from './userSettings';
 
 // Rate limiting for unlock attempts - prevents brute force attacks
 const UNLOCK_RATE_LIMIT_KEY = 'saturn_unlock_attempts';
@@ -182,6 +183,35 @@ export function WalletProvider({
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isUnlocked]);
 
+  // Inactivity auto-lock: locks wallet after configured idle timeout
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!isUnlocked || !walletId) return;
+
+    const settings = getUserSettings(walletId);
+    const timeoutMs = (settings.autoLockMinutes || 0) * 60 * 1000;
+    if (timeoutMs <= 0) return; // Auto-lock disabled
+
+    const resetTimer = () => {
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = setTimeout(() => {
+        secureSession.clear();
+        setIsUnlocked(false);
+        setAddresses(null);
+        window.dispatchEvent(new CustomEvent('walletSessionLost'));
+      }, timeoutMs);
+    };
+
+    const events: (keyof DocumentEventMap)[] = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach(e => document.addEventListener(e, resetTimer, { passive: true }));
+    resetTimer(); // Start initial timer
+
+    return () => {
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+      events.forEach(e => document.removeEventListener(e, resetTimer));
+    };
+  }, [isUnlocked, walletId]);
+
   // Listen for account switch events
   useEffect(() => {
     const handleAccountSwitch = async (event: CustomEvent) => {
@@ -324,36 +354,6 @@ export function WalletProvider({
         }
       } catch (error) {
         // Non-critical, wallet still works
-      }
-
-      // Store addresses in server KV store for blockchain check endpoint
-      if (walletId) {
-        try {
-          const { projectId, publicAnonKey } = await import('../utils/supabase/info');
-
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-          await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/store-addresses`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${publicAnonKey}`,
-              },
-              body: JSON.stringify({
-                walletId,
-                addresses: derivedAddresses,
-              }),
-              signal: controller.signal,
-            }
-          );
-
-          clearTimeout(timeoutId);
-        } catch (error: any) {
-          // Non-critical error, wallet still works locally
-        }
       }
 
       return true;

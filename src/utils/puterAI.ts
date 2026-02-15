@@ -33,11 +33,17 @@ export async function loadPuterSDK(): Promise<void> {
     const script = document.createElement('script');
     script.src = 'https://js.puter.com/v2/';
     script.async = true;
+    script.crossOrigin = 'anonymous';
     script.onload = () => {
-      // Poll for puter.ai to become available
+      // Poll for puter.ai to become available, then validate API shape
       let attempts = 0;
       const check = () => {
         if (window.puter?.ai) {
+          // Validate expected API shape to detect CDN tampering
+          if (typeof window.puter.ai.chat !== 'function') {
+            reject(new Error('Puter SDK loaded but API shape is invalid'));
+            return;
+          }
           puterReady = true;
           resolve();
         } else if (attempts < 50) {

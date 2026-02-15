@@ -559,10 +559,9 @@ export function Settings({ onSignOut, walletId, onLockWallet, onSwitchAccount, o
       </div>
 
       {/* Dev Mode Dialog */}
-      <DevModeDialog 
-        open={devDialogOpen} 
-        onOpenChange={setDevDialogOpen} 
-        walletId={walletId}
+      <DevModeDialog
+        open={devDialogOpen}
+        onOpenChange={setDevDialogOpen}
         onTransactionAdded={() => {
           toast.success('Transaction simulated successfully!');
         }}

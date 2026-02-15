@@ -143,7 +143,7 @@ export function VerifyParabolicInfo({ onBack }: VerifyParabolicInfoProps) {
                 <div className="p-3 bg-slate-950 rounded-lg">
                   <div className="text-slate-400 mb-1">Logo URL</div>
                   <div className="font-mono text-xs break-all text-purple-400">{data.image}</div>
-                  {data.image && (
+                  {data.image && /^https?:\/\//.test(data.image) && (
                     <img src={data.image} alt={data.name} className="w-12 h-12 mt-2 rounded-full" />
                   )}
                 </div>
@@ -170,14 +170,18 @@ export function VerifyParabolicInfo({ onBack }: VerifyParabolicInfoProps) {
 
                 <div className="p-3 bg-slate-950 rounded-lg">
                   <div className="text-slate-400 mb-1">Website</div>
-                  <a 
-                    href={data.links?.homepage} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-purple-400 hover:text-purple-300 break-all text-xs"
-                  >
-                    {data.links?.homepage}
-                  </a>
+                  {data.links?.homepage && /^https?:\/\//.test(data.links.homepage) ? (
+                    <a
+                      href={data.links.homepage}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-purple-400 hover:text-purple-300 break-all text-xs"
+                    >
+                      {data.links.homepage}
+                    </a>
+                  ) : (
+                    <span className="text-slate-500 text-xs">N/A</span>
+                  )}
                 </div>
 
                 <div className="p-3 bg-slate-950 rounded-lg">

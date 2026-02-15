@@ -6,7 +6,7 @@
  */
 
 // ⚠️ INCREMENT THIS ON EVERY DEPLOY TO FORCE UPDATE
-const VERSION = '2.1.52';
+const VERSION = '2.1.53';
 
 const CACHE_NAME = `suprik-wallet-v${VERSION}`;
 const RUNTIME_CACHE = `suprik-runtime-v${VERSION}`;
@@ -122,26 +122,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // NETWORK FIRST for everything else (fresh data priority)
+  // NETWORK ONLY for everything else (no caching of API/RPC responses)
+  // Caching dynamic responses risks cache poisoning from rogue RPC/API servers
   event.respondWith(
     fetch(event.request)
-      .then((response) => {
-        // Cache successful responses for offline use
-        if (response.status === 200) {
-          const responseClone = response.clone();
-          caches.open(RUNTIME_CACHE).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return response;
-      })
       .catch(() => {
-        // Fallback to cache if network fails
-        return caches.match(event.request).then((cached) => {
-          return cached || new Response('Offline', {
-            status: 503,
-            statusText: 'Service Unavailable',
-          });
+        return new Response('Offline', {
+          status: 503,
+          statusText: 'Service Unavailable',
         });
       })
   );
@@ -169,7 +157,20 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const urlToOpen = event.notification.data?.url || '/';
+  const rawUrl = event.notification.data?.url || '/';
+
+  // Validate URL is same-origin to prevent phishing via malicious push notifications
+  let urlToOpen = '/';
+  try {
+    const parsed = new URL(rawUrl, self.location.origin);
+    if (parsed.origin === self.location.origin) {
+      urlToOpen = parsed.href;
+    } else {
+      console.warn('[SW] Blocked cross-origin notification URL:', rawUrl);
+    }
+  } catch {
+    // Invalid URL — fall back to root
+  }
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
@@ -208,11 +209,22 @@ self.addEventListener('message', (event) => {
   }
 
   if (event.data.type === 'CACHE_URLS') {
-    event.waitUntil(
-      caches.open(RUNTIME_CACHE).then((cache) => {
-        return cache.addAll(event.data.urls);
-      })
-    );
+    // Only allow caching same-origin static asset URLs
+    const safeUrls = (event.data.urls || []).filter((url) => {
+      try {
+        const parsed = new URL(url, self.location.origin);
+        return parsed.origin === self.location.origin && parsed.pathname.startsWith('/assets/');
+      } catch {
+        return false;
+      }
+    });
+    if (safeUrls.length > 0) {
+      event.waitUntil(
+        caches.open(RUNTIME_CACHE).then((cache) => {
+          return cache.addAll(safeUrls);
+        })
+      );
+    }
   }
 });
 

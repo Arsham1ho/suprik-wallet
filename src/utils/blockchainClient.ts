@@ -15,6 +15,7 @@ import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { getHeliusApiKey } from './env';
 import { dedupe } from './requestDeduplication';
 import { TOKEN_BY_MINT } from './tokenRegistry';
+import { executeWithFailover } from './rpcFailover';
 
 export type NetworkMode = 'mainnet' | 'testnet' | 'devnet';
 
@@ -34,43 +35,11 @@ export interface TokenBalance {
   price?: number;
 }
 
-// Cache for connections to avoid creating multiple instances
-const connectionCache = new Map<string, Connection>();
-
 /**
- * Get Solana RPC endpoint based on network
+ * Map NetworkMode to rpcFailover network string
  */
-function getSolanaEndpoint(networkMode: NetworkMode): string {
-  const heliusKey = getHeliusApiKey();
-
-  if (heliusKey) {
-    // Use Helius RPC (faster, more reliable, higher rate limits)
-    const network = networkMode === 'mainnet' ? 'mainnet' : 'devnet';
-    return `https://${network}.helius-rpc.com/?api-key=${heliusKey}`;
-  }
-
-  // Fallback to public RPC
-  if (networkMode === 'mainnet') {
-    return 'https://api.mainnet-beta.solana.com';
-  }
-  return 'https://api.devnet.solana.com';
-}
-
-/**
- * Get or create a Solana connection
- */
-function getConnection(networkMode: NetworkMode): Connection {
-  const endpoint = getSolanaEndpoint(networkMode);
-
-  if (!connectionCache.has(endpoint)) {
-    console.log('[BlockchainClient] Creating new connection to:', endpoint.includes('helius') ? 'Helius RPC' : 'Public RPC');
-    connectionCache.set(endpoint, new Connection(endpoint, {
-      commitment: 'confirmed',
-      confirmTransactionInitialTimeout: 60000,
-    }));
-  }
-
-  return connectionCache.get(endpoint)!;
+function getFailoverNetwork(networkMode: NetworkMode): 'solana-mainnet' | 'solana-devnet' {
+  return networkMode === 'mainnet' ? 'solana-mainnet' : 'solana-devnet';
 }
 
 /**
@@ -87,27 +56,33 @@ export async function fetchSolanaBalanceClient(
       try {
         console.log(`[BlockchainClient] Fetching Solana balance for ${address.slice(0, 8)}... on ${networkMode}`);
 
-        const connection = getConnection(networkMode);
-        const pubkey = new PublicKey(address);
+        const network = getFailoverNetwork(networkMode);
 
-        // Fetch SOL balance directly from RPC
-        const lamports = await connection.getBalance(pubkey, 'confirmed');
-        const solBalance = lamports / LAMPORTS_PER_SOL;
+        // Use RPC failover system - automatically tries Helius → Public → Ankr → QuickNode → Serum
+        const result = await executeWithFailover(network, async (connection) => {
+          const pubkey = new PublicKey(address);
 
-        console.log(`[BlockchainClient] SOL balance: ${solBalance.toFixed(6)} SOL`);
+          // Fetch SOL balance directly from RPC
+          const lamports = await connection.getBalance(pubkey, 'confirmed');
+          const solBalance = lamports / LAMPORTS_PER_SOL;
 
-        // Fetch SPL tokens using Helius DAS API or standard RPC
-        const tokens = await fetchSPLTokens(address, networkMode, connection);
+          console.log(`[BlockchainClient] SOL balance: ${solBalance.toFixed(6)} SOL`);
 
-        console.log(`[BlockchainClient] Found ${tokens.length} SPL tokens`);
+          // Fetch SPL tokens using Helius DAS API or standard RPC
+          const tokens = await fetchSPLTokens(address, networkMode, connection);
 
-        return {
-          native: solBalance,
-          tokens,
-          totalUsdValue: 0, // Will be calculated by caller with prices
-        };
+          console.log(`[BlockchainClient] Found ${tokens.length} SPL tokens`);
+
+          return {
+            native: solBalance,
+            tokens,
+            totalUsdValue: 0, // Will be calculated by caller with prices
+          };
+        });
+
+        return result;
       } catch (error: any) {
-        console.error('[BlockchainClient] Error fetching Solana balance:', error.message);
+        console.error('[BlockchainClient] Error fetching Solana balance (all providers failed):', error.message);
 
         // Return empty balance on error (graceful degradation)
         return {
@@ -367,15 +342,9 @@ export async function fetchTokenPricesClient(
         console.log(`[BlockchainClient] Got prices for ${Object.keys(prices).length} tokens`);
         return prices;
       } catch (error) {
-        console.warn('[BlockchainClient] Jupiter Price API failed, using fallback prices');
-
-        // Fallback prices
-        return {
-          'SOL': 245.00,
-          'So11111111111111111111111111111111111111112': 245.00,
-          'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': 1.00, // USDC
-          'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': 1.00, // USDT
-        };
+        // Re-throw so caller (tokenLoader.ts) can use its own fallback chain
+        // NEVER return hardcoded stale prices — crypto prices change constantly
+        throw error;
       }
     },
     { cacheTTL: 30000 } // Cache prices for 30 seconds
@@ -388,9 +357,12 @@ export async function fetchTokenPricesClient(
 export async function getSolPrice(): Promise<number> {
   try {
     const prices = await fetchTokenPricesClient(['So11111111111111111111111111111111111111112']);
-    return prices['SOL'] || prices['So11111111111111111111111111111111111111112'] || 245.00;
+    const price = prices['SOL'] || prices['So11111111111111111111111111111111111111112'];
+    if (!price) throw new Error('No SOL price available');
+    return price;
   } catch {
-    return 245.00; // Fallback price
+    // Re-throw — caller should use localStorage-cached price or show "unavailable"
+    throw new Error('SOL price fetch failed');
   }
 }
 

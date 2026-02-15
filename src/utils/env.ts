@@ -15,17 +15,31 @@ const ENCRYPTED_JUPITER_KEY = 'suprik_jupiter_encrypted';
 const API_KEY_SECRET = 'suprik_api_secret';
 
 /**
- * Get or create a random secret for encrypting API keys
+ * Get or create a random secret for encrypting API keys.
+ * Stored in sessionStorage (not localStorage) so the decryption key
+ * is never persisted alongside the encrypted ciphertext.
+ * On new sessions, keys are re-fetched from the server or env vars.
  */
 function getApiKeySecret(): string {
-  let secret = localStorage.getItem(API_KEY_SECRET);
+  let secret = sessionStorage.getItem(API_KEY_SECRET);
   if (!secret) {
-    const randomBytes = crypto.getRandomValues(new Uint8Array(32));
-    secret = btoa(String.fromCharCode(...randomBytes));
-    localStorage.setItem(API_KEY_SECRET, secret);
+    // Migrate: check if legacy secret exists in localStorage
+    const legacySecret = localStorage.getItem(API_KEY_SECRET);
+    if (legacySecret) {
+      secret = legacySecret;
+      sessionStorage.setItem(API_KEY_SECRET, secret);
+      localStorage.removeItem(API_KEY_SECRET);
+    } else {
+      const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+      secret = btoa(String.fromCharCode(...randomBytes));
+      sessionStorage.setItem(API_KEY_SECRET, secret);
+    }
   }
   return secret;
 }
+
+const CURRENT_ITERATIONS = 600000;
+const LEGACY_ITERATIONS = 100000;
 
 /**
  * Encrypt an API key for storage
@@ -50,7 +64,7 @@ async function encryptApiKey(apiKey: string): Promise<string> {
     {
       name: 'PBKDF2',
       salt: salt,
-      iterations: 100000, // Lower for API keys (less sensitive than mnemonic)
+      iterations: CURRENT_ITERATIONS,
       hash: 'SHA-256'
     },
     keyMaterial,
@@ -76,49 +90,65 @@ async function encryptApiKey(apiKey: string): Promise<string> {
 }
 
 /**
- * Decrypt an API key from storage
+ * Try decrypting with a specific iteration count
+ */
+async function tryDecrypt(encryptedJson: string, iterations: number): Promise<string | null> {
+  const { salt, iv, data } = JSON.parse(encryptedJson);
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const secret = sessionStorage.getItem(API_KEY_SECRET) || localStorage.getItem(API_KEY_SECRET);
+
+  if (!secret) return null;
+
+  const saltArray = new Uint8Array(atob(salt).split('').map(c => c.charCodeAt(0)));
+  const ivArray = new Uint8Array(atob(iv).split('').map(c => c.charCodeAt(0)));
+  const encryptedArray = new Uint8Array(atob(data).split('').map(c => c.charCodeAt(0)));
+
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits', 'deriveKey']
+  );
+
+  const key = await crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: saltArray,
+      iterations,
+      hash: 'SHA-256'
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+
+  const decryptedData = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: ivArray },
+    key,
+    encryptedArray
+  );
+
+  return decoder.decode(decryptedData);
+}
+
+/**
+ * Decrypt an API key from storage.
+ * Tries current iteration count first, then falls back to legacy for migration.
  */
 async function decryptApiKey(encryptedJson: string): Promise<string | null> {
+  // Try current iteration count
   try {
-    const { salt, iv, data } = JSON.parse(encryptedJson);
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-    const secret = localStorage.getItem(API_KEY_SECRET);
+    return await tryDecrypt(encryptedJson, CURRENT_ITERATIONS);
+  } catch {
+    // Fall through to legacy attempt
+  }
 
-    if (!secret) return null;
-
-    const saltArray = new Uint8Array(atob(salt).split('').map(c => c.charCodeAt(0)));
-    const ivArray = new Uint8Array(atob(iv).split('').map(c => c.charCodeAt(0)));
-    const encryptedArray = new Uint8Array(atob(data).split('').map(c => c.charCodeAt(0)));
-
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(secret),
-      { name: 'PBKDF2' },
-      false,
-      ['deriveBits', 'deriveKey']
-    );
-
-    const key = await crypto.subtle.deriveKey(
-      {
-        name: 'PBKDF2',
-        salt: saltArray,
-        iterations: 100000,
-        hash: 'SHA-256'
-      },
-      keyMaterial,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt', 'decrypt']
-    );
-
-    const decryptedData = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: ivArray },
-      key,
-      encryptedArray
-    );
-
-    return decoder.decode(decryptedData);
+  // Try legacy iteration count (keys encrypted before the upgrade)
+  try {
+    return await tryDecrypt(encryptedJson, LEGACY_ITERATIONS);
   } catch {
     return null;
   }

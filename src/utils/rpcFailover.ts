@@ -25,40 +25,27 @@ interface RPCProviderConfig {
 // URLs are generated dynamically to use current API key from encrypted storage
 function getSolanaMainnetProviders(): RPCProviderConfig[] {
   return [
-    // Primary: Helius (if API key available)
+    // Primary: Helius (if API key available, skip if no key)
+    ...(getHeliusApiKey()
+      ? [
+          {
+            name: 'Helius',
+            getUrl: () => `https://mainnet.helius-rpc.com/?api-key=${getHeliusApiKey()}`,
+            priority: 1,
+          },
+        ]
+      : []),
+    // Secondary: PublicNode (free, CORS-friendly, reliable)
     {
-      name: 'Helius',
-      getUrl: () => {
-        const apiKey = getHeliusApiKey();
-        return apiKey
-          ? `https://mainnet.helius-rpc.com/?api-key=${apiKey}`
-          : 'https://api.mainnet-beta.solana.com'; // Fallback if no key
-      },
-      priority: 1,
+      name: 'PublicNode',
+      getUrl: () => 'https://solana-rpc.publicnode.com',
+      priority: 2,
     },
-    // Secondary: Public Solana RPC
+    // Tertiary: Solana public RPC (may block CORS from localhost)
     {
       name: 'Solana Mainnet',
       getUrl: () => 'https://api.mainnet-beta.solana.com',
-      priority: 2,
-    },
-    // Tertiary: Ankr free tier
-    {
-      name: 'Ankr',
-      getUrl: () => 'https://rpc.ankr.com/solana',
       priority: 3,
-    },
-    // Quaternary: QuickNode public endpoint
-    {
-      name: 'QuickNode',
-      getUrl: () => 'https://solana-mainnet.quiknode.pro/public',
-      priority: 4,
-    },
-    // Fallback: Serum Project
-    {
-      name: 'Serum',
-      getUrl: () => 'https://solana-api.projectserum.com',
-      priority: 5,
     },
   ];
 }

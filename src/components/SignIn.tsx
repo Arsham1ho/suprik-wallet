@@ -17,13 +17,13 @@ import { Keypair } from '@solana/web3.js';
 type PasswordStrength = 'weak' | 'medium' | 'strong';
 
 function getPasswordStrength(password: string): PasswordStrength {
-  if (password.length < 8) return 'weak';
+  if (password.length < 12) return 'weak';
 
   let score = 0;
 
   // Length bonus
-  if (password.length >= 8) score += 1;
   if (password.length >= 12) score += 1;
+  if (password.length >= 14) score += 1;
   if (password.length >= 16) score += 1;
 
   // Character variety
@@ -227,8 +227,8 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
   };
 
   const handlePrivateKeyImport = async (shouldEnableBiometric?: boolean) => {
-    if (!password || password.length < 8) {
-      toast.error('Password must be at least 8 characters');
+    if (!password || password.length < 12) {
+      toast.error('Password must be at least 12 characters');
       return;
     }
 
@@ -540,8 +540,8 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
 
   // Handle password step continue
   const handlePasswordContinue = () => {
-    if (password.length < 8) {
-      toast.error('Password must be at least 8 characters');
+    if (password.length < 12) {
+      toast.error('Password must be at least 12 characters');
       return;
     }
     setStep('confirm-password');
@@ -938,7 +938,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full bg-slate-950/50 border border-slate-800/50 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-lg"
-                    placeholder="Enter password (min 8 characters)"
+                    placeholder="Enter password (min 12 characters)"
                     autoFocus
                   />
                 </div>
@@ -977,7 +977,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
               <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                 <GradientButton
                   onClick={handlePasswordContinue}
-                  disabled={password.length < 8}
+                  disabled={password.length < 12}
                   className="w-full h-12"
                 >
                   Continue

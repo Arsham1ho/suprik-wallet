@@ -50,7 +50,7 @@ import { useWallet } from "../../utils/WalletContext";
 import { useNetwork } from "../../utils/NetworkContext";
 import { useTheme } from "../../utils/ThemeContext";
 import { AccountManager } from "../../utils/accountManager";
-import { decryptWithPassword } from "../../utils/wallet";
+import { decryptWithPassword, decryptImportedSecret } from "../../utils/wallet";
 import {
   getJupiterSwapQuote,
   executeJupiterSwap,
@@ -1307,15 +1307,13 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
 
         if (hasStoredPrivateKey || activeAccount?.isPrivateKeyImport) {
           // This account has its own private key in storage - use it
-          console.log('[Swap] ⚠️ Using stored private key for imported account');
-          const base64Key = storedPrivateKeys[accountAddress!];
-          if (base64Key) {
-            try {
-              privateKeyBase58 = atob(base64Key);
-              console.log('[Swap] Retrieved private key for swap');
-            } catch (e) {
-              console.error('[Swap] Failed to decode private key:', e);
-              throw new Error("Failed to retrieve private key. Please delete and re-import this account.");
+          const storedKey = storedPrivateKeys[accountAddress!];
+          if (storedKey) {
+            const decrypted = await decryptImportedSecret(storedKey, wallet.password);
+            if (decrypted) {
+              privateKeyBase58 = decrypted;
+            } else {
+              throw new Error("Failed to decrypt private key. Please delete and re-import this account.");
             }
           } else {
             throw new Error("Private key not found for this account. Please delete and re-import it.");
@@ -1334,14 +1332,15 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
 
             mnemonicToUse = decryptedMnemonic;
           } else if (activeAccount?.importedWalletId) {
-            // Check for mnemonic stored in saturn_imported_mnemonics (base64 encoded)
+            // Check for mnemonic stored in saturn_imported_mnemonics (encrypted or legacy base64)
             const storedMnemonics = JSON.parse(localStorage.getItem('saturn_imported_mnemonics') || '{}');
-            const base64Mnemonic = storedMnemonics[activeAccount.importedWalletId];
-            if (base64Mnemonic) {
-              try {
-                mnemonicToUse = atob(base64Mnemonic);
-              } catch {
-                throw new Error("Failed to retrieve imported account mnemonic. Please delete and re-import this account.");
+            const storedMnemonic = storedMnemonics[activeAccount.importedWalletId];
+            if (storedMnemonic) {
+              const decrypted = await decryptImportedSecret(storedMnemonic, wallet.password);
+              if (decrypted) {
+                mnemonicToUse = decrypted;
+              } else {
+                throw new Error("Failed to decrypt imported account mnemonic. Please delete and re-import this account.");
               }
             } else {
               throw new Error("Imported account mnemonic not found. Please delete and re-import this account.");
@@ -1957,9 +1956,9 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           {/* From */}
           <div className="relative bg-slate-900/50 border border-slate-800/30 rounded-2xl p-5 backdrop-blur-sm">
             <div className="relative z-10">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-3 h-6">
                 <span className="text-slate-400 text-sm">You pay</span>
-                {fromTokenData && fromTokenData.hasBalance && (
+                {fromTokenData && fromTokenData.hasBalance ? (
                   <div className="flex items-center gap-2">
                     <span className="text-slate-400 text-sm">
                       Balance: {fromTokenData.balance.toFixed(4)}
@@ -1974,6 +1973,8 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
                       MAX
                     </Button>
                   </div>
+                ) : (
+                  <span className="text-slate-400 text-sm invisible">Balance: 0.0000</span>
                 )}
               </div>
 
@@ -2019,8 +2020,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
                       e.preventDefault();
                     }
                   }}
-                  style={{ fontSize: '1.5rem' }}
-                  className="flex-1 bg-transparent border-0 text-white font-medium placeholder:text-slate-700 h-14 focus:outline-none focus:ring-0 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="flex-1 bg-transparent border-0 text-2xl text-white font-medium placeholder:text-slate-700 h-14 focus:outline-none focus:ring-0 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
               </div>
 
@@ -2049,12 +2049,14 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           {/* To */}
           <div className="relative bg-slate-900/50 border border-slate-800/30 rounded-2xl p-5 backdrop-blur-sm">
             <div className="relative z-10">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-3 h-6">
                 <span className="text-slate-400 text-sm">You receive</span>
-                {toTokenData && toTokenData.hasBalance && (
+                {toTokenData && toTokenData.hasBalance ? (
                   <span className="text-slate-400 text-sm">
                     Balance: {toTokenData.balance.toFixed(4)}
                   </span>
+                ) : (
+                  <span className="text-slate-400 text-sm invisible">Balance: 0.0000</span>
                 )}
               </div>
 

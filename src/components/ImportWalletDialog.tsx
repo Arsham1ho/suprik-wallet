@@ -317,10 +317,12 @@ export function ImportWalletDialog({
       const walletId = await deriveWalletId(mnemonic);
       let addedCount = 0;
 
-      // Store the imported mnemonic for these accounts (base64 encoded for simple storage)
-      // This allows transactions to work without requiring password each time
+      // Encrypt and store the imported mnemonic (AES-256-GCM)
+      if (!wallet.password) {
+        throw new Error('Wallet must be unlocked to add accounts. Please unlock first.');
+      }
       const storedMnemonics = JSON.parse(localStorage.getItem('saturn_imported_mnemonics') || '{}');
-      storedMnemonics[walletId] = btoa(mnemonic);
+      storedMnemonics[walletId] = await encryptWithPassword(mnemonic, wallet.password);
       localStorage.setItem('saturn_imported_mnemonics', JSON.stringify(storedMnemonics));
 
       for (const selectedIndex of selectedAccounts.sort((a, b) => a - b)) {
@@ -487,10 +489,12 @@ export function ImportWalletDialog({
           return;
         }
 
-        // Store the imported mnemonic for these accounts (base64 encoded for simple storage)
-        // This allows transactions to work without requiring password each time
+        // Encrypt and store the imported mnemonic (AES-256-GCM)
+        if (!wallet.password) {
+          throw new Error('Wallet must be unlocked to add accounts. Please unlock first.');
+        }
         const storedMnemonics = JSON.parse(localStorage.getItem('saturn_imported_mnemonics') || '{}');
-        storedMnemonics[walletId] = btoa(mnemonic);
+        storedMnemonics[walletId] = await encryptWithPassword(mnemonic, wallet.password);
         localStorage.setItem('saturn_imported_mnemonics', JSON.stringify(storedMnemonics));
 
         // Create unique account ID
@@ -542,9 +546,12 @@ export function ImportWalletDialog({
 
         const uniqueAccountId = `pk_${solanaAddress.slice(0, 8)}_${Date.now()}`;
 
-        // Store the private key for this imported account (base64 encoded)
+        // Encrypt and store the private key (AES-256-GCM)
+        if (!wallet.password) {
+          throw new Error('Wallet must be unlocked to add accounts. Please unlock first.');
+        }
         const storedPrivateKeys = JSON.parse(localStorage.getItem('saturn_imported_private_keys') || '{}');
-        storedPrivateKeys[solanaAddress] = btoa(key);
+        storedPrivateKeys[solanaAddress] = await encryptWithPassword(key, wallet.password);
         localStorage.setItem('saturn_imported_private_keys', JSON.stringify(storedPrivateKeys));
 
         const newAccount = {

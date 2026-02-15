@@ -6,12 +6,10 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
 
 interface DevModeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  walletId: string;
   onTransactionAdded?: () => void;
 }
 
@@ -25,7 +23,7 @@ const supportedTokens = [
   { symbol: 'PAI', name: 'Parabolic AI', chain: 'solana', logo: '🤖', mint: 'parabolic-ai' },
 ];
 
-export function DevModeDialog({ open, onOpenChange, walletId, onTransactionAdded }: DevModeDialogProps) {
+export function DevModeDialog({ open, onOpenChange, onTransactionAdded }: DevModeDialogProps) {
   const [selectedToken, setSelectedToken] = useState('SOL');
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -36,55 +34,8 @@ export function DevModeDialog({ open, onOpenChange, walletId, onTransactionAdded
       return;
     }
 
-    try {
-      setLoading(true);
-      // Simulating receive in dev mode
-
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/dev-receive`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({
-            walletId,
-            tokenSymbol: selectedToken,
-            amount: parseFloat(amount),
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        console.error('Dev receive error response:', error);
-        throw new Error(error.error || 'Failed to simulate transaction');
-      }
-
-      const data = await response.json();
-      console.log('Simulated transaction successful:', data);
-
-      toast.success(`✅ Dev Mode: Received ${amount} ${selectedToken}!`);
-      setAmount('');
-      
-      // Trigger refresh in Home page
-      window.dispatchEvent(new Event('walletBalanceUpdated'));
-      
-      onTransactionAdded?.();
-      onOpenChange(false);
-    } catch (error: any) {
-      console.error('Error simulating receive:', error);
-      
-      // Show more helpful error message
-      if (error.message.includes('not enabled')) {
-        toast.error('Please enable Dev Mode in Settings first');
-      } else {
-        toast.error(error.message || 'Failed to simulate transaction');
-      }
-    } finally {
-      setLoading(false);
-    }
+    toast.info('Dev Mode simulation is no longer available. Use the real Solana devnet faucet at faucet.solana.com to get test tokens.');
+    onOpenChange(false);
   };
 
   return (

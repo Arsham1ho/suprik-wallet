@@ -3,7 +3,6 @@ import { Button } from './ui/button';
 import { GradientButton } from './GradientButton';
 import { Check, Fingerprint, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
-import { motion, AnimatePresence } from 'motion/react';
 import { SecureStorage, WalletStorage } from '../utils/wallet';
 import { useWallet } from '../utils/WalletContext';
 import { isBiometricAvailable, registerBiometric, getBiometricTypeName } from '../utils/biometric';
@@ -17,14 +16,14 @@ interface SetupPasswordProps {
 type PasswordStrength = 'weak' | 'medium' | 'strong';
 
 function getPasswordStrength(password: string): PasswordStrength {
-  if (password.length < 8) return 'weak';
+  if (password.length < 12) return 'weak';
 
   let score = 0;
 
   // Length bonus
-  if (password.length >= 8) score += 1;
   if (password.length >= 12) score += 1;
   if (password.length >= 16) score += 1;
+  if (password.length >= 20) score += 1;
 
   // Character variety
   if (/[a-z]/.test(password)) score += 1;
@@ -64,8 +63,20 @@ export function SetupPassword({ walletId, onComplete }: SetupPasswordProps) {
 
   const handleContinue = async (useBiometric?: boolean) => {
     if (step === 'password') {
-      if (password.length < 8) {
-        toast.error('Password must be at least 8 characters');
+      if (password.length < 12) {
+        toast.error('Password must be at least 12 characters');
+        return;
+      }
+      if (!/[A-Z]/.test(password)) {
+        toast.error('Password must include at least one uppercase letter');
+        return;
+      }
+      if (!/[0-9]/.test(password)) {
+        toast.error('Password must include at least one number');
+        return;
+      }
+      if (!/[^A-Za-z0-9]/.test(password)) {
+        toast.error('Password must include at least one special character');
         return;
       }
       setStep('confirm-password');
@@ -103,10 +114,8 @@ export function SetupPassword({ walletId, onComplete }: SetupPasswordProps) {
       await SecureStorage.storeMnemonic(mnemonic, password);
 
       // Clear the OAuth auto-unlock password - user now has their own password
+      // (auto-unlock in UnlockWallet checks getOAuthPassword() first, so clearing it is sufficient)
       WalletStorage.clearOAuthPassword();
-
-      // Remove the social auth method flag so auto-unlock is disabled
-      localStorage.removeItem(`${walletId}_auth_method`);
 
       // Unlock wallet with the new password
       const unlocked = await wallet.unlock(password);
@@ -160,214 +169,175 @@ export function SetupPassword({ walletId, onComplete }: SetupPasswordProps) {
         background: 'black',
       }}
     >
-      <AnimatePresence mode="wait">
-        {/* Password Step */}
-        {step === 'password' && (
-          <motion.div
-            key="password"
-            className="space-y-5"
-            style={{ paddingTop: '90px' }}
-            initial={{ y: 10 }}
-            animate={{ y: 0 }}
-            exit={{ y: -10 }}
-            transition={{ duration: 0.2 }}
-          >
-            <div className="space-y-2">
-              <h1 className="text-3xl font-bold">Create Password</h1>
-              <p className="text-slate-400 leading-relaxed">
-                This password encrypts your wallet on this device. You'll need it to unlock Suprik.
-              </p>
-            </div>
+      {/* Password Step */}
+      {step === 'password' && (
+        <div className="space-y-5" style={{ paddingTop: '90px' }}>
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold">Create Password</h1>
+            <p className="text-slate-400 leading-relaxed">
+              This password encrypts your wallet on this device. You'll need it to unlock Suprik.
+            </p>
+          </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm text-slate-400 mb-2 block">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-950/50 border border-slate-800/50 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-lg"
-                  placeholder="Enter password (min 8 characters)"
-                  autoFocus
-                />
-              </div>
-
-              {/* Password Strength Indicator */}
-              {password.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="space-y-2"
-                >
-                  <div className="flex gap-1.5">
-                    <div className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
-                      password.length >= 1 ? strengthColors[passwordStrength].bg : 'bg-slate-800'
-                    }`} />
-                    <div className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
-                      passwordStrength === 'medium' || passwordStrength === 'strong' ? strengthColors[passwordStrength].bg : 'bg-slate-800'
-                    }`} />
-                    <div className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
-                      passwordStrength === 'strong' ? strengthColors[passwordStrength].bg : 'bg-slate-800'
-                    }`} />
-                  </div>
-                  <p className={`text-sm ${strengthColors[passwordStrength].text}`}>
-                    Password strength: {strengthColors[passwordStrength].label}
-                  </p>
-                </motion.div>
-              )}
-            </div>
-
-            <div className="bg-blue-950/20 border border-blue-900/30 rounded-xl p-4 backdrop-blur-sm">
-              <p className="text-blue-200/90 text-sm leading-relaxed">
-                <strong className="text-blue-400 font-semibold">Tip:</strong> Use a mix of uppercase, lowercase, numbers, and special characters for a stronger password.
-              </p>
-            </div>
-
-            <GradientButton
-              onClick={() => handleContinue()}
-              disabled={password.length < 8}
-              className="w-full h-12"
-            >
-              Continue
-            </GradientButton>
-          </motion.div>
-        )}
-
-        {/* Confirm Password Step */}
-        {step === 'confirm-password' && (
-          <motion.div
-            key="confirm-password"
-            className="space-y-5"
-            style={{ paddingTop: '90px' }}
-            initial={{ y: 10 }}
-            animate={{ y: 0 }}
-            exit={{ y: -10 }}
-            transition={{ duration: 0.2 }}
-          >
-            <div className="space-y-2">
-              <h1 className="text-3xl font-bold">Confirm Password</h1>
-              <p className="text-slate-400 leading-relaxed">
-                Enter your password again to make sure you remember it.
-              </p>
-            </div>
-
+          <div className="space-y-4">
             <div>
-              <label className="text-sm text-slate-400 mb-2 block">Confirm Password</label>
+              <label className="text-sm text-slate-400 mb-2 block">Password</label>
               <input
                 type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="w-full bg-slate-950/50 border border-slate-800/50 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-lg"
-                placeholder="Re-enter your password"
+                placeholder="Enter password (min 12 characters)"
                 autoFocus
               />
             </div>
 
-            {/* Password match indicator */}
-            {confirmPassword.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`flex items-center gap-2 ${
-                  password === confirmPassword ? 'text-green-400' : 'text-red-400'
-                }`}
-              >
-                {password === confirmPassword ? (
-                  <>
-                    <Check className="w-4 h-4" />
-                    <span className="text-sm">Passwords match</span>
-                  </>
-                ) : (
-                  <span className="text-sm">Passwords do not match</span>
-                )}
-              </motion.div>
+            {/* Password Strength Indicator */}
+            {password.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex gap-1.5">
+                  <div className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                    password.length >= 1 ? strengthColors[passwordStrength].bg : 'bg-slate-800'
+                  }`} />
+                  <div className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                    passwordStrength === 'medium' || passwordStrength === 'strong' ? strengthColors[passwordStrength].bg : 'bg-slate-800'
+                  }`} />
+                  <div className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                    passwordStrength === 'strong' ? strengthColors[passwordStrength].bg : 'bg-slate-800'
+                  }`} />
+                </div>
+                <p className={`text-sm ${strengthColors[passwordStrength].text}`}>
+                  Password strength: {strengthColors[passwordStrength].label}
+                </p>
+              </div>
             )}
+          </div>
 
-            <div className="bg-amber-950/20 border border-amber-900/30 rounded-xl p-4 backdrop-blur-sm">
-              <p className="text-amber-200/90 text-sm leading-relaxed">
-                <strong className="text-amber-400 font-semibold">Important:</strong> This password cannot be recovered. Make sure to remember it!
-              </p>
+          <div className="bg-blue-950/20 border border-blue-900/30 rounded-xl p-4">
+            <p className="text-blue-200/90 text-sm leading-relaxed">
+              <strong className="text-blue-400 font-semibold">Tip:</strong> Use a mix of uppercase, lowercase, numbers, and special characters for a stronger password.
+            </p>
+          </div>
+
+          <GradientButton
+            onClick={() => handleContinue()}
+            disabled={password.length < 12}
+            className="w-full h-12"
+          >
+            Continue
+          </GradientButton>
+        </div>
+      )}
+
+      {/* Confirm Password Step */}
+      {step === 'confirm-password' && (
+        <div className="space-y-5" style={{ paddingTop: '90px' }}>
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold">Confirm Password</h1>
+            <p className="text-slate-400 leading-relaxed">
+              Enter your password again to make sure you remember it.
+            </p>
+          </div>
+
+          <div>
+            <label className="text-sm text-slate-400 mb-2 block">Confirm Password</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full bg-slate-950/50 border border-slate-800/50 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-lg"
+              placeholder="Re-enter your password"
+              autoFocus
+            />
+          </div>
+
+          {/* Password match indicator */}
+          {confirmPassword.length > 0 && (
+            <div className={`flex items-center gap-2 ${
+              password === confirmPassword ? 'text-green-400' : 'text-red-400'
+            }`}>
+              {password === confirmPassword ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span className="text-sm">Passwords match</span>
+                </>
+              ) : (
+                <span className="text-sm">Passwords do not match</span>
+              )}
+            </div>
+          )}
+
+          <div className="bg-amber-950/20 border border-amber-900/30 rounded-xl p-4">
+            <p className="text-amber-200/90 text-sm leading-relaxed">
+              <strong className="text-amber-400 font-semibold">Important:</strong> This password cannot be recovered. Make sure to remember it!
+            </p>
+          </div>
+
+          <GradientButton
+            onClick={() => handleContinue()}
+            disabled={!confirmPassword || password !== confirmPassword || loading}
+            className="w-full h-12"
+          >
+            {loading && !biometricAvailable ? 'Setting up...' : 'Continue'}
+          </GradientButton>
+        </div>
+      )}
+
+      {/* Biometric Step */}
+      {step === 'biometric' && (
+        <div className="space-y-6" style={{ paddingTop: '90px' }}>
+          <div className="space-y-2 text-center">
+            <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center mb-4">
+              <Fingerprint className="w-12 h-12 text-purple-400" />
+            </div>
+            <h1 className="text-3xl font-bold">Enable {biometricName}?</h1>
+            <p className="text-slate-400 leading-relaxed">
+              Unlock your wallet quickly and securely using {biometricName}.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 p-4 bg-slate-950/50 border border-slate-800/50 rounded-xl">
+              <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
+                <Check className="w-5 h-5 text-green-400" />
+              </div>
+              <div>
+                <p className="text-white font-medium">Quick Access</p>
+                <p className="text-slate-400 text-sm">Unlock in seconds without typing</p>
+              </div>
             </div>
 
+            <div className="flex items-center gap-3 p-4 bg-slate-950/50 border border-slate-800/50 rounded-xl">
+              <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5 text-blue-400" />
+              </div>
+              <div>
+                <p className="text-white font-medium">Secure</p>
+                <p className="text-slate-400 text-sm">Your biometric data stays on device</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-2">
             <GradientButton
-              onClick={() => handleContinue()}
-              disabled={!confirmPassword || password !== confirmPassword || loading}
+              onClick={() => handleContinue(true)}
+              disabled={loading}
               className="w-full h-12"
             >
-              {loading && !biometricAvailable ? 'Setting up...' : 'Continue'}
+              {loading ? 'Setting up...' : `Enable ${biometricName}`}
             </GradientButton>
-          </motion.div>
-        )}
 
-        {/* Biometric Step */}
-        {step === 'biometric' && (
-          <motion.div
-            key="biometric"
-            className="space-y-6"
-            style={{ paddingTop: '90px' }}
-            initial={{ y: 10 }}
-            animate={{ y: 0 }}
-            exit={{ y: -10 }}
-            transition={{ duration: 0.2 }}
-          >
-            <div className="space-y-2 text-center">
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.1 }}
-                className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center mb-4"
-              >
-                <Fingerprint className="w-12 h-12 text-purple-400" />
-              </motion.div>
-              <h1 className="text-3xl font-bold">Enable {biometricName}?</h1>
-              <p className="text-slate-400 leading-relaxed">
-                Unlock your wallet quickly and securely using {biometricName}.
-              </p>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 p-4 bg-slate-950/50 border border-slate-800/50 rounded-xl">
-                <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
-                  <Check className="w-5 h-5 text-green-400" />
-                </div>
-                <div>
-                  <p className="text-white font-medium">Quick Access</p>
-                  <p className="text-slate-400 text-sm">Unlock in seconds without typing</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-4 bg-slate-950/50 border border-slate-800/50 rounded-xl">
-                <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
-                  <ShieldCheck className="w-5 h-5 text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-white font-medium">Secure</p>
-                  <p className="text-slate-400 text-sm">Your biometric data stays on device</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3 pt-2">
-              <GradientButton
-                onClick={() => handleContinue(true)}
-                disabled={loading}
-                className="w-full h-12"
-              >
-                {loading ? 'Setting up...' : `Enable ${biometricName}`}
-              </GradientButton>
-
-              <Button
-                variant="ghost"
-                onClick={() => handleContinue(false)}
-                disabled={loading}
-                className="w-full h-12 text-slate-400 hover:text-white hover:bg-slate-900/50"
-              >
-                Skip for now
-              </Button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <Button
+              variant="ghost"
+              onClick={() => handleContinue(false)}
+              disabled={loading}
+              className="w-full h-12 text-slate-400 hover:text-white hover:bg-slate-900/50"
+            >
+              Skip for now
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

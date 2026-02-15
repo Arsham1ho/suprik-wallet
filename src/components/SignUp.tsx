@@ -4,11 +4,10 @@ import { GradientButton } from './GradientButton';
 import { ArrowLeft, Eye, Copy, Check, Fingerprint, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from './ui/card';
-import { copyToClipboard } from '../utils/clipboard';
+import { copyToClipboardWithAutoClear } from '../utils/clipboard';
 import { motion, AnimatePresence } from 'motion/react';
 import { generateMnemonic, deriveWalletId, SecureStorage, WalletStorage } from '../utils/wallet';
 import { useWallet } from '../utils/WalletContext';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { isBiometricAvailable, registerBiometric, getBiometricTypeName } from '../utils/biometric';
 import { saveUserSettings } from '../utils/userSettings';
 
@@ -20,7 +19,7 @@ interface SignUpProps {
 type PasswordStrength = 'weak' | 'medium' | 'strong';
 
 function getPasswordStrength(password: string): PasswordStrength {
-  if (password.length < 8) return 'weak';
+  if (password.length < 12) return 'weak';
 
   let score = 0;
 
@@ -81,7 +80,7 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
   };
 
   const handleCopy = async () => {
-    const success = await copyToClipboard(seedPhrase);
+    const success = await copyToClipboardWithAutoClear(seedPhrase);
     if (success) {
       setCopied(true);
       toast.success('Copied to clipboard');
@@ -105,8 +104,20 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
     } else if (step === 'phrase' && saved) {
       setStep('password');
     } else if (step === 'password') {
-      if (password.length < 8) {
-        toast.error('Password must be at least 8 characters');
+      if (password.length < 12) {
+        toast.error('Password must be at least 12 characters');
+        return;
+      }
+      if (!/[A-Z]/.test(password)) {
+        toast.error('Password must include at least one uppercase letter');
+        return;
+      }
+      if (!/[0-9]/.test(password)) {
+        toast.error('Password must include at least one number');
+        return;
+      }
+      if (!/[^A-Za-z0-9]/.test(password)) {
+        toast.error('Password must include at least one special character');
         return;
       }
       setStep('confirm-password');
@@ -148,23 +159,6 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
       // Generate default username (Phantom style: lowercase)
       const defaultUsername = `@user${walletId.substring(0, 6).toLowerCase()}`;
       localStorage.setItem('saturn_username', defaultUsername);
-
-      // Register username to backend (don't block on failure)
-      try {
-        await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/update-username`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${publicAnonKey}`,
-            },
-            body: JSON.stringify({ walletId, username: defaultUsername }),
-          }
-        );
-      } catch {
-        // Non-critical: username sync to backend failed
-      }
 
       // Unlock the wallet immediately after creation
       // This ensures addresses are derived and ready when user lands on Home
@@ -418,7 +412,7 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full bg-slate-950/50 border border-slate-800/50 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-lg"
-                    placeholder="Enter password (min 8 characters)"
+                    placeholder="Enter password (min 12 characters)"
                     autoFocus
                   />
                 </div>
@@ -456,7 +450,7 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
 
               <GradientButton
                 onClick={handleContinue}
-                disabled={password.length < 8}
+                disabled={password.length < 12}
                 className="w-full h-12"
               >
                 Continue

@@ -763,6 +763,31 @@ export async function encryptWithPassword(data: string, password: string): Promi
 }
 
 /**
+ * Decrypt an imported secret (mnemonic or private key) that may be stored
+ * in either the new encrypted format (AES-256-GCM JSON) or legacy Base64.
+ * Provides backward compatibility during migration.
+ */
+export async function decryptImportedSecret(storedValue: string, password: string | null): Promise<string | null> {
+  // Check if this is the new encrypted format (JSON with encrypted/salt/iv)
+  try {
+    const parsed = JSON.parse(storedValue);
+    if (parsed.encrypted && parsed.salt && parsed.iv) {
+      if (!password) return null;
+      return await decryptWithPassword(storedValue, password);
+    }
+  } catch {
+    // Not JSON — legacy Base64 format
+  }
+
+  // Legacy Base64 fallback
+  try {
+    return atob(storedValue);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Decrypt data with a password (for retrieving imported mnemonics)
  */
 export async function decryptWithPassword(encryptedJson: string, password: string): Promise<string | null> {

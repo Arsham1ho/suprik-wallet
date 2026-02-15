@@ -13,9 +13,10 @@ import { SuprikLogo } from "./SuprikLogo";
 interface BiometricLockProps {
   walletId: string;
   onUnlock: () => void;
+  onFallbackToPassword?: () => void;
 }
 
-export function BiometricLock({ walletId, onUnlock }: BiometricLockProps) {
+export function BiometricLock({ walletId, onUnlock, onFallbackToPassword }: BiometricLockProps) {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const [showPulse, setShowPulse] = useState(true);
@@ -29,12 +30,13 @@ export function BiometricLock({ walletId, onUnlock }: BiometricLockProps) {
       setBiometricAvailable(available);
 
       if (!available) {
-        console.log(
-          "[BiometricLock] Biometric not available, auto-unlocking..."
-        );
-        toast.info("Biometric authentication not available on this device");
-        // Auto-unlock if biometric is not available
-        setTimeout(() => onUnlock(), 1000);
+        toast.info("Biometric not available — please enter your password");
+        // Fall back to password unlock instead of bypassing auth entirely
+        setTimeout(() => {
+          if (onFallbackToPassword) {
+            onFallbackToPassword();
+          }
+        }, 500);
         return;
       }
 
@@ -49,7 +51,7 @@ export function BiometricLock({ walletId, onUnlock }: BiometricLockProps) {
 
   const handleAuthenticate = async () => {
     if (!biometricAvailable) {
-      onUnlock();
+      if (onFallbackToPassword) onFallbackToPassword();
       return;
     }
 

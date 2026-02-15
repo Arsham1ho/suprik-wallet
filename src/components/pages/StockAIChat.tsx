@@ -22,6 +22,16 @@ interface DisplayMessage extends ChatMessage {
   isStreaming?: boolean;
 }
 
+// Sanitize HTML output to prevent XSS using DOMPurify
+import DOMPurify from 'dompurify';
+
+function sanitizeHtml(html: string): string {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['pre', 'code', 'strong', 'em', 'br', 'ul', 'ol', 'li'],
+    ALLOWED_ATTR: ['class'],
+  });
+}
+
 // Lightweight markdown renderer (bold, italic, code, lists)
 function renderMarkdown(text: string): string {
   let html = text
@@ -60,7 +70,7 @@ function renderMarkdown(text: string): string {
     return `<ol class="my-1 space-y-0.5 list-decimal">${items}</ol>`;
   });
 
-  return html;
+  return sanitizeHtml(html);
 }
 
 const STORAGE_KEY_PREFIX = 'suprik_stock_chat_';
