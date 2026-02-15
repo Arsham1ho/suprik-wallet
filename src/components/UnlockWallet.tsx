@@ -85,62 +85,11 @@ export function UnlockWallet({
     checkBiometricSetup();
   }, [walletId]);
 
-  // Try to auto-unlock with OAuth password on mount (runs in background, doesn't block UI)
+  // No auto-unlock — always require manual password entry.
+  // The stored OAuth password is only used by SetupPassword to decrypt/re-encrypt
+  // the mnemonic when the user signs in via Google/Apple and creates a fresh password.
   useEffect(() => {
-    const tryAutoUnlock = async () => {
-      try {
-        // Check if this is an OAuth wallet
-        const authMethod = localStorage.getItem(`${walletId}_auth_method`);
-        if (authMethod === "social") {
-          console.log(
-            "[UnlockWallet] 🔓 Attempting auto-unlock for OAuth wallet..."
-          );
-
-          // Get stored OAuth password
-          const oauthPassword = await WalletStorage.getOAuthPassword();
-
-          if (oauthPassword) {
-            console.log(
-              "[UnlockWallet] 🔑 OAuth password retrieved successfully"
-            );
-            const success = await wallet.unlock(oauthPassword);
-
-            if (success) {
-              console.log("[UnlockWallet] ✅ Auto-unlock successful!");
-              toast.success("Welcome back!");
-              onUnlock();
-              return;
-            } else {
-              console.warn(
-                "[UnlockWallet] ⚠️ Auto-unlock failed - password decryption failed"
-              );
-            }
-          } else {
-            console.log(
-              "[UnlockWallet] ℹ️ No OAuth password stored, manual unlock required"
-            );
-          }
-        } else {
-          console.log(
-            "[UnlockWallet] ℹ️ Not an OAuth wallet, manual unlock required"
-          );
-        }
-      } catch (error) {
-        console.error("[UnlockWallet] ❌ Auto-unlock error:", error);
-      } finally {
-        // Always show the unlock UI after auto-unlock attempt
-        setAutoUnlocking(false);
-      }
-    };
-
-    // Quick timeout to show UI faster - don't block for too long
-    const timeout = setTimeout(() => {
-      setAutoUnlocking(false);
-    }, 1500); // Max 1.5 seconds wait
-
-    tryAutoUnlock();
-
-    return () => clearTimeout(timeout);
+    setAutoUnlocking(false);
   }, [walletId]);
 
   const handleFingerprintAuth = async () => {

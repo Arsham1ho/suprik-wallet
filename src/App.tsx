@@ -120,6 +120,8 @@ export default function App() {
               // Always route to setup-password on OAuth sign-in.
               // The user proved identity via Google/Apple, now they create a
               // fresh device password. The same wallet (mnemonic/address) is kept.
+              // Session flag ensures refreshes during setup still go to setup-password.
+              sessionStorage.setItem('pending_password_setup', 'true');
               setCurrentPage('setup-password');
             } else {
               // First-time sign-up — no existing wallet for this Google/Apple account
@@ -180,6 +182,7 @@ export default function App() {
 
               // Route to password setup (same flow as recovery phrase)
               // After password setup → account created animation → app
+              sessionStorage.setItem('pending_password_setup', 'true');
               setWalletId(walletId);
               setNeedsUnlock(true);
               setCurrentPage('setup-password');
@@ -271,11 +274,13 @@ export default function App() {
       setWalletId(savedWalletId);
       setNeedsUnlock(true);
 
-      // Social wallets that never completed password setup should go to
-      // SetupPassword instead of auto-unlocking with the random password
+      // Social wallets that never completed password setup, or that have
+      // a pending OAuth password setup (user refreshed during setup), should
+      // go to SetupPassword instead of auto-unlocking.
       const isSocial = localStorage.getItem(`${savedWalletId}_auth_method`) === 'social';
       const setupDone = localStorage.getItem(`${savedWalletId}_password_setup_complete`);
-      if (isSocial && !setupDone) {
+      const pendingSetup = sessionStorage.getItem('pending_password_setup');
+      if (isSocial && (!setupDone || pendingSetup)) {
         setCurrentPage('setup-password');
       } else {
         setCurrentPage('unlock');
@@ -579,6 +584,7 @@ export default function App() {
                       <SetupPassword
                         walletId={walletId}
                         onComplete={() => {
+                          sessionStorage.removeItem('pending_password_setup');
                           setNeedsUnlock(false);
                           setIsAuthenticated(true);
                           // Show account created animation (same as recovery phrase flow)
