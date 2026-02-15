@@ -113,9 +113,10 @@ export function SetupPassword({ walletId, onComplete }: SetupPasswordProps) {
       // Re-encrypt with the user's chosen password
       await SecureStorage.storeMnemonic(mnemonic, password);
 
-      // Clear the OAuth auto-unlock password - user now has their own password
-      // (auto-unlock in UnlockWallet checks getOAuthPassword() first, so clearing it is sufficient)
-      WalletStorage.clearOAuthPassword();
+      // Store the user's password for auto-unlock on future OAuth sign-ins.
+      // This replaces the temporary random password so UnlockWallet can
+      // seamlessly unlock the wallet when the user signs in with Google/Apple.
+      await WalletStorage.setOAuthPassword(password);
 
       // Unlock wallet with the new password
       const unlocked = await wallet.unlock(password);
@@ -133,9 +134,6 @@ export function SetupPassword({ walletId, onComplete }: SetupPasswordProps) {
             autoLockMinutes: 5,
           }, walletId);
 
-          // Store password for biometric unlock
-          await WalletStorage.setOAuthPassword(password);
-
           toast.success(`Password set with ${biometricName} enabled!`);
         } else if (!biometricResult.cancelled) {
           toast.success('Password set! Your wallet is secured.');
@@ -145,6 +143,10 @@ export function SetupPassword({ walletId, onComplete }: SetupPasswordProps) {
       } else {
         toast.success('Password set! Your wallet is secured.');
       }
+
+      // Mark password setup as complete so returning OAuth sign-ins
+      // don't bypass this step
+      localStorage.setItem(`${walletId}_password_setup_complete`, 'true');
 
       // Clear sensitive state
       setPassword('');
