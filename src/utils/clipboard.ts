@@ -2,7 +2,7 @@
  * Copy text to clipboard with fallback for when Clipboard API is blocked
  */
 export async function copyToClipboard(text: string): Promise<boolean> {
-  console.log('[Clipboard] Starting copy operation for text:', text.substring(0, 20) + '...');
+  console.log('[Clipboard] Starting copy operation, length:', text.length);
   
   // Method 1: Try modern Clipboard API first
   if (navigator.clipboard && window.isSecureContext) {
@@ -101,4 +101,38 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   
   console.error('[Clipboard] ✗ All copy methods failed');
   return false;
+}
+
+/**
+ * Copy sensitive text to clipboard and auto-clear after a timeout.
+ * Use this for seed phrases, private keys, and recovery phrases.
+ */
+let autoClearTimer: ReturnType<typeof setTimeout> | null = null;
+
+export async function copyToClipboardWithAutoClear(
+  text: string,
+  timeoutMs = 30000,
+): Promise<boolean> {
+  // Clear any pending auto-clear timer
+  if (autoClearTimer) {
+    clearTimeout(autoClearTimer);
+    autoClearTimer = null;
+  }
+
+  const success = await copyToClipboard(text);
+
+  if (success) {
+    autoClearTimer = setTimeout(async () => {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText('');
+        }
+      } catch {
+        // Clipboard clear failed silently — browser may have revoked permission
+      }
+      autoClearTimer = null;
+    }, timeoutMs);
+  }
+
+  return success;
 }

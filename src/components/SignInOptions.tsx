@@ -18,6 +18,8 @@ export function SignInOptions({ onSelectRecoveryPhrase, onSelectEmail, onBack }:
   const handleSocialSignIn = async (provider: 'google' | 'apple') => {
     setSocialLoading(provider);
     try {
+      // Mark intent so OAuth callback knows to restore existing wallet
+      localStorage.setItem('oauth_intent', 'signin');
       const supabase = createSupabaseClient();
 
       const { error } = await supabase.auth.signInWithOAuth({

@@ -233,6 +233,10 @@ export async function sendSolanaTransaction(params: {
   try {
     const { mnemonic, toAddress, amount, accountIndex = 0, isTestnet = false } = params;
 
+    if (amount <= 0) {
+      return { success: false, signature: '', error: 'Amount must be greater than zero' };
+    }
+
     // Import Solana web3.js dynamically
     const { Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } = await import('@solana/web3.js');
 
@@ -422,6 +426,10 @@ export async function sendSPLTokenTransaction(params: {
 }): Promise<{ signature: string; success: boolean; error?: string }> {
   try {
     const { mnemonic, toAddress, amount, tokenMint, decimals, accountIndex = 0, isTestnet = false } = params;
+
+    if (amount <= 0) {
+      return { success: false, signature: '', error: 'Amount must be greater than zero' };
+    }
 
     // TESTNET MODE: Simulate transaction
     if (isTestnet) {
@@ -684,6 +692,10 @@ export async function sendERC20TokenTransaction(params: {
   try {
     const { mnemonic, toAddress, amount, tokenAddress, decimals, accountIndex = 0, isTestnet = false } = params;
 
+    if (amount <= 0) {
+      return { success: false, hash: '', error: 'Amount must be greater than zero' };
+    }
+
     // TESTNET MODE: Simulate transaction
     if (isTestnet) {
       // Simulate processing delay
@@ -752,6 +764,10 @@ export async function sendSolanaTransactionWithPrivateKey(params: {
 }): Promise<{ signature: string; success: boolean; error?: string }> {
   try {
     const { privateKeyBase58, toAddress, amount, isTestnet = false } = params;
+
+    if (amount <= 0) {
+      return { success: false, signature: '', error: 'Amount must be greater than zero' };
+    }
 
     console.log('[Transaction] 🔑 Sending SOL with private key, amount:', amount, 'isTestnet:', isTestnet);
 
@@ -857,6 +873,10 @@ export async function sendSPLTokenTransactionWithPrivateKey(params: {
 }): Promise<{ signature: string; success: boolean; error?: string }> {
   try {
     const { privateKeyBase58, toAddress, amount, tokenMint, decimals, isTestnet = false } = params;
+
+    if (amount <= 0) {
+      return { success: false, signature: '', error: 'Amount must be greater than zero' };
+    }
 
     console.log('[Transaction] 🔑 Sending SPL token with private key, amount:', amount, 'mint:', tokenMint);
 

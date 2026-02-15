@@ -652,7 +652,8 @@ export async function getJupiterSwapQuote(params: {
     }
 
     // Use user's slippage if they set it higher, otherwise use auto
-    const slippageBps = Math.max(Math.floor(slippage * 100), autoSlippageBps);
+    const clampedSlippage = Math.min(slippage, 50); // Cap at 50% max
+    const slippageBps = Math.max(Math.floor(clampedSlippage * 100), autoSlippageBps);
     console.log('[Jupiter] Final slippage:', slippageBps, 'bps (', slippageBps / 100, '%)');
 
     // Build quote URL - NO platform fee for Legacy API
@@ -1269,9 +1270,9 @@ export async function getUltraSwapOrder(params: {
       outputMint,
       inAmount: Math.floor(amount * Math.pow(10, inputDecimals)).toString(),
       outAmount: Math.floor((outputAmount - platformFee) * Math.pow(10, outputDecimals)).toString(),
-      otherAmountThreshold: Math.floor((outputAmount - platformFee) * (1 - slippage / 100) * Math.pow(10, outputDecimals)).toString(),
+      otherAmountThreshold: Math.floor((outputAmount - platformFee) * (1 - Math.min(slippage, 50) / 100) * Math.pow(10, outputDecimals)).toString(),
       swapMode: 'ExactIn',
-      slippageBps: Math.floor(slippage * 100),
+      slippageBps: Math.floor(Math.min(slippage, 50) * 100),
       priceImpactPct: '0.1',
       routePlan: [],
       swapType: 'mock',

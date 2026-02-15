@@ -297,6 +297,21 @@ function generateSyntheticChartData(currentPrice: number, change24h: number, per
   return data;
 }
 
+// Sanitize walletId to prevent KV key injection (strip colons and control chars)
+function sanitizeKvKey(key: string): string {
+  return key.replace(/[:\x00-\x1f]/g, '');
+}
+
+// Constant-time string comparison to prevent timing attacks
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
 // Retry utility function with exponential backoff
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
@@ -353,10 +368,20 @@ if (!Deno.env.get('ALCHEMY_API_KEY')) {
 app.use('*', logger(console.log));
 
 // Enable CORS for all routes and methods
+const allowedOrigins: string[] = [
+  "https://suprik.com",
+  "https://www.suprik.com",
+  "https://suprik.io",
+  "https://www.suprik.io",
+];
+if (Deno.env.get('ENVIRONMENT') !== 'production') {
+  allowedOrigins.push("http://localhost:3000", "http://localhost:5173");
+}
+
 app.use(
   "/*",
   cors({
-    origin: "*",
+    origin: allowedOrigins,
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
@@ -369,191 +394,40 @@ app.get("/make-server-e5bc10d1/health", (c) => {
   return c.json({ status: "ok" });
 });
 
-// API keys endpoint - provides API keys to frontend
+// API keys endpoint removed — API keys must never be sent to clients.
+// RPC calls that need these keys should be proxied through server endpoints.
 app.get("/make-server-e5bc10d1/api-keys", (c) => {
-  return c.json({
-    heliusKey: Deno.env.get('HELIUS_API_KEY'),
-    alchemyKey: Deno.env.get('ALCHEMY_API_KEY')
-  });
+  return c.json({ error: 'Endpoint removed for security' }, 410);
 });
 
 // Create wallet endpoint (no email/password required)
-app.post("/make-server-e5bc10d1/create-wallet", async (c) => {
-  try {
-    const { seedPhrase } = await c.req.json();
-
-    if (!seedPhrase) {
-      return c.json({ error: "Seed phrase is required" }, 400);
-    }
-
-    // Validate seed phrase has 12 words
-    const words = seedPhrase.trim().split(/\s+/);
-    if (words.length !== 12) {
-      return c.json({ error: "Seed phrase must be exactly 12 words" }, 400);
-    }
-
-    // Generate a unique wallet ID from the seed phrase
-    const encoder = new TextEncoder();
-    const data = encoder.encode(seedPhrase);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const walletId = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
-
-    // Check if wallet already exists
-    const existingWallet = await retryWithBackoff(() => kv.get(`wallet:${walletId}`));
-    if (existingWallet) {
-      return c.json({ error: "Wallet already exists. Please use sign in." }, 400);
-    }
-
-    // Generate default username with @ prefix (lowercase, Phantom style)
-    const defaultUsername = `@user${walletId.substring(0, 6)}`;
-    
-    // Store wallet data with accountIndex 0 (primary account)
-    const createdAt = new Date().toISOString();
-    await retryWithBackoff(() => kv.set(`wallet:${walletId}`, {
-      seedPhrase,
-      createdAt: createdAt,
-      balance: 24584.32, // Initial demo balance
-      username: defaultUsername,
-      accountIndex: 0, // Primary account always has index 0
-    }));
-
-    // Initialize accounts list with primary account
-    await retryWithBackoff(() => kv.set(`accounts:${walletId}`, {
-      accounts: [
-        {
-          id: `acc_primary_${walletId}`,
-          username: defaultUsername,
-          walletId: walletId,
-          createdAt: createdAt,
-          isPrimary: true,
-          accountIndex: 0,
-        }
-      ]
-    }));
-
-    // Wallet created successfully
-
-    return c.json({
-      success: true,
-      walletId,
-    });
-  } catch (error: any) {
-    // Wallet creation error
-    return c.json({ error: error.message || 'Failed to create wallet' }, 500);
-  }
+// DISABLED: Seed phrases must never be sent to or stored on the server (web3 security)
+app.post("/make-server-e5bc10d1/create-wallet", (c) => {
+  return c.json({ error: 'Endpoint disabled — wallet operations are client-side only' }, 410);
 });
 
-// Sign in endpoint (with recovery phrase)
-app.post("/make-server-e5bc10d1/signin", async (c) => {
-  try {
-    const { seedPhrase } = await c.req.json();
-
-    if (!seedPhrase) {
-      return c.json({ error: "Seed phrase is required" }, 400);
-    }
-
-    // Validate seed phrase has 12 words
-    const words = seedPhrase.trim().split(/\s+/);
-    if (words.length !== 12) {
-      return c.json({ error: "Seed phrase must be exactly 12 words" }, 400);
-    }
-
-    // Generate wallet ID from seed phrase
-    const encoder = new TextEncoder();
-    const data = encoder.encode(seedPhrase);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const walletId = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
-
-    // Check if wallet exists
-    const wallet = await retryWithBackoff(() => kv.get(`wallet:${walletId}`));
-    if (!wallet) {
-      return c.json({ error: "Wallet not found. Please create a new wallet." }, 404);
-    }
-
-    // User signed in successfully
-
-    return c.json({
-      success: true,
-      walletId,
-    });
-  } catch (error: any) {
-    console.error('Sign in error:', error);
-    return c.json({ error: error.message || 'Failed to sign in' }, 500);
-  }
+// DISABLED: Seed phrases must never be sent to the server (web3 security)
+app.post("/make-server-e5bc10d1/signin", (c) => {
+  return c.json({ error: 'Endpoint disabled — authentication is client-side only' }, 410);
 });
 
 // Get wallet data
-app.get("/make-server-e5bc10d1/wallet/:walletId", async (c) => {
-  try {
-    const walletId = c.req.param('walletId');
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-
-    const wallet = await retryWithBackoff(() => kv.get(`wallet:${walletId}`));
-    
-    if (!wallet) {
-      return c.json({ error: 'Wallet not found' }, 404);
-    }
-
-    // Get tokens
-    const tokens = await retryWithBackoff(() => kv.get(`wallet:${walletId}:tokens`)) || {
-      SOL: { name: 'Solana', symbol: 'SOL', amount: 245.32, price: 142.54, logo: '◎', change24h: 5.23 },
-      ETH: { name: 'Ethereum', symbol: 'ETH', amount: 2.543, price: 2856.32, logo: 'Ξ', change24h: -2.15 },
-      USDC: { name: 'USD Coin', symbol: 'USDC', amount: 10000, price: 1.00, logo: '$', change24h: 0.01 },
-      MATIC: { name: 'Polygon', symbol: 'MATIC', amount: 1250.5, price: 0.85, logo: '⬡', change24h: 8.45 },
-    };
-
-    // Calculate total balance
-    let totalBalance = 0;
-    for (const token of Object.values(tokens)) {
-      totalBalance += (token as any).amount * (token as any).price;
-    }
-
-    return c.json({
-      walletId,
-      balance: totalBalance,
-      tokens,
-      createdAt: wallet.createdAt,
-      username: wallet.username,
-    });
-  } catch (error: any) {
-    // Wallet fetch error
-    return c.json({ error: error.message || 'Failed to fetch wallet' }, 500);
-  }
+app.get("/make-server-e5bc10d1/wallet/:walletId", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Get wallet tokens (both endpoints for backward compatibility)
-app.get("/make-server-e5bc10d1/wallet/:walletId/tokens", async (c) => {
-  try {
-    const walletId = c.req.param('walletId');
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-
-    const wallet = await retryWithBackoff(() => kv.get(`wallet:${walletId}`));
-    if (!wallet) {
-      return c.json({ error: 'Wallet not found' }, 404);
-    }
-
-    const tokens = await retryWithBackoff(() => kv.get(`wallet:${walletId}:tokens`)) || {};
-
-    return c.json({ tokens });
-  } catch (error: any) {
-    console.error('Tokens fetch error:', error);
-    return c.json({ error: error.message || 'Failed to fetch tokens' }, 500);
-  }
+app.get("/make-server-e5bc10d1/wallet/:walletId/tokens", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Alternative route format
 app.get("/make-server-e5bc10d1/wallet-tokens/:walletId", async (c) => {
   try {
-    const walletId = c.req.param('walletId');
-    
+    const walletId = sanitizeKvKey(c.req.param('walletId'));
+
     if (!walletId) {
       return c.json({ error: 'Wallet ID is required' }, 400);
     }
@@ -622,27 +496,10 @@ app.get("/make-server-e5bc10d1/wallet-tokens/:walletId", async (c) => {
 });
 
 // Get activities
-app.get("/make-server-e5bc10d1/wallet/:walletId/activities", async (c) => {
-  try {
-    const walletId = c.req.param('walletId');
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-
-    const wallet = await retryWithBackoff(() => kv.get(`wallet:${walletId}`));
-    if (!wallet) {
-      return c.json({ error: 'Wallet not found' }, 404);
-    }
-
-    const activities = await retryWithBackoff(() => kv.get(`wallet:${walletId}:activities`)) || [];
-
-    return c.json(activities);
-  } catch (error: any) {
-    console.error('Activities fetch error:', error);
-    return c.json({ error: error.message || 'Failed to fetch activities' }, 500);
-  }
+app.get("/make-server-e5bc10d1/wallet/:walletId/activities", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Get coin details
 app.get("/make-server-e5bc10d1/coin-details/:mint", async (c) => {
@@ -970,164 +827,22 @@ app.get("/make-server-e5bc10d1/coin-details/:mint", async (c) => {
 });
 
 // Generate wallet addresses for different blockchains
-app.post("/make-server-e5bc10d1/generate-addresses", async (c) => {
-  try {
-    const { walletId, seedPhrase: providedSeedPhrase } = await c.req.json();
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-    
-    // Generating addresses
-    
-    // Get the seed phrase and account index from KV store
-    let seedPhrase = providedSeedPhrase;
-    let accountIndex = 0;
-    
-    if (!seedPhrase) {
-      // Try to get from KV store (for backward compatibility)
-      const wallet = await kv.get(`wallet:${walletId}`);
-      // Wallet data retrieved
-      
-      if (wallet && wallet.seedPhrase) {
-        seedPhrase = wallet.seedPhrase;
-        accountIndex = wallet.accountIndex || 0; // Get account index or default to 0
-      } else {
-        console.error('Seed phrase not provided and not found in KV store');
-        return c.json({ error: 'Seed phrase is required' }, 400);
-      }
-    } else {
-      // If seedPhrase was provided, still try to get accountIndex from KV
-      const wallet = await kv.get(`wallet:${walletId}`);
-      if (wallet) {
-        accountIndex = wallet.accountIndex || 0;
-      }
-    }
-    
-    // Import required crypto libraries
-    const { mnemonicToSeedSync } = await import('npm:@scure/bip39@1.2.1');
-    const { HDKey } = await import('npm:@scure/bip32@1.3.2');
-    const { derivePath } = await import('npm:ed25519-hd-key@1.3.0');
-    const nacl = await import('npm:tweetnacl@1.0.3');
-    const bs58 = await import('npm:bs58@5.0.0');
-    const { keccak_256 } = await import('npm:@noble/hashes@1.3.2/sha3');
-    const { ripemd160 } = await import('npm:@noble/hashes@1.3.2/ripemd160');
-    const { sha256 } = await import('npm:@noble/hashes@1.3.2/sha256');
-
-    // Convert mnemonic to seed (BIP39)
-    console.log('Converting mnemonic to seed...');
-    const seed = mnemonicToSeedSync(seedPhrase);
-    const seedHex = Buffer.from(seed).toString('hex');
-
-    // Derive Solana address using ed25519-hd-key (SLIP-0010, same as Phantom)
-    console.log(`Deriving Solana address with account index ${accountIndex}...`);
-    const solanaPath = `m/44'/501'/${accountIndex}'/0'`;
-    const { key: solanaKey } = derivePath(solanaPath, seedHex);
-    const solanaKeypair = nacl.default.sign.keyPair.fromSeed(solanaKey);
-    const solanaAddress = bs58.default.encode(solanaKeypair.publicKey);
-    
-    // Derive Ethereum address using account index (BIP44: m/44'/60'/[accountIndex]'/0/0)
-    console.log(`Deriving Ethereum address with account index ${accountIndex}...`);
-    const ethPath = `m/44'/60'/${accountIndex}'/0/0`;
-    const ethHdKey = HDKey.fromMasterSeed(seed);
-    const ethAccount = ethHdKey.derive(ethPath);
-    if (!ethAccount.publicKey) {
-      throw new Error('Failed to derive Ethereum public key');
-    }
-    
-    // Generate Ethereum address from public key (remove first byte which is 0x04 prefix)
-    const ethPublicKey = ethAccount.publicKey.slice(1);
-    const ethHash = keccak_256(ethPublicKey);
-    const evmAddress = '0x' + Array.from(ethHash.slice(-20)).map(b => b.toString(16).padStart(2, '0')).join('');
-    
-    // Derive Bitcoin address using account index (BIP44: m/44'/0'/[accountIndex]'/0/0)
-    console.log(`Deriving Bitcoin address with account index ${accountIndex}...`);
-    const btcPath = `m/44'/0'/${accountIndex}'/0/0`;
-    const btcHdKey = HDKey.fromMasterSeed(seed);
-    const btcAccount = btcHdKey.derive(btcPath);
-    if (!btcAccount.publicKey) {
-      throw new Error('Failed to derive Bitcoin public key');
-    }
-    
-    // Generate Bitcoin P2PKH address (starts with 1)
-    const btcPubKeyHash = ripemd160(sha256(btcAccount.publicKey));
-    const btcVersioned = new Uint8Array(21);
-    btcVersioned[0] = 0x00; // Mainnet P2PKH version
-    btcVersioned.set(btcPubKeyHash, 1);
-    
-    // Double SHA256 for checksum
-    const btcChecksum = sha256(sha256(btcVersioned)).slice(0, 4);
-    
-    const btcFinal = new Uint8Array(25);
-    btcFinal.set(btcVersioned);
-    btcFinal.set(btcChecksum, 21);
-    const btcAddress = bs58.default.encode(btcFinal);
-    
-    // Sui address using account index - use first 32 bytes of derived key
-    console.log(`Deriving Sui address with account index ${accountIndex}...`);
-    const suiPath = `m/44'/784'/${accountIndex}'/0'/0'`;
-    const suiHdKey = HDKey.fromMasterSeed(seed);
-    const suiAccount = suiHdKey.derive(suiPath);
-    if (!suiAccount.publicKey) {
-      throw new Error('Failed to derive Sui public key');
-    }
-    const suiHash = sha256(suiAccount.publicKey);
-    const suiAddress = '0x' + Array.from(suiHash).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 64);
-    
-    const addresses = {
-      solana: solanaAddress,
-      ethereum: evmAddress,
-      base: evmAddress, // Base uses same EVM address
-      polygon: evmAddress, // Polygon uses same EVM address
-      bitcoin: btcAddress,
-      sui: suiAddress,
-    };
-    
-    console.log('Generated REAL addresses successfully:', {
-      solana: solanaAddress.substring(0, 10) + '...',
-      ethereum: evmAddress.substring(0, 10) + '...',
-      bitcoin: btcAddress.substring(0, 10) + '...'
-    });
-    
-    return c.json(addresses);
-  } catch (error: any) {
-    console.error('Address generation error:', error.message, error.stack);
-    return c.json({ error: error.message || 'Failed to generate addresses' }, 500);
-  }
+// DISABLED: Address derivation must happen client-side only (web3 security)
+app.post("/make-server-e5bc10d1/generate-addresses", (c) => {
+  return c.json({ error: 'Endpoint disabled — address derivation is client-side only' }, 410);
 });
 
 // Store wallet addresses (client-side generated)
-app.post("/make-server-e5bc10d1/store-addresses", async (c) => {
-  try {
-    const { walletId, addresses } = await c.req.json();
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-    
-    if (!addresses) {
-      return c.json({ error: 'Addresses are required' }, 400);
-    }
-    
-    // Storing addresses
-    
-    // Store addresses in KV store
-    await kv.set(`wallet:${walletId}:addresses`, addresses);
-    
-    console.log('[Store Addresses] ✅ Addresses stored successfully');
-    
-    return c.json({ success: true });
-  } catch (error: any) {
-    console.error('[Store Addresses] Error:', error.message, error.stack);
-    return c.json({ error: error.message || 'Failed to store addresses' }, 500);
-  }
+app.post("/make-server-e5bc10d1/store-addresses", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Get dev mode status
 app.get("/make-server-e5bc10d1/get-dev-mode", async (c) => {
   try {
-    const walletId = c.req.query('walletId');
-    
+    const walletId = sanitizeKvKey(c.req.query('walletId') || '');
+
     if (!walletId) {
       return c.json({ error: 'Wallet ID is required' }, 400);
     }
@@ -1148,288 +863,28 @@ app.get("/make-server-e5bc10d1/get-dev-mode", async (c) => {
 });
 
 // Set dev mode
-app.post("/make-server-e5bc10d1/set-dev-mode", async (c) => {
-  try {
-    const { walletId, devMode } = await c.req.json();
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-    
-    let settings = {};
-    try {
-      settings = await kv.get(`wallet:${walletId}:settings`) || {};
-    } catch (kvError: any) {
-      console.error('KV get error (using defaults):', kvError.message);
-      settings = {};
-    }
-    
-    settings.devMode = devMode;
-    
-    try {
-      await kv.set(`wallet:${walletId}:settings`, settings);
-      // Dev mode updated
-    } catch (kvError: any) {
-      console.error('KV set error (dev mode not persisted):', kvError.message);
-    }
-    
-    return c.json({ success: true, devMode });
-  } catch (error: any) {
-    console.error('Set dev mode error:', error);
-    return c.json({ error: error.message }, 500);
-  }
+// DISABLED: No auth — data is stored client-side only
+app.post("/make-server-e5bc10d1/set-dev-mode", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
 
 // Get wallet settings including network selection
-app.get("/make-server-e5bc10d1/wallet-settings/:walletId", async (c) => {
-  try {
-    const walletId = c.req.param('walletId');
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-    
-    let settings = null;
-    
-    // Try to get settings with error handling for Cloudflare issues
-    try {
-      settings = await kv.get(`wallet:${walletId}:settings`);
-    } catch (kvError: any) {
-      console.error('KV store error (returning defaults):', kvError.message);
-      // Return default settings if KV store fails
-      return c.json({
-        devMode: false,
-        solanaNetwork: 'mainnet',
-      });
-    }
-    
-    // If settings is null or undefined, use defaults
-    if (!settings) {
-      settings = {};
-    }
-    
-    return c.json({
-      devMode: settings.devMode || false,
-      solanaNetwork: settings.solanaNetwork || 'mainnet',
-    });
-  } catch (error: any) {
-    // Get wallet settings error
-    // Return defaults instead of failing
-    return c.json({
-      devMode: false,
-      solanaNetwork: 'mainnet',
-    });
-  }
+app.get("/make-server-e5bc10d1/wallet-settings/:walletId", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Update wallet settings including network selection
-app.post("/make-server-e5bc10d1/wallet-settings", async (c) => {
-  try {
-    const { walletId, solanaNetwork, devMode } = await c.req.json();
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-    
-    let settings = {};
-    
-    // Try to get existing settings, use defaults if fails
-    try {
-      settings = await kv.get(`wallet:${walletId}:settings`) || {};
-    } catch (kvError: any) {
-      console.error('KV get error (using defaults):', kvError.message);
-      settings = {};
-    }
-    
-    if (solanaNetwork !== undefined) {
-      settings.solanaNetwork = solanaNetwork;
-    }
-    
-    if (devMode !== undefined) {
-      settings.devMode = devMode;
-    }
-    
-    // Try to save settings, return success even if save fails
-    try {
-      await kv.set(`wallet:${walletId}:settings`, settings);
-      // Wallet settings updated
-    } catch (kvError: any) {
-      console.error('KV set error (settings not persisted):', kvError.message);
-    }
-    
-    return c.json({ success: true, settings });
-  } catch (error: any) {
-    // Update wallet settings error
-    return c.json({ error: error.message }, 500);
-  }
+app.post("/make-server-e5bc10d1/wallet-settings", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
 
+
 // Simulate receiving tokens in dev mode
-app.post("/make-server-e5bc10d1/dev-receive", async (c) => {
-  try {
-    const { walletId, tokenSymbol, amount } = await c.req.json();
-    
-    if (!walletId || !tokenSymbol || !amount) {
-      return c.json({ error: 'walletId, tokenSymbol, and amount are required' }, 400);
-    }
-    
-    // Dev mode receive request
-    
-    // Check if dev mode is enabled
-    const settings = await kv.get(`wallet:${walletId}:settings`) || {};
-    if (!settings.devMode) {
-      return c.json({ error: 'Dev mode is not enabled. Enable it in Settings first.' }, 400);
-    }
-    
-    // Get current tokens
-    const tokens = await kv.get(`wallet:${walletId}:tokens`) || {};
-    
-    // Define token metadata with mint addresses matching the frontend
-    const tokenMetadata: Record<string, any> = {
-      SOL: { 
-        name: 'Solana', 
-        symbol: 'SOL', 
-        mint: 'solana',
-        network: 'solana',
-        price: 245.32, 
-        logo: '◎', 
-        logoUrl: '',
-        change24h: 2.87 
-      },
-      ETH: { 
-        name: 'Ethereum', 
-        symbol: 'ETH', 
-        mint: 'ethereum',
-        network: 'ethereum',
-        price: 3245.67, 
-        logo: 'Ξ', 
-        logoUrl: '',
-        change24h: 1.45 
-      },
-      BTC: { 
-        name: 'Bitcoin', 
-        symbol: 'BTC', 
-        mint: 'bitcoin',
-        network: 'bitcoin',
-        price: 97842.55, 
-        logo: '₿', 
-        logoUrl: '',
-        change24h: 3.21 
-      },
-      USDC: { 
-        name: 'USD Coin', 
-        symbol: 'USDC', 
-        mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-        network: 'solana',
-        price: 1.00, 
-        logo: '$', 
-        logoUrl: '',
-        change24h: 0.02 
-      },
-      BONK: { 
-        name: 'Bonk', 
-        symbol: 'BONK', 
-        mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
-        network: 'solana',
-        price: 0.00003421, 
-        logo: '🐕', 
-        logoUrl: '',
-        change24h: 8.95 
-      },
-      MATIC: { 
-        name: 'Polygon', 
-        symbol: 'MATIC', 
-        mint: 'polygon',
-        network: 'polygon',
-        price: 0.4521, 
-        logo: '⬢', 
-        logoUrl: '',
-        change24h: 2.34 
-      },
-      PAI: { 
-        name: 'Parabolic', 
-        symbol: 'PAI', 
-        mint: 'parabolic-ai',
-        network: 'solana',
-        price: 0.052, 
-        logo: '🤖', 
-        logoUrl: 'https://coin-images.coingecko.com/coins/images/53632/large/IMG_6530.png',
-        change24h: 12.3 
-      },
-    };
-    
-    // If token doesn't exist, create it with metadata
-    if (!tokens[tokenSymbol]) {
-      if (!tokenMetadata[tokenSymbol]) {
-        return c.json({ error: `Token ${tokenSymbol} is not supported` }, 404);
-      }
-      tokens[tokenSymbol] = {
-        ...tokenMetadata[tokenSymbol],
-        amount: 0,
-      };
-      console.log('Created new token entry for:', tokenSymbol);
-    }
-    
-    // Update token amount
-    const previousAmount = tokens[tokenSymbol].amount || 0;
-    tokens[tokenSymbol].amount = previousAmount + parseFloat(amount);
-    
-    console.log('Token object before save:', JSON.stringify(tokens[tokenSymbol], null, 2));
-    
-    await kv.set(`wallet:${walletId}:tokens`, tokens);
-    console.log('Updated token amount:', tokenSymbol, 'from', previousAmount, 'to', tokens[tokenSymbol].amount);
-    console.log('All tokens after update:', JSON.stringify(tokens, null, 2));
-    
-    // Add activity
-    const activities = await kv.get(`wallet:${walletId}:activities`) || [];
-    
-    // Generate a fake signature for dev mode (so the "View on Explorer" button works)
-    const randomBytes = crypto.getRandomValues(new Uint8Array(8));
-    const fakeSignature = `DEV${Date.now()}${Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('')}`;
-    
-    // Get wallet addresses for 'to' field
-    const addresses = await kv.get(`wallet:${walletId}:addresses`) || {};
-    
-    const newActivity: any = {
-      id: Date.now().toString(),
-      type: 'receive',
-      coin: tokenSymbol,
-      amount: parseFloat(amount),
-      value: parseFloat(amount) * tokens[tokenSymbol].price,
-      status: 'confirmed',
-      timestamp: new Date().toISOString(),
-      from: 'Dev Mode Simulation',
-      isDevMode: true,
-      signature: fakeSignature,
-      network: tokenSymbol === 'SOL' || tokenSymbol === 'BONK' || tokenSymbol === 'USDC' || tokenSymbol === 'PAI' ? 'devnet' : 
-               tokenSymbol === 'ETH' ? 'ethereum' : 
-               tokenSymbol === 'BTC' ? 'bitcoin' : 'solana',
-    };
-    
-    // Add 'to' address if available
-    if (tokenSymbol === 'SOL' || tokenSymbol === 'BONK' || tokenSymbol === 'USDC' || tokenSymbol === 'PAI') {
-      newActivity.to = addresses.solana || 'DevModeAddress';
-    } else if (tokenSymbol === 'ETH') {
-      newActivity.to = addresses.ethereum || 'DevModeAddress';
-    } else if (tokenSymbol === 'BTC') {
-      newActivity.to = addresses.bitcoin || 'DevModeAddress';
-    }
-    
-    activities.unshift(newActivity);
-    await kv.set(`wallet:${walletId}:activities`, activities);
-    
-    console.log('Dev mode receive successful - new activity:', newActivity);
-    
-    return c.json({
-      success: true,
-      newBalance: tokens[tokenSymbol].amount,
-      activity: newActivity,
-    });
-  } catch (error: any) {
-    console.error('Dev receive error:', error);
-    return c.json({ error: error.message }, 500);
-  }
+app.post("/make-server-e5bc10d1/dev-receive", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Helper function to check API status
 app.get("/make-server-e5bc10d1/api-status", async (c) => {
@@ -1450,6 +905,21 @@ app.get("/make-server-e5bc10d1/api-status", async (c) => {
 
 
 // Image proxy endpoint to bypass CORS
+const IMAGE_PROXY_ALLOWED_DOMAINS = [
+  'cryptologos.cc',
+  'coin-images.coingecko.com',
+  'assets.coingecko.com',
+  'raw.githubusercontent.com',
+  'static.jup.ag',
+  'arweave.net',
+  'ipfs.nftstorage.link',
+  'assets.parqet.com',
+  'cdn.prod.website-files.com',
+  'api.dicebear.com',
+  'i.ibb.co',
+  'www.cryptocompare.com',
+];
+
 app.get("/make-server-e5bc10d1/proxy-image", async (c) => {
   try {
     const url = c.req.query('url');
@@ -1457,7 +927,22 @@ app.get("/make-server-e5bc10d1/proxy-image", async (c) => {
       return c.json({ error: 'URL parameter required' }, 400);
     }
 
-    console.log('Proxying image from:', url);
+    // Validate URL and restrict to whitelisted domains (prevent SSRF)
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      return c.json({ error: 'Invalid URL' }, 400);
+    }
+
+    if (parsedUrl.protocol !== 'https:') {
+      return c.json({ error: 'Only HTTPS URLs are allowed' }, 400);
+    }
+
+    if (!IMAGE_PROXY_ALLOWED_DOMAINS.includes(parsedUrl.hostname)) {
+      return c.json({ error: 'Domain not allowed' }, 403);
+    }
+
     const response = await fetch(url);
     
     if (!response.ok) {
@@ -1912,7 +1397,7 @@ app.post("/make-server-e5bc10d1/solana-balance", async (c) => {
     });
   } catch (error: any) {
     console.error('[Solana] ❌ Fatal error:', error.message || error);
-    console.error('[Solana] ❌ Error stack:', error.stack);
+    console.error('[Solana] ❌ Error:', error.message);
     
     // Return detailed error for debugging
     return c.json({ 
@@ -2074,7 +1559,7 @@ app.post("/make-server-e5bc10d1/ethereum-balance", async (c) => {
     });
   } catch (error: any) {
     console.error('[Ethereum] ❌ Fatal error:', error.message || error);
-    console.error('[Ethereum] ❌ Error stack:', error.stack);
+    console.error('[Ethereum] ❌ Error:', error.message);
     
     // Return zero balance instead of error - graceful degradation
     return c.json({
@@ -2111,7 +1596,7 @@ app.post("/make-server-e5bc10d1/bitcoin-balance", async (c) => {
     });
   } catch (error: any) {
     console.error('[Bitcoin] ❌ Error fetching Bitcoin balance:', error.message || error);
-    console.error('[Bitcoin] ❌ Error details:', error.stack || error.toString());
+    console.error('[Bitcoin] ❌ Error:', error.message);
     
     // Return detailed error for debugging
     return c.json({ 
@@ -2341,7 +1826,7 @@ app.post("/make-server-e5bc10d1/base-balance", async (c) => {
     });
   } catch (error: any) {
     console.error('[Base] ❌ Fatal error:', error.message || error);
-    console.error('[Base] ❌ Error stack:', error.stack);
+    console.error('[Base] ❌ Error:', error.message);
     
     return c.json({
       native: 0,
@@ -2513,7 +1998,7 @@ app.post("/make-server-e5bc10d1/polygon-balance", async (c) => {
     });
   } catch (error: any) {
     console.error('[Polygon] ❌ Fatal error:', error.message || error);
-    console.error('[Polygon] ❌ Error stack:', error.stack);
+    console.error('[Polygon] ❌ Error:', error.message);
     
     return c.json({
       native: 0,
@@ -2697,89 +2182,15 @@ function getMinimalFallbackCoins() {
 }
 
 // Add coin to wallet
-app.post("/make-server-e5bc10d1/add-coin-to-wallet", async (c) => {
-  try {
-    const body = await c.req.json();
-    const { walletId, coinId, symbol, name, image } = body;
-
-    console.log(`Adding coin ${symbol} to wallet ${walletId}...`);
-
-    if (!walletId || !coinId || !symbol || !name) {
-      return c.json({ error: 'Missing required fields' }, 400);
-    }
-
-    // Get current wallet tokens
-    const walletKey = `wallet:${walletId}:tokens`;
-    const tokens = await kv.get(walletKey) || {};
-
-    // Add the new coin with 0 balance if not already present
-    if (!tokens[symbol]) {
-      tokens[symbol] = {
-        mint: coinId,
-        name: name,
-        amount: 0,
-        logoUrl: image || ''
-      };
-
-      // Save back to database
-      await kv.set(walletKey, tokens);
-      console.log(`Coin ${symbol} added to wallet successfully`);
-
-      return c.json({ 
-        success: true, 
-        message: `${symbol} added to wallet`,
-        token: tokens[symbol]
-      });
-    } else {
-      console.log(`Coin ${symbol} already exists in wallet`);
-      return c.json({ 
-        success: true, 
-        message: `${symbol} already in wallet`,
-        token: tokens[symbol]
-      });
-    }
-  } catch (error: any) {
-    // Error adding coin to wallet
-    return c.json({ error: error.message || 'Failed to add coin to wallet' }, 500);
-  }
+// DISABLED: No auth — data is stored client-side only
+app.post("/make-server-e5bc10d1/add-coin-to-wallet", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
 
 // Remove coin from wallet
-app.post("/make-server-e5bc10d1/remove-coin-from-wallet", async (c) => {
-  try {
-    const body = await c.req.json();
-    const { walletId, symbol } = body;
-
-    console.log(`Removing coin ${symbol} from wallet ${walletId}...`);
-
-    if (!walletId || !symbol) {
-      return c.json({ error: 'Missing required fields' }, 400);
-    }
-
-    // Get current wallet tokens
-    const walletKey = `wallet:${walletId}:tokens`;
-    const tokens = await kv.get(walletKey) || {};
-
-    // Check if token exists
-    if (!tokens[symbol]) {
-      return c.json({ error: `Token ${symbol} not found in wallet` }, 404);
-    }
-
-    // Remove the token
-    delete tokens[symbol];
-
-    // Save back to database
-    await kv.set(walletKey, tokens);
-    console.log(`Coin ${symbol} removed from wallet successfully`);
-
-    return c.json({ 
-      success: true, 
-      message: `${symbol} removed from wallet`
-    });
-  } catch (error: any) {
-    // Error removing coin from wallet
-    return c.json({ error: error.message || 'Failed to remove coin from wallet' }, 500);
-  }
+// DISABLED: No auth — data is stored client-side only
+app.post("/make-server-e5bc10d1/remove-coin-from-wallet", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
 
 // Blockchain checking helper functions
@@ -3693,854 +3104,53 @@ async function getBitcoinTransactions(address: string): Promise<any[]> {
 }
 
 // Send token endpoint
-app.post("/make-server-e5bc10d1/send-token", async (c) => {
-  try {
-    const { walletId, tokenSymbol, tokenMint, recipientAddress, amount } = await c.req.json();
-    
-    if (!walletId || !tokenSymbol || !recipientAddress || !amount) {
-      return c.json({ error: 'Missing required fields' }, 400);
-    }
-    
-    console.log('Send token request:', { walletId, tokenSymbol, recipientAddress, amount });
-    
-    // Get wallet data
-    const wallet = await kv.get(`wallet:${walletId}`);
-    if (!wallet || !wallet.seedPhrase) {
-      return c.json({ error: 'Wallet not found' }, 404);
-    }
-    
-    // Get current tokens
-    const tokens = await kv.get(`wallet:${walletId}:tokens`) || {};
-    
-    // Check if token exists and has sufficient balance
-    if (!tokens[tokenSymbol]) {
-      return c.json({ error: `Token ${tokenSymbol} not found in wallet` }, 404);
-    }
-    
-    const currentBalance = tokens[tokenSymbol].amount || 0;
-    const sendAmount = parseFloat(amount);
-    
-    if (currentBalance < sendAmount) {
-      return c.json({ error: `Insufficient balance. Available: ${currentBalance} ${tokenSymbol}` }, 400);
-    }
-    
-    // Validate recipient address
-    if (tokenMint === 'solana' || tokenSymbol === 'SOL') {
-      // Validate Solana address (base58, 32-44 chars)
-      if (recipientAddress.length < 32 || recipientAddress.length > 44) {
-        return c.json({ error: 'Invalid Solana address' }, 400);
-      }
-    } else if (tokenMint === 'ethereum' || tokenSymbol === 'ETH') {
-      // Validate Ethereum address (0x + 40 hex chars)
-      if (!/^0x[a-fA-F0-9]{40}$/.test(recipientAddress)) {
-        return c.json({ error: 'Invalid Ethereum address' }, 400);
-      }
-    }
-    
-    // Get network setting
-    const settings = await kv.get(`wallet:${walletId}:settings`) || {};
-    const network = settings.network || 'mainnet';
-    
-    console.log(`Sending ${sendAmount} ${tokenSymbol} to ${recipientAddress} on ${network}`);
-    
-    // For Solana transactions on mainnet
-    if ((tokenMint === 'solana' || tokenSymbol === 'SOL') && network === 'mainnet') {
-      try {
-        // Import Solana libraries
-        const { Connection, PublicKey, SystemProgram, Transaction, Keypair, sendAndConfirmTransaction } = await import('npm:@solana/web3.js@1.95.8');
-        const { mnemonicToSeedSync } = await import('npm:@scure/bip39@1.2.1');
-        const { derivePath } = await import('npm:ed25519-hd-key@1.3.0');
-        const nacl = await import('npm:tweetnacl@1.0.3');
-
-        // Derive Solana keypair using ed25519-hd-key (SLIP-0010, same as Phantom)
-        const seed = mnemonicToSeedSync(wallet.seedPhrase);
-        const seedHex = Buffer.from(seed).toString('hex');
-        const accountIndex = wallet.accountIndex || 0; // Default to 0 for legacy wallets
-        const solanaPath = `m/44'/501'/${accountIndex}'/0'`;
-        const { key: solanaKey } = derivePath(solanaPath, seedHex);
-
-        const solanaKeypair = nacl.default.sign.keyPair.fromSeed(solanaKey);
-        const keypair = Keypair.fromSecretKey(solanaKeypair.secretKey);
-        
-        // Connect to Solana mainnet
-        const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
-        
-        // No app fee anymore
-        
-        // Rent-exempt minimum for Solana accounts (approx 0.00089088 SOL)
-        const RENT_EXEMPT_MINIMUM = 0.00089088;
-        const NETWORK_FEE = 0.000005; // Approximate network transaction fee
-        const SAFETY_BUFFER = 0.0002; // Additional safety buffer
-        const MIN_REMAINING_BALANCE = RENT_EXEMPT_MINIMUM + NETWORK_FEE + SAFETY_BUFFER; // ~0.00109588 SOL
-        
-        console.log(`Transaction breakdown: Amount=${sendAmount} SOL, No App Fee`);
-        
-        // Check if user has enough balance for amount + rent-exempt minimum
-        const totalRequired = sendAmount + MIN_REMAINING_BALANCE;
-        if (currentBalance < totalRequired) {
-          return c.json({ 
-            error: `Insufficient balance. You need ${totalRequired.toFixed(6)} SOL (${sendAmount} send + ${MIN_REMAINING_BALANCE.toFixed(6)} rent reserve) but have ${currentBalance} SOL`,
-            required: totalRequired,
-            available: currentBalance,
-            breakdown: {
-              sendAmount,
-              rentReserve: MIN_REMAINING_BALANCE,
-              total: totalRequired
-            }
-          }, 400);
-        }
-        
-        // Verify that after transaction, account will remain rent-exempt
-        const balanceAfterTransaction = currentBalance - sendAmount;
-        if (balanceAfterTransaction < MIN_REMAINING_BALANCE) {
-          return c.json({
-            error: `Transaction would leave account below rent-exempt minimum. After sending ${sendAmount} SOL, you would have ${balanceAfterTransaction.toFixed(6)} SOL, but need at least ${MIN_REMAINING_BALANCE.toFixed(6)} SOL to keep account active.`,
-            balanceAfter: balanceAfterTransaction,
-            minimumRequired: MIN_REMAINING_BALANCE,
-            suggestion: `Try sending a maximum of ${Math.max(0, currentBalance - MIN_REMAINING_BALANCE).toFixed(6)} SOL instead.`
-          }, 400);
-        }
-        
-        // Create transaction with single instruction (no fee instruction)
-        const recipientPubkey = new PublicKey(recipientAddress);
-        const lamports = Math.floor(sendAmount * 1e9); // Convert SOL to lamports
-        
-        const transaction = new Transaction()
-          // Single instruction: Transfer to recipient (no app fee)
-          .add(
-            SystemProgram.transfer({
-              fromPubkey: keypair.publicKey,
-              toPubkey: recipientPubkey,
-              lamports: lamports,
-            })
-          );
-        
-        // Send and confirm transaction
-        console.log('Sending Solana transaction...');
-        const signature = await sendAndConfirmTransaction(connection, transaction, [keypair], {
-          commitment: 'confirmed',
-          maxRetries: 3,
-        });
-        
-        console.log('Transaction successful! Signature:', signature);
-        
-        // Update balance in database (deduct amount only, no fee)
-        const totalDeducted = sendAmount;
-        const oldBalance = tokens[tokenSymbol].amount;
-        tokens[tokenSymbol].amount = currentBalance - totalDeducted;
-        console.log(`[Balance Update] ${tokenSymbol}: ${oldBalance} -> ${tokens[tokenSymbol].amount} (deducted: ${totalDeducted})`);
-        await kv.set(`wallet:${walletId}:tokens`, tokens);
-        console.log('[Balance Update] Tokens saved to database');
-        
-        // Add to activity log
-        const activities = await kv.get(`wallet:${walletId}:activities`) || [];
-        console.log(`[Activity Update] Current activities count: ${activities.length}`);
-        activities.unshift({
-          id: `tx-${Date.now()}`,
-          type: 'send',
-          coin: tokenSymbol,
-          amount: sendAmount,
-          to: recipientAddress,
-          signature: signature,
-          timestamp: new Date().toISOString(),
-          status: 'confirmed',
-          network: 'solana',
-          fee: appFee,
-          totalDeducted: totalDeducted,
-        });
-        
-        // Keep only last 100 activities
-        if (activities.length > 100) {
-          activities.splice(100);
-        }
-        
-        await kv.set(`wallet:${walletId}:activities`, activities);
-        console.log(`[Activity Update] Activities saved to database. New count: ${activities.length}`);
-        
-        return c.json({
-          success: true,
-          signature: signature,
-          newBalance: tokens[tokenSymbol].amount,
-          explorerUrl: `https://solscan.io/tx/${signature}`,
-          fee: {
-            app: appFee,
-            network: 0.000005,
-            total: appFee + 0.000005,
-          },
-          amountSent: sendAmount,
-          totalDeducted: totalDeducted,
-        });
-        
-      } catch (error: any) {
-        console.error('Solana transaction error:', error);
-        return c.json({ 
-          error: `Transaction failed: ${error.message}`,
-          details: error.toString(),
-        }, 500);
-      }
-    }
-    
-    // For devnet or other tokens, just update the database (simulation)
-    console.log('Simulating transaction (devnet or non-SOL token)...');
-    
-    // Update balance
-    const oldBalance = tokens[tokenSymbol].amount;
-    tokens[tokenSymbol].amount = currentBalance - sendAmount;
-    console.log(`[Balance Update] ${tokenSymbol}: ${oldBalance} -> ${tokens[tokenSymbol].amount} (deducted: ${sendAmount})`);
-    await kv.set(`wallet:${walletId}:tokens`, tokens);
-    console.log('[Balance Update] Tokens saved to database (simulation)');
-    
-    // Add to activity log
-    const activities = await kv.get(`wallet:${walletId}:activities`) || [];
-    const txIdBytes = crypto.getRandomValues(new Uint8Array(8));
-    const txId = `sim-${Date.now()}-${Array.from(txIdBytes, b => b.toString(16).padStart(2, '0')).join('')}`;
-    
-    activities.unshift({
-      id: txId,
-      type: 'send',
-      token: tokenSymbol,
-      amount: sendAmount,
-      to: recipientAddress,
-      signature: txId,
-      timestamp: new Date().toISOString(),
-      status: 'confirmed',
-      network: network,
-    });
-    
-    // Keep only last 100 activities
-    if (activities.length > 100) {
-      activities.splice(100);
-    }
-    
-    await kv.set(`wallet:${walletId}:activities`, activities);
-    console.log(`[Activity Update] Activities saved to database (simulation). New count: ${activities.length}`);
-    
-    return c.json({
-      success: true,
-      signature: txId,
-      newBalance: tokens[tokenSymbol].amount,
-      explorerUrl: network === 'devnet' ? `https://solscan.io/tx/${txId}?cluster=devnet` : '#',
-      simulated: true,
-    });
-    
-  } catch (error: any) {
-    console.error('Send token error:', error);
-    return c.json({ error: error.message || 'Failed to send token' }, 500);
-  }
+// DISABLED: Transaction signing must happen client-side only (web3 security)
+app.post("/make-server-e5bc10d1/send-token", (c) => {
+  return c.json({ error: 'Endpoint disabled — transaction signing is client-side only' }, 410);
 });
 
+/* Legacy send-token endpoint removed — was signing transactions server-side
+   using stored seed phrases. All transaction signing now happens client-side. */
 // Check blockchain transactions endpoint
-app.post("/make-server-e5bc10d1/check-blockchain-transactions", async (c) => {
-  try {
-    const { walletId } = await c.req.json();
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-    
-    console.log('[Blockchain Check] Checking for real blockchain transactions for wallet:', walletId);
-    
-    // Get wallet settings to check which network to use
-    let settings = {};
-    try {
-      settings = await kv.get(`wallet:${walletId}:settings`) || {};
-    } catch (kvError: any) {
-      console.error('[Blockchain Check] KV error getting settings (using defaults):', kvError.message);
-      settings = {};
-    }
-    const solanaNetwork = settings.solanaNetwork || 'mainnet';
-    
-    console.log('[Blockchain Check] Using Solana network:', solanaNetwork);
-    
-    // Get wallet addresses from KV store
-    // Note: Addresses are now generated client-side and stored when wallet is created
-    let addresses = null;
-    try {
-      addresses = await kv.get(`wallet:${walletId}:addresses`);
-    } catch (kvError: any) {
-      console.error('[Blockchain Check] KV error getting addresses:', kvError.message);
-    }
-    
-    if (!addresses) {
-      console.log('[Blockchain Check] ⚠️ No addresses found in KV store');
-      console.log('[Blockchain Check] Addresses should be generated client-side');
-      return c.json({ 
-        error: 'Wallet addresses not found. Please unlock wallet first.',
-        needsUnlock: true 
-      }, 400);
-    }
-    
-    // Get API keys from environment
-    const heliusApiKey = Deno.env.get('HELIUS_API_KEY');
-    const alchemyApiKey = Deno.env.get('ALCHEMY_API_KEY');
-    
-    let updated = false;
-    const updates: any = {};
-    const now = Date.now();
-    
-    // Check Solana balance if we have Helius API key
-    const heliusKeyId = `helius_${heliusApiKey?.substring(0, 8)}`;
-    const heliusKeyFailed = failedApiKeys.get(heliusKeyId);
-    const solanaCheckEnabled = !heliusKeyFailed || ((now - heliusKeyFailed) >= 10 * 60 * 1000);
-    
-    if (addresses.solana && heliusApiKey && heliusApiKey.trim() !== '' && solanaCheckEnabled) {
-      try {
-        console.log('[Blockchain Check] Checking Solana balance on', solanaNetwork);
-        const solBalance = await checkSolanaBalance(addresses.solana, heliusApiKey, solanaNetwork);
-        console.log('[Blockchain Check] Solana balance:', solBalance);
-        
-        // Clear failed status on success
-        failedApiKeys.delete(heliusKeyId);
-        
-        // Get current tokens with retry logic
-        const tokens = await retryWithBackoff(async () => {
-          return await kv.get(`wallet:${walletId}:tokens`) || {};
-        });
-        
-        if (!tokens.SOL || tokens.SOL.amount !== solBalance) {
-          updates.SOL = solBalance;
-          updated = true;
-          
-          tokens.SOL = {
-            name: 'Solana',
-            symbol: 'SOL',
-            mint: 'solana',
-            amount: solBalance,
-            network: 'solana',
-            logo: '◎',
-            logoUrl: '',
-          };
-          
-          await retryWithBackoff(async () => {
-            await kv.set(`wallet:${walletId}:tokens`, tokens);
-          });
-          console.log('[Blockchain Check] ✅ Updated SOL balance to:', solBalance);
-        }
-        
-        // Also check for SPL tokens
-        const splTokens = await checkSolanaTokenBalances(addresses.solana, heliusApiKey, solanaNetwork);
-        if (Object.keys(splTokens).length > 0) {
-          console.log('[Blockchain Check] Found SPL tokens:', Object.keys(splTokens));
-          
-          // Update SPL token balances
-          for (const [mint, tokenData] of Object.entries(splTokens)) {
-            // Find if we already track this token
-            const existingToken = Object.values(tokens).find((t: any) => t.mint === mint);
-            
-            if (existingToken) {
-              // Update existing token balance
-              const symbol = (existingToken as any).symbol;
-              if (tokens[symbol].amount !== (tokenData as any).amount) {
-                tokens[symbol].amount = (tokenData as any).amount;
-                updated = true;
-                updates[symbol] = (tokenData as any).amount;
-                console.log('[Blockchain Check] ✅ Updated', symbol, 'balance to:', (tokenData as any).amount);
-              }
-            } else {
-              // New token detected! Fetch metadata and add it
-              console.log('[Blockchain Check] 🆕 New token detected! Mint:', mint);
-              
-              try {
-                const metadata = await fetchTokenMetadata(mint, heliusApiKey, solanaNetwork);
-                
-                if (metadata) {
-                  const symbol = metadata.symbol;
-                  tokens[symbol] = {
-                    name: metadata.name,
-                    symbol: symbol,
-                    mint: mint,
-                    amount: (tokenData as any).amount,
-                    network: 'solana',
-                    logo: metadata.symbol.charAt(0),
-                    logoUrl: metadata.logoUrl,
-                    color: 'from-purple-500 to-pink-600', // Default color
-                  };
-                  
-                  updated = true;
-                  updates[symbol] = (tokenData as any).amount;
-                  console.log('[Blockchain Check] ✅ Added new token:', symbol, metadata.name, 'Amount:', (tokenData as any).amount);
-                } else {
-                  console.warn('[Blockchain Check] ⚠️ Could not fetch metadata for:', mint);
-                }
-              } catch (error: any) {
-                console.error('[Blockchain Check] Error fetching token metadata:', error.message);
-              }
-            }
-          }
-          
-          if (updated) {
-            await retryWithBackoff(async () => {
-              await kv.set(`wallet:${walletId}:tokens`, tokens);
-            });
-          }
-        }
-      } catch (error: any) {
-        // Log more details for authentication errors
-        if (error.message.includes('401') || error.message.includes('403') || error.message.includes('Unauthorized')) {
-          // Only log detailed message once
-          if (!failedApiKeys.has(heliusKeyId)) {
-            console.error('[Blockchain Check] ❌ Helius authentication failed');
-            console.error('[Blockchain Check] 📖 Get API key from: https://www.helius.dev');
-            console.error('[Blockchain Check] Skipping Solana checks for 10 minutes...');
-          }
-          failedApiKeys.set(heliusKeyId, now);
-        } else if (error.message.includes('connection') || error.message.includes('reset')) {
-          console.error('[Blockchain Check] ⚠️ Solana check failed (connection):', error.message);
-        } else {
-          console.error('[Blockchain Check] Error checking Solana:', error.message);
-        }
-      }
-    } else if (addresses.solana && !heliusApiKey) {
-      console.log('[Blockchain Check] ℹ️ No Helius API key - Solana balance not available');
-    }
-    
-    // Check Ethereum balance if we have Alchemy API key
-    const alchemyKeyId = `alchemy_${alchemyApiKey?.substring(0, 8)}`;
-    const alchemyKeyFailed = failedApiKeys.get(alchemyKeyId);
-    
-    // Skip if API key failed in the last 10 minutes
-    const alchemyCheckEnabled = !alchemyKeyFailed || ((now - alchemyKeyFailed) >= 10 * 60 * 1000);
-    
-    if (addresses.ethereum && alchemyApiKey && alchemyApiKey.trim() !== '' && alchemyCheckEnabled) {
-      try {
-        console.log('[Blockchain Check] Checking Ethereum balance');
-        const ethBalance = await checkEthereumBalance(addresses.ethereum, alchemyApiKey, 'eth-mainnet');
-        console.log('[Blockchain Check] Ethereum balance:', ethBalance);
-        
-        // Clear failed status on success
-        failedApiKeys.delete(alchemyKeyId);
-        
-        // Use retry logic for database access
-        const tokens = await retryWithBackoff(async () => {
-          return await kv.get(`wallet:${walletId}:tokens`) || {};
-        });
-        
-        if (!tokens.ETH || tokens.ETH.amount !== ethBalance) {
-          updates.ETH = ethBalance;
-          updated = true;
-          
-          tokens.ETH = {
-            name: 'Ethereum',
-            symbol: 'ETH',
-            mint: 'ethereum',
-            amount: ethBalance,
-            network: 'ethereum',
-            logo: 'Ξ',
-            logoUrl: '',
-          };
-          
-          // Use retry logic for database write
-          await retryWithBackoff(async () => {
-            await kv.set(`wallet:${walletId}:tokens`, tokens);
-          });
-          console.log('[Blockchain Check] ✅ Updated ETH balance to:', ethBalance);
-        }
-      } catch (error: any) {
-        // If authentication fails, mark this API key as failed
-        if (error.message.includes('Must be authenticated') || 
-            error.message.includes('Invalid API Key') || 
-            error.message.includes('Alchemy API error')) {
-          // Only log detailed message once
-          if (!failedApiKeys.has(alchemyKeyId)) {
-            console.error('[Blockchain Check] ❌ Alchemy authentication failed');
-            console.error('[Blockchain Check] 📖 Fix guide: ALCHEMY_FIX_NOW.md or FIX_ALCHEMY_ERROR.txt');
-            console.error('[Blockchain Check] Skipping Ethereum checks for 10 minutes...');
-          }
-          failedApiKeys.set(alchemyKeyId, now);
-        } else if (error.message.includes('no healthy upstream') || 
-                   error.message.includes('connection') || 
-                   error.message.includes('Network error')) {
-          // Network/upstream errors - log but don't ban the key
-          console.error('[Blockchain Check] ⚠️ Ethereum check failed (network/upstream):', error.message);
-        } else {
-          console.error('[Blockchain Check] Error checking Ethereum:', error.message);
-        }
-      }
-    } else if (addresses.ethereum && !alchemyApiKey) {
-      console.log('[Blockchain Check] ℹ️ No Alchemy API key - Ethereum balance not available');
-    }
-    
-    // Check Bitcoin balance (using BlockCypher free API, no key needed)
-    if (addresses.bitcoin) {
-      try {
-        console.log('[Blockchain Check] Checking Bitcoin balance');
-        const btcBalance = await checkBitcoinBalance(addresses.bitcoin);
-        console.log('[Blockchain Check] Bitcoin balance:', btcBalance);
-        
-        const tokens = await retryWithBackoff(async () => {
-          return await kv.get(`wallet:${walletId}:tokens`) || {};
-        });
-        
-        if (!tokens.BTC || tokens.BTC.amount !== btcBalance) {
-          updates.BTC = btcBalance;
-          updated = true;
-          
-          tokens.BTC = {
-            name: 'Bitcoin',
-            symbol: 'BTC',
-            mint: 'bitcoin',
-            amount: btcBalance,
-            network: 'bitcoin',
-            logo: '₿',
-            logoUrl: '',
-          };
-          
-          await retryWithBackoff(async () => {
-            await kv.set(`wallet:${walletId}:tokens`, tokens);
-          });
-          console.log('[Blockchain Check] ✅ Updated BTC balance to:', btcBalance);
-        }
-      } catch (error: any) {
-        if (error.message.includes('connection') || error.message.includes('reset')) {
-          console.error('[Blockchain Check] ⚠️ Bitcoin check failed (connection):', error.message);
-        } else {
-          console.error('[Blockchain Check] Error checking Bitcoin:', error.message);
-        }
-      }
-    }
-    
-    // Record the check time
-    await kv.set(`wallet:${walletId}:last_blockchain_check`, {
-      timestamp: new Date().toISOString(),
-      network: solanaNetwork,
-      updated: updated,
-    });
-    
-    return c.json({
-      success: true,
-      updated: updated,
-      updates: updates,
-      network: solanaNetwork,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error: any) {
-    console.error('[Blockchain Check] Error:', error.message, error.stack);
-    return c.json({ error: error.message || 'Failed to check blockchain transactions' }, 500);
-  }
+app.post("/make-server-e5bc10d1/check-blockchain-transactions", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Swap tokens endpoint
-app.post("/make-server-e5bc10d1/swap-tokens", async (c) => {
-  try {
-    const { 
-      walletId, 
-      fromTokenId, 
-      fromTokenSymbol, 
-      fromAmount, 
-      newFromBalance,
-      toTokenId, 
-      toTokenSymbol, 
-      toAmount, 
-      newToBalance,
-      exchangeRate,
-      feeAmount,
-      feeUSD,
-      totalDeducted
-    } = await c.req.json();
-
-    console.log('Processing swap:', { 
-      walletId, 
-      fromTokenSymbol, 
-      fromAmount, 
-      toTokenSymbol, 
-      toAmount,
-      feeAmount,
-      feeUSD
-    });
-
-    // Validate inputs
-    if (!walletId || !fromTokenId || !toTokenId || !fromAmount || !toAmount) {
-      return c.json({ error: 'Missing required fields' }, 400);
-    }
-
-    // Get wallet tokens
-    const tokens = await retryWithBackoff(() => kv.get(`wallet:${walletId}:tokens`)) || {};
-
-    // Update fromToken balance (decrease)
-    if (tokens[fromTokenSymbol]) {
-      tokens[fromTokenSymbol].amount = newFromBalance;
-    }
-
-    // Update toToken balance (increase) or add if doesn't exist
-    if (tokens[toTokenSymbol]) {
-      tokens[toTokenSymbol].amount = newToBalance;
-    } else {
-      // Add new token to wallet
-      tokens[toTokenSymbol] = {
-        symbol: toTokenSymbol,
-        name: toTokenId.charAt(0).toUpperCase() + toTokenId.slice(1),
-        amount: newToBalance,
-        mint: toTokenId,
-        network: 'multi'
-      };
-    }
-
-    // Save updated tokens
-    await retryWithBackoff(() => kv.set(`wallet:${walletId}:tokens`, tokens));
-
-    // 💰 NOTE: On-chain fee transfer is disabled because Saturn uses client-side wallet architecture
-    // Seed phrases are never sent to the server for security reasons
-    // The fee is tracked in the UI but not actually collected on-chain for this prototype
-    let feeTransferSignature = null;
-
-    // Add to activity log
-    const activities = await kv.get(`wallet:${walletId}:activities`) || [];
-    const swapIdBytes = crypto.getRandomValues(new Uint8Array(8));
-    const swapId = `swap-${Date.now()}-${Array.from(swapIdBytes, b => b.toString(16).padStart(2, '0')).join('')}`;
-    
-    activities.unshift({
-      id: swapId,
-      type: 'swap',
-      fromToken: fromTokenSymbol,
-      fromAmount: fromAmount,
-      toToken: toTokenSymbol,
-      toAmount: toAmount,
-      rate: exchangeRate,
-      fee: feeUSD, // Fee in USD
-      feeAmount: feeAmount, // Fee in fromToken
-      totalDeducted: totalDeducted, // Total deducted from balance
-      timestamp: new Date().toISOString(),
-      status: 'completed',
-      feeTransferSignature: feeTransferSignature, // On-chain fee transfer signature
-    });
-
-    // Keep only last 100 activities
-    if (activities.length > 100) {
-      activities.splice(100);
-    }
-
-    await kv.set(`wallet:${walletId}:activities`, activities);
-
-    // Track collected fees (for analytics)
-    try {
-      const feeWallet = Deno.env.get('APP_FEE_WALLET') || 'fee-collection';
-      const collectedFees = await kv.get(`fees:${feeWallet}`) || { total: 0, swaps: [] };
-      
-      collectedFees.total = (collectedFees.total || 0) + parseFloat(feeUSD);
-      collectedFees.swaps = collectedFees.swaps || [];
-      collectedFees.swaps.unshift({
-        swapId,
-        walletId,
-        fromToken: fromTokenSymbol,
-        feeAmount,
-        feeUSD,
-        timestamp: new Date().toISOString(),
-        onChainSignature: feeTransferSignature, // Store on-chain signature
-        onChainTransferred: !!feeTransferSignature, // Boolean flag
-      });
-      
-      // Keep only last 1000 fee records
-      if (collectedFees.swaps.length > 1000) {
-        collectedFees.swaps.splice(1000);
-      }
-      
-      await kv.set(`fees:${feeWallet}`, collectedFees);
-      console.log(`[Swap Fee] Fee tracked: ${feeUSD} USD (on-chain: ${!!feeTransferSignature})`);
-    } catch (feeError) {
-      console.error('Failed to track fee (non-critical):', feeError);
-    }
-
-    console.log('Swap completed successfully:', swapId);
-
-    return c.json({
-      success: true,
-      swapId,
-      newFromBalance,
-      newToBalance,
-      feeCharged: feeUSD,
-      feeTransferSignature: feeTransferSignature, // Include in response
-      feeTransferStatus: feeTransferSignature ? 'transferred' : 'tracked-only',
-    });
-
-  } catch (error: any) {
-    console.error('Swap error:', error);
-    return c.json({ error: error.message || 'Failed to swap tokens' }, 500);
-  }
+app.post("/make-server-e5bc10d1/swap-tokens", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Get recent swaps for a wallet
-app.get("/make-server-e5bc10d1/wallet/:walletId/recent-swaps", async (c) => {
-  try {
-    const { walletId } = c.req.param();
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-    
-    // Get activities and filter for swaps
-    const activities = await retryWithBackoff(async () => {
-      return await kv.get(`wallet:${walletId}:activities`) || [];
-    });
-    
-    const swaps = activities
-      .filter((activity: any) => activity.type === 'swap')
-      .slice(0, 10) // Return last 10 swaps
-      .map((swap: any) => ({
-        id: swap.id,
-        fromToken: swap.fromToken,
-        toToken: swap.toToken,
-        fromAmount: swap.fromAmount,
-        toAmount: swap.toAmount,
-        timestamp: swap.timestamp,
-        feeUSD: swap.fee,
-      }));
-    
-    console.log(`[Recent Swaps] Fetched ${swaps.length} swaps for ${walletId}`);
-    
-    return c.json({ swaps });
-  } catch (error: any) {
-    console.error('[Recent Swaps] Error fetching swaps:', error);
-    return c.json({ error: error.message || 'Failed to fetch recent swaps' }, 500);
-  }
+app.get("/make-server-e5bc10d1/wallet/:walletId/recent-swaps", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Get wallet info endpoint
-app.get("/make-server-e5bc10d1/wallet-info/:walletId", async (c) => {
-  try {
-    const walletId = c.req.param('walletId');
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-    
-    const wallet = await kv.get(`wallet:${walletId}`);
-    
-    if (!wallet) {
-      return c.json({ error: 'Wallet not found' }, 404);
-    }
-    
-    // Get settings to check network status
-    const settings = await kv.get(`wallet:${walletId}:settings`) || {};
-    const networkStatus = settings.solanaNetwork === 'devnet' ? {
-      network: 'devnet',
-      lastCheck: new Date().toISOString()
-    } : null;
-    
-    // Return wallet info without sensitive data by default
-    return c.json({
-      seedPhrase: wallet.seedPhrase || null,
-      email: wallet.email || null,
-      authMethod: wallet.authMethod || 'recovery-phrase',
-      createdAt: wallet.createdAt,
-      username: wallet.username || '@Account1',
-      walletName: wallet.walletName || 'Saturn Wallet',
-      profilePicture: wallet.profilePicture || null,
-      networkStatus: networkStatus,
-    });
-  } catch (error: any) {
-    // Get wallet info error
-    return c.json({ error: error.message || 'Failed to get wallet info' }, 500);
-  }
+// DISABLED: Seed phrases must never be returned from the server (web3 security)
+app.get("/make-server-e5bc10d1/wallet-info/:walletId", (c) => {
+  return c.json({ error: 'Endpoint disabled — wallet info is managed client-side only' }, 410);
+});
+// Update username endpoint
+app.post("/make-server-e5bc10d1/update-username", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
 
-// Update username endpoint
-app.post("/make-server-e5bc10d1/update-username", async (c) => {
-  try {
-    const { walletId, username } = await c.req.json();
-    
-    if (!walletId || !username) {
-      return c.json({ error: 'Wallet ID and username are required' }, 400);
-    }
-    
-    // Normalize username to lowercase (Phantom style)
-    const normalizedUsername = username.toLowerCase();
-    
-    // Validate username format
-    if (normalizedUsername.length < 4) {
-      return c.json({ error: 'Username must be at least 3 characters (excluding @)' }, 400);
-    }
-    
-    if (!/^@[a-z0-9_]+$/.test(normalizedUsername)) {
-      return c.json({ error: 'Username can only contain lowercase letters, numbers, and underscores' }, 400);
-    }
-    
-    const wallet = await kv.get(`wallet:${walletId}`);
-    
-    if (!wallet) {
-      return c.json({ error: 'Wallet not found' }, 404);
-    }
-    
-    // Check if username is already taken (excluding current wallet)
-    const wallets = await kv.getByPrefix('wallet:');
-    const existingWallet = wallets.find((w: any) => {
-      return w.value?.username === normalizedUsername && w.key !== `wallet:${walletId}`;
-    });
-    
-    if (existingWallet) {
-      return c.json({ error: 'Username is already taken' }, 400);
-    }
-    
-    wallet.username = normalizedUsername;
-    await kv.set(`wallet:${walletId}`, wallet);
-    
-    // Also update localStorage username via response
-    console.log(`Username updated: ${normalizedUsername} for wallet ${walletId}`);
-    
-    // Update username in accounts list as well
-    const parentWalletId = wallet.parentWalletId || walletId;
-    const accountsList = await kv.get(`accounts:${parentWalletId}`);
-    
-    if (accountsList && accountsList.accounts) {
-      accountsList.accounts = accountsList.accounts.map((acc: any) => {
-        if (acc.walletId === walletId) {
-          return { ...acc, username: normalizedUsername };
-        }
-        return acc;
-      });
-      
-      await kv.set(`accounts:${parentWalletId}`, accountsList);
-      
-      // Also update for child wallet if it has children
-      if (wallet.parentWalletId) {
-        await kv.set(`accounts:${walletId}`, accountsList);
-      }
-    }
-    
-    return c.json({ success: true, username: normalizedUsername });
-  } catch (error: any) {
-    console.error('Update username error:', error);
-    return c.json({ error: error.message || 'Failed to update username' }, 500);
-  }
-});
 
 // Check username availability endpoint
-app.get("/make-server-e5bc10d1/check-username/:username", async (c) => {
-  try {
-    const username = c.req.param('username');
-    const currentWalletId = c.req.query('walletId'); // Optional: exclude current wallet from check
-    
-    if (!username) {
-      return c.json({ error: 'Username is required' }, 400);
-    }
-    
-    // Get all wallets by prefix to search for username
-    const wallets = await kv.getByPrefix('wallet:');
-    
-    // Check if username already exists (excluding current wallet if provided)
-    const existingWallet = wallets.find((w: any) => {
-      return w.value?.username === username && w.key !== `wallet:${currentWalletId}`;
-    });
-    
-    const available = !existingWallet;
-    
-    console.log(`Username check: ${username} - ${available ? 'available' : 'taken'}`);
-    
-    return c.json({ 
-      available,
-      username,
-      message: available ? 'Username is available' : 'Username is already taken'
-    });
-  } catch (error: any) {
-    console.error('Check username error:', error);
-    return c.json({ error: error.message || 'Failed to check username' }, 500);
-  }
+app.get("/make-server-e5bc10d1/check-username/:username", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Get user settings endpoint
 app.get("/make-server-e5bc10d1/user-settings/:walletId", async (c) => {
   try {
-    const walletId = c.req.param('walletId');
-    
+    const walletId = sanitizeKvKey(c.req.param('walletId'));
+
     if (!walletId) {
       return c.json({ error: 'Wallet ID is required' }, 400);
     }
@@ -4592,21 +3202,9 @@ app.get("/make-server-e5bc10d1/user-settings/:walletId", async (c) => {
 });
 
 // Update user settings endpoint
-app.post("/make-server-e5bc10d1/update-settings", async (c) => {
-  try {
-    const { walletId, settings } = await c.req.json();
-    
-    if (!walletId || !settings) {
-      return c.json({ error: 'Wallet ID and settings are required' }, 400);
-    }
-    
-    await kv.set(`wallet:${walletId}:settings`, settings);
-    
-    return c.json({ success: true, settings });
-  } catch (error: any) {
-    console.error('Update settings error:', error);
-    return c.json({ error: error.message || 'Failed to update settings' }, 500);
-  }
+// DISABLED: No auth — data is stored client-side only
+app.post("/make-server-e5bc10d1/update-settings", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
 
 // Get exchange rates endpoint
@@ -4744,34 +3342,16 @@ app.get("/make-server-e5bc10d1/exchange-rates", async (c) => {
 });
 
 // Delete wallet endpoint
-app.post("/make-server-e5bc10d1/delete-wallet", async (c) => {
-  try {
-    const { walletId } = await c.req.json();
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-    
-    // Delete wallet and associated data
-    await kv.del(`wallet:${walletId}`);
-    await kv.del(`wallet:${walletId}:tokens`);
-    await kv.del(`wallet:${walletId}:settings`);
-    await kv.del(`wallet:${walletId}:transactions`);
-    
-    // Wallet deleted successfully
-    
-    return c.json({ success: true, message: 'Wallet deleted successfully' });
-  } catch (error: any) {
-    // Delete wallet error
-    return c.json({ error: error.message || 'Failed to delete wallet' }, 500);
-  }
+app.post("/make-server-e5bc10d1/delete-wallet", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Get accounts list
 app.get("/make-server-e5bc10d1/accounts/:walletId", async (c) => {
   try {
-    const walletId = c.req.param('walletId');
-    
+    const walletId = sanitizeKvKey(c.req.param('walletId'));
+
     if (!walletId) {
       return c.json({ error: 'Wallet ID is required' }, 400);
     }
@@ -4802,216 +3382,14 @@ app.get("/make-server-e5bc10d1/accounts/:walletId", async (c) => {
 });
 
 // Create new account
-app.post("/make-server-e5bc10d1/create-account", async (c) => {
-  try {
-    const { parentWalletId, username } = await c.req.json();
-    
-    if (!parentWalletId || !username) {
-      return c.json({ error: 'Parent wallet ID and username are required' }, 400);
-    }
-    
-    // Get parent wallet to use same seed phrase
-    const parentWallet = await kv.get(`wallet:${parentWalletId}`);
-    
-    if (!parentWallet) {
-      return c.json({ error: 'Parent wallet not found' }, 404);
-    }
-    
-    // Get existing accounts to determine the next account index
-    const accountsList = await kv.get(`accounts:${parentWalletId}`) || { accounts: [] };
-    const nextAccountIndex = accountsList.accounts.length; // 0 for primary, 1 for first additional, etc.
-    
-    // Import dependencies for address derivation
-    const { mnemonicToSeedSync } = await import('npm:bip39@3.1.0');
-    const { HDKey } = await import('npm:@scure/bip32@1.5.0');
-    const { derivePath } = await import('npm:ed25519-hd-key@1.3.0');
-    const nacl = await import('npm:tweetnacl@1.0.3');
-    const bs58 = await import('npm:bs58@6.0.0');
-    const { keccak_256 } = await import('npm:@noble/hashes@1.5.0/sha3');
-
-    // Derive addresses for this account index
-    const seed = mnemonicToSeedSync(parentWallet.seedPhrase);
-    const seedHex = Buffer.from(seed).toString('hex');
-
-    // Solana address using ed25519-hd-key (SLIP-0010, same as Phantom)
-    const solanaPath = `m/44'/501'/${nextAccountIndex}'/0'`;
-    const { key: solanaKey } = derivePath(solanaPath, seedHex);
-    const solanaKeypair = nacl.default.sign.keyPair.fromSeed(solanaKey);
-    const solanaAddress = bs58.default.encode(solanaKeypair.publicKey);
-    
-    // Ethereum/EVM address (m/44'/60'/[accountIndex]'/0/0)
-    const ethPath = `m/44'/60'/${nextAccountIndex}'/0/0`;
-    const ethHdKey = HDKey.fromMasterSeed(seed);
-    const ethAccount = ethHdKey.derive(ethPath);
-    if (!ethAccount.publicKey) {
-      throw new Error('Failed to derive Ethereum public key');
-    }
-    const ethPublicKey = ethAccount.publicKey.slice(1);
-    const ethHash = keccak_256(ethPublicKey);
-    const evmAddress = '0x' + Array.from(ethHash.slice(-20)).map(b => b.toString(16).padStart(2, '0')).join('');
-    
-    // Bitcoin address (m/44'/0'/[accountIndex]'/0/0)
-    const btcPath = `m/44'/0'/${nextAccountIndex}'/0/0`;
-    const btcHdKey = HDKey.fromMasterSeed(seed);
-    const btcAccount = btcHdKey.derive(btcPath);
-    if (!btcAccount.publicKey) {
-      throw new Error('Failed to derive Bitcoin public key');
-    }
-    const btcHash160 = new Uint8Array(20); // Simplified - in production use proper hash160
-    const btcAddress = bs58.default.encode(new Uint8Array([0x00, ...btcHash160]));
-    
-    // Sui address (m/44'/784'/[accountIndex]'/0'/0')
-    const suiPath = `m/44'/784'/${nextAccountIndex}'/0'/0'`;
-    const suiHdKey = HDKey.fromMasterSeed(seed);
-    const suiAccount = suiHdKey.derive(suiPath);
-    if (!suiAccount.publicKey) {
-      throw new Error('Failed to derive Sui public key');
-    }
-    const suiPubKeyBytes = suiAccount.publicKey.slice(1);
-    const suiAddressBytes = new Uint8Array(32);
-    suiAddressBytes.set(suiPubKeyBytes.slice(0, 32));
-    const suiAddress = '0x' + Array.from(suiAddressBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-    
-    // Generate new wallet ID for the account
-    const newWalletIdBytes = crypto.getRandomValues(new Uint8Array(16));
-    const newWalletId = `wallet_${Array.from(newWalletIdBytes, b => b.toString(16).padStart(2, '0')).join('')}`;
-    
-    // Create new wallet with same seed phrase but different account index
-    const newWallet = {
-      seedPhrase: parentWallet.seedPhrase,
-      createdAt: new Date().toISOString(),
-      username: username,
-      parentWalletId: parentWalletId,
-      accountIndex: nextAccountIndex,
-      // Store derived addresses
-      solanaAddress: solanaAddress,
-      ethereumAddress: evmAddress,
-      baseAddress: evmAddress, // Same as Ethereum
-      polygonAddress: evmAddress, // Same as Ethereum
-      bitcoinAddress: btcAddress,
-      suiAddress: suiAddress,
-    };
-    
-    await kv.set(`wallet:${newWalletId}`, newWallet);
-    
-    // Initialize empty tokens for new account
-    await kv.set(`wallet:${newWalletId}:tokens`, {});
-    
-    // Add to accounts list
-    const newAccount = {
-      id: `acc_${Date.now()}`,
-      username: username,
-      walletId: newWalletId,
-      createdAt: newWallet.createdAt,
-      isPrimary: false,
-      accountIndex: nextAccountIndex,
-      solanaAddress: solanaAddress,
-    };
-    
-    accountsList.accounts.push(newAccount);
-    await kv.set(`accounts:${parentWalletId}`, accountsList);
-    
-    // Also store the reverse mapping (child -> parent)
-    await kv.set(`accounts:${newWalletId}`, accountsList);
-    
-    console.log('Account created successfully:', newWalletId, 'with index:', nextAccountIndex);
-    
-    return c.json({ 
-      success: true, 
-      account: newAccount,
-      walletId: newWalletId,
-      solanaAddress: solanaAddress,
-    });
-  } catch (error: any) {
-    console.error('Create account error:', error);
-    return c.json({ error: error.message || 'Failed to create account' }, 500);
-  }
+// DISABLED: Address derivation must happen client-side only (web3 security)
+app.post("/make-server-e5bc10d1/create-account", (c) => {
+  return c.json({ error: 'Endpoint disabled — account creation is client-side only' }, 410);
 });
-
 // Upload profile picture endpoint
-app.post("/make-server-e5bc10d1/upload-profile-picture", async (c) => {
-  try {
-    const { walletId, image, fileName } = await c.req.json();
-    
-    if (!walletId || !image) {
-      return c.json({ error: 'Wallet ID and image are required' }, 400);
-    }
-
-    // Initialize Supabase client
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    );
-
-    // Create bucket if it doesn't exist
-    const bucketName = 'make-e5bc10d1-profile-pictures';
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const bucketExists = buckets?.some(bucket => bucket.name === bucketName);
-    
-    if (!bucketExists) {
-      await supabase.storage.createBucket(bucketName, {
-        public: false,
-        fileSizeLimit: 5242880, // 5MB
-      });
-    }
-
-    // Convert base64 to binary using native atob
-    const base64Data = image.split(',')[1];
-    
-    // Decode base64 to binary string
-    const binaryString = atob(base64Data);
-    
-    // Convert binary string to Uint8Array
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    
-    // Generate unique file name
-    const fileExtension = fileName?.split('.').pop() || 'jpg';
-    const uniqueFileName = `${walletId}_${Date.now()}.${fileExtension}`;
-    
-    // Upload to Supabase Storage
-    const { error: uploadError } = await supabase.storage
-      .from(bucketName)
-      .upload(uniqueFileName, bytes, {
-        contentType: `image/${fileExtension}`,
-        upsert: true,
-      });
-
-    if (uploadError) {
-      console.error('Upload error:', uploadError);
-      throw new Error('Failed to upload image to storage');
-    }
-
-    // Create signed URL (valid for 1 year)
-    const { data: signedUrlData } = await supabase.storage
-      .from(bucketName)
-      .createSignedUrl(uniqueFileName, 31536000); // 1 year in seconds
-
-    if (!signedUrlData) {
-      throw new Error('Failed to create signed URL');
-    }
-
-    // Update wallet with profile picture URL
-    const wallet = await kv.get(`wallet:${walletId}`);
-    if (!wallet) {
-      return c.json({ error: 'Wallet not found' }, 404);
-    }
-
-    wallet.profilePicture = signedUrlData.signedUrl;
-    await kv.set(`wallet:${walletId}`, wallet);
-
-    // Profile picture uploaded successfully
-
-    return c.json({ 
-      success: true, 
-      profilePicture: signedUrlData.signedUrl,
-    });
-  } catch (error: any) {
-    console.error('Upload profile picture error:', error);
-    return c.json({ error: error.message || 'Failed to upload profile picture' }, 500);
-  }
+// DISABLED: No auth + no file validation — profile pictures handled client-side
+app.post("/make-server-e5bc10d1/upload-profile-picture", (c) => {
+  return c.json({ error: 'Endpoint disabled for security' }, 410);
 });
 
 // ========================================
@@ -5019,374 +3397,87 @@ app.post("/make-server-e5bc10d1/upload-profile-picture", async (c) => {
 // ========================================
 
 // Get wallet NFTs
-app.get("/make-server-e5bc10d1/wallet/:walletId/nfts", async (c) => {
-  try {
-    const { walletId } = c.req.param();
-    
-    // Get NFTs from KV store
-    const nfts = await kv.get(`wallet:${walletId}:nfts`) || [];
-    
-    return c.json(nfts);
-  } catch (error: any) {
-    console.error('Error fetching NFTs:', error);
-    return c.json({ error: error.message }, 500);
-  }
+app.get("/make-server-e5bc10d1/wallet/:walletId/nfts", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // ========================================
 // THEME ENDPOINTS
 // ========================================
 
 // Get wallet theme
-app.get("/make-server-e5bc10d1/wallet/:walletId/theme", async (c) => {
-  try {
-    const { walletId } = c.req.param();
-    
-    const theme = await kv.get(`wallet:${walletId}:theme`) || { theme: 'classic' };
-    
-    return c.json(theme);
-  } catch (error: any) {
-    console.error('Error fetching theme:', error);
-    return c.json({ error: error.message }, 500);
-  }
+app.get("/make-server-e5bc10d1/wallet/:walletId/theme", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
 
+
 // Save wallet theme
-app.post("/make-server-e5bc10d1/wallet/:walletId/theme", async (c) => {
-  try {
-    const { walletId } = c.req.param();
-    const { theme } = await c.req.json();
-    
-    await kv.set(`wallet:${walletId}:theme`, { theme });
-    
-    return c.json({ success: true, theme });
-  } catch (error: any) {
-    console.error('Error saving theme:', error);
-    return c.json({ error: error.message }, 500);
-  }
+app.post("/make-server-e5bc10d1/wallet/:walletId/theme", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // ========================================
 // ADDRESS BOOK / CONTACTS ENDPOINTS
 // ========================================
 
 // Get wallet contacts
-app.get("/make-server-e5bc10d1/wallet/:walletId/contacts", async (c) => {
-  try {
-    const { walletId } = c.req.param();
-    
-    const contacts = await kv.get(`wallet:${walletId}:contacts`) || [];
-    
-    return c.json(contacts);
-  } catch (error: any) {
-    console.error('Error fetching contacts:', error);
-    return c.json({ error: error.message }, 500);
-  }
+app.get("/make-server-e5bc10d1/wallet/:walletId/contacts", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Add contact
-app.post("/make-server-e5bc10d1/wallet/:walletId/contacts", async (c) => {
-  try {
-    const { walletId } = c.req.param();
-    const { name, address, network } = await c.req.json();
-    
-    if (!name || !address || !network) {
-      return c.json({ error: 'Name, address and network are required' }, 400);
-    }
-    
-    const contacts = await kv.get(`wallet:${walletId}:contacts`) || [];
-    
-    const newContact = {
-      id: Date.now().toString(),
-      name,
-      address,
-      network,
-      createdAt: new Date().toISOString(),
-    };
-    
-    contacts.push(newContact);
-    await kv.set(`wallet:${walletId}:contacts`, contacts);
-    
-    return c.json({ success: true, contact: newContact });
-  } catch (error: any) {
-    console.error('Error adding contact:', error);
-    return c.json({ error: error.message }, 500);
-  }
+app.post("/make-server-e5bc10d1/wallet/:walletId/contacts", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Update contact
-app.put("/make-server-e5bc10d1/wallet/:walletId/contacts/:contactId", async (c) => {
-  try {
-    const { walletId, contactId } = c.req.param();
-    const { name, address, network } = await c.req.json();
-    
-    const contacts = await kv.get(`wallet:${walletId}:contacts`) || [];
-    
-    const contactIndex = contacts.findIndex((c: any) => c.id === contactId);
-    if (contactIndex === -1) {
-      return c.json({ error: 'Contact not found' }, 404);
-    }
-    
-    contacts[contactIndex] = {
-      ...contacts[contactIndex],
-      name,
-      address,
-      network,
-      updatedAt: new Date().toISOString(),
-    };
-    
-    await kv.set(`wallet:${walletId}:contacts`, contacts);
-    
-    return c.json({ success: true, contact: contacts[contactIndex] });
-  } catch (error: any) {
-    console.error('Error updating contact:', error);
-    return c.json({ error: error.message }, 500);
-  }
+app.put("/make-server-e5bc10d1/wallet/:walletId/contacts/:contactId", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Delete contact
-app.delete("/make-server-e5bc10d1/wallet/:walletId/contacts/:contactId", async (c) => {
-  try {
-    const { walletId, contactId } = c.req.param();
-    
-    let contacts = await kv.get(`wallet:${walletId}:contacts`) || [];
-    
-    contacts = contacts.filter((c: any) => c.id !== contactId);
-    await kv.set(`wallet:${walletId}:contacts`, contacts);
-    
-    return c.json({ success: true });
-  } catch (error: any) {
-    console.error('Error deleting contact:', error);
-    return c.json({ error: error.message }, 500);
-  }
+app.delete("/make-server-e5bc10d1/wallet/:walletId/contacts/:contactId", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // Get wallet theme
-app.get("/make-server-e5bc10d1/wallet/:walletId/theme", async (c) => {
-  try {
-    const walletId = c.req.param('walletId');
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-    
-    const wallet = await kv.get(`wallet:${walletId}`);
-    if (!wallet) {
-      return c.json({ error: 'Wallet not found' }, 404);
-    }
-    
-    const theme = await kv.get(`wallet:${walletId}:theme`);
-    
-    return c.json({ 
-      theme: theme || 'classic' 
-    });
-  } catch (error: any) {
-    console.error('Error loading theme:', error);
-    return c.json({ error: error.message || 'Failed to load theme' }, 500);
-  }
+app.get("/make-server-e5bc10d1/wallet/:walletId/theme", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
 
+
 // Save wallet theme
-app.post("/make-server-e5bc10d1/wallet/:walletId/theme", async (c) => {
-  try {
-    const walletId = c.req.param('walletId');
-    const { theme } = await c.req.json();
-    
-    if (!walletId) {
-      return c.json({ error: 'Wallet ID is required' }, 400);
-    }
-    
-    if (!theme) {
-      return c.json({ error: 'Theme is required' }, 400);
-    }
-    
-    const wallet = await kv.get(`wallet:${walletId}`);
-    if (!wallet) {
-      return c.json({ error: 'Wallet not found' }, 404);
-    }
-    
-    // Validate theme
-    const validThemes = ['classic', 'midnight', 'sunset', 'forest', 'ocean', 'aurora', 'fire', 'neon'];
-    if (!validThemes.includes(theme)) {
-      return c.json({ error: 'Invalid theme' }, 400);
-    }
-    
-    await kv.set(`wallet:${walletId}:theme`, theme);
-    
-    console.log('Theme saved for wallet:', walletId, '- Theme:', theme);
-    return c.json({ 
-      success: true,
-      theme
-    });
-  } catch (error: any) {
-    console.error('Error saving theme:', error);
-    return c.json({ error: error.message || 'Failed to save theme' }, 500);
-  }
+app.post("/make-server-e5bc10d1/wallet/:walletId/theme", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 // ========================================
 // CHAT ENDPOINTS
 // ========================================
 
 // Get messages for a specific token chat
-app.get("/make-server-e5bc10d1/chat/:tokenSymbol/messages", async (c) => {
-  try {
-    const tokenSymbol = c.req.param('tokenSymbol');
-    
-    if (!tokenSymbol) {
-      return c.json({ error: 'Token symbol is required' }, 400);
-    }
-    
-    // Get messages for this token with retry logic
-    const messages = await retryWithBackoff(async () => {
-      return await kv.get(`chat:${tokenSymbol}:messages`) || [];
-    });
-    
-    // Get unique wallet IDs to count members
-    const uniqueWallets = new Set(messages.map((msg: any) => msg.walletId));
-    const memberCount = uniqueWallets.size;
-    
-    console.log(`[Chat] Fetched ${messages.length} messages for ${tokenSymbol}, ${memberCount} members`);
-    
-    return c.json({ 
-      messages: messages.slice(-100), // Return last 100 messages
-      memberCount 
-    });
-  } catch (error: any) {
-    console.error('[Chat] Error fetching messages:', error);
-    return c.json({ error: error.message || 'Failed to fetch messages' }, 500);
-  }
+// DISABLED: No auth — chat replaced by Puter AI integration
+app.get("/make-server-e5bc10d1/chat/:tokenSymbol/messages", (c) => {
+  return c.json({ error: 'Endpoint disabled — chat is client-side only' }, 410);
 });
 
 // Send a message to a token chat
-app.post("/make-server-e5bc10d1/chat/:tokenSymbol/send", async (c) => {
-  try {
-    const tokenSymbol = c.req.param('tokenSymbol');
-    const body = await c.req.json();
-    const { walletId, username, message } = body;
-    
-    if (!tokenSymbol || !walletId || !message) {
-      return c.json({ error: 'Token symbol, wallet ID, and message are required' }, 400);
-    }
-    
-    // Verify user owns the token with retry
-    const tokens = await retryWithBackoff(async () => {
-      return await kv.get(`wallet:${walletId}:tokens`) || {};
-    });
-    const userToken = tokens[tokenSymbol];
-    
-    if (!userToken || userToken.amount <= 0) {
-      console.log(`[Chat] User ${walletId} doesn't own ${tokenSymbol}`);
-      return c.json({ error: 'You must own this token to send messages' }, 403);
-    }
-    
-    // Get existing messages with retry
-    const messages = await retryWithBackoff(async () => {
-      return await kv.get(`chat:${tokenSymbol}:messages`) || [];
-    });
-    
-    // Create new message
-    const msgIdBytes = crypto.getRandomValues(new Uint8Array(8));
-    const newMessage = {
-      id: `msg_${Date.now()}_${Array.from(msgIdBytes, b => b.toString(16).padStart(2, '0')).join('')}`,
-      walletId,
-      username: username || 'Anonymous',
-      message: message.trim(),
-      timestamp: new Date().toISOString(),
-      reactions: {},
-      replyTo: body.replyTo || null,
-    };
-    
-    // Add message to list
-    messages.push(newMessage);
-    
-    // Keep only last 500 messages to avoid storage bloat
-    const trimmedMessages = messages.slice(-500);
-    
-    await retryWithBackoff(async () => {
-      await kv.set(`chat:${tokenSymbol}:messages`, trimmedMessages);
-    });
-    
-    console.log(`[Chat] Message sent to ${tokenSymbol} by ${username || walletId}`);
-    
-    return c.json({ 
-      success: true, 
-      message: newMessage 
-    });
-  } catch (error: any) {
-    console.error('[Chat] Error sending message:', error);
-    return c.json({ error: error.message || 'Failed to send message' }, 500);
-  }
+// DISABLED: No auth — chat replaced by Puter AI integration
+app.post("/make-server-e5bc10d1/chat/:tokenSymbol/send", (c) => {
+  return c.json({ error: 'Endpoint disabled — chat is client-side only' }, 410);
 });
 
 // Add reaction to a message
-app.post("/make-server-e5bc10d1/chat/:tokenSymbol/react", async (c) => {
-  try {
-    const tokenSymbol = c.req.param('tokenSymbol');
-    const { walletId, messageId, emoji } = await c.req.json();
-    
-    if (!tokenSymbol || !walletId || !messageId || !emoji) {
-      return c.json({ error: 'Token symbol, wallet ID, message ID, and emoji are required' }, 400);
-    }
-    
-    // Verify user owns the token with retry
-    const tokens = await retryWithBackoff(async () => {
-      return await kv.get(`wallet:${walletId}:tokens`) || {};
-    });
-    const userToken = tokens[tokenSymbol];
-    
-    if (!userToken || userToken.amount <= 0) {
-      return c.json({ error: 'You must own this token to react to messages' }, 403);
-    }
-    
-    // Get messages with retry
-    const messages = await retryWithBackoff(async () => {
-      return await kv.get(`chat:${tokenSymbol}:messages`) || [];
-    });
-    
-    // Find the message
-    const messageIndex = messages.findIndex((msg: any) => msg.id === messageId);
-    if (messageIndex === -1) {
-      return c.json({ error: 'Message not found' }, 404);
-    }
-    
-    // Initialize reactions if not exists
-    if (!messages[messageIndex].reactions) {
-      messages[messageIndex].reactions = {};
-    }
-    
-    // Toggle reaction
-    if (!messages[messageIndex].reactions[emoji]) {
-      messages[messageIndex].reactions[emoji] = [];
-    }
-    
-    const reactionIndex = messages[messageIndex].reactions[emoji].indexOf(walletId);
-    if (reactionIndex > -1) {
-      // Remove reaction
-      messages[messageIndex].reactions[emoji].splice(reactionIndex, 1);
-      if (messages[messageIndex].reactions[emoji].length === 0) {
-        delete messages[messageIndex].reactions[emoji];
-      }
-    } else {
-      // Add reaction
-      messages[messageIndex].reactions[emoji].push(walletId);
-    }
-    
-    // Save messages with retry
-    await retryWithBackoff(async () => {
-      await kv.set(`chat:${tokenSymbol}:messages`, messages);
-    });
-    
-    console.log(`[Chat] Reaction ${emoji} toggled on message ${messageId} by ${walletId}`);
-    
-    return c.json({ 
-      success: true, 
-      reactions: messages[messageIndex].reactions 
-    });
-  } catch (error: any) {
-    console.error('[Chat] Error adding reaction:', error);
-    return c.json({ error: error.message || 'Failed to add reaction' }, 500);
-  }
+// DISABLED: No auth + unsanitized emoji — chat replaced by Puter AI integration
+app.post("/make-server-e5bc10d1/chat/:tokenSymbol/react", (c) => {
+  return c.json({ error: 'Endpoint disabled — chat is client-side only' }, 410);
 });
 
 // ========================================
@@ -5493,108 +3584,7 @@ const TOKEN_MINTS: Record<string, string> = {
 // All swap functionality now uses client-side demo mode
 // See /utils/jupiterSwap.ts for implementation
 
-// ===================================
-// Email/Password Authentication
-// ===================================
-
-// Send verification code endpoint
-app.post("/make-server-e5bc10d1/send-verification-code", async (c) => {
-  try {
-    const { email } = await c.req.json();
-
-    if (!email) {
-      return c.json({ error: "Email is required" }, 400);
-    }
-
-    // Generate cryptographically secure 6-digit code
-    const randomBytes = crypto.getRandomValues(new Uint32Array(1));
-    const code = (100000 + (randomBytes[0] % 900000)).toString();
-
-    // Store code with 10 minute expiration
-    const codeKey = `verification:${email.toLowerCase()}`;
-    await retryWithBackoff(() => kv.set(codeKey, {
-      code,
-      createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-    }));
-
-    // Send email via Resend
-    const resendApiKey = Deno.env.get('RESEND_API_KEY');
-    if (!resendApiKey) {
-      return c.json({ error: 'Email service not configured' }, 500);
-    }
-
-    const emailResponse = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${resendApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'Saturn Wallet <onboarding@resend.dev>',
-        to: [email],
-        subject: 'Your Saturn Wallet Verification Code',
-        html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          </head>
-          <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0f172a;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-              <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 20px; padding: 40px; text-align: center;">
-                <h1 style="color: white; margin: 0 0 20px 0; font-size: 28px;">🪐 Saturn Wallet</h1>
-                <p style="color: rgba(255, 255, 255, 0.9); margin: 0 0 30px 0; font-size: 16px;">Your verification code is:</p>
-                <div style="background: rgba(255, 255, 255, 0.2); border-radius: 12px; padding: 20px; margin: 0 0 30px 0;">
-                  <div style="color: white; font-size: 42px; font-weight: bold; letter-spacing: 8px; font-family: 'Courier New', monospace;">\${code}</div>
-                </div>
-                <p style="color: rgba(255, 255, 255, 0.8); margin: 0; font-size: 14px;">This code will expire in 10 minutes.</p>
-              </div>
-              <div style="text-align: center; margin-top: 30px;">
-                <p style="color: #64748b; font-size: 13px; margin: 0;">If you didn't request this code, please ignore this email.</p>
-              </div>
-            </div>
-          </body>
-          </html>
-        `,
-      }),
-    });
-
-    if (!emailResponse.ok) {
-      const errorData = await emailResponse.json();
-      console.error('Resend API error:', errorData);
-      
-      // Check for domain verification error or testing restriction - enable DEMO MODE
-      if (errorData.statusCode === 403 || 
-          errorData.name === 'validation_error' || 
-          (errorData.message && errorData.message.includes('testing emails'))) {
-        // Demo mode - code stored but not sent
-        // NEVER log verification codes or return them to client
-        return c.json({
-          success: true,
-          message: 'Verification code sent',
-          demo: true
-        });
-      }
-      
-      return c.json({ error: 'Failed to send verification email' }, 500);
-    }
-
-    // Verification code sent successfully
-    
-    return c.json({
-      success: true,
-      message: 'Verification code sent successfully'
-    });
-    
-  } catch (error: any) {
-    console.error('❌ Send verification error:', error);
-    return c.json({ 
-      error: error.message || 'Failed to send verification code'
-    }, 500);
-  }
-});
+// (Duplicate send-verification-code handler removed — see working handler below)
 
 /*
 // JUPITER CODE REMOVED - ALL BELOW IS GARBAGE CODE THAT NEEDS TO BE CLEANED UP
@@ -5634,150 +3624,10 @@ app.post("/make-server-e5bc10d1/send-verification-code", async (c) => {
 });
 
 // Jupiter Swap API - Execute the swap
-app.post("/make-server-e5bc10d1/jupiter-swap", async (c) => {
-  try {
-    const { walletId, quote, priorityFee } = await c.req.json();
-    
-    if (!walletId || !quote) {
-      return c.json({ error: 'walletId and quote are required' }, 400);
-    }
-    
-    console.log('🪐 Jupiter Swap Request for wallet:', walletId);
-    
-    // Get wallet data
-    const wallet = await kv.get(`wallet:${walletId}`);
-    if (!wallet || !wallet.seedPhrase) {
-      return c.json({ error: 'Wallet not found or no seed phrase' }, 404);
-    }
-    
-    // Derive Solana keypair using ed25519-hd-key (SLIP-0010, same as Phantom)
-    const { mnemonicToSeedSync } = await import('npm:bip39@3.1.0');
-    const { derivePath } = await import('npm:ed25519-hd-key@1.3.0');
-    const nacl = await import('npm:tweetnacl@1.0.3');
-    const bs58 = await import('npm:bs58@6.0.0');
-
-    const seed = mnemonicToSeedSync(wallet.seedPhrase);
-    const seedHex = Buffer.from(seed).toString('hex');
-    const accountIndex = wallet.accountIndex || 0; // Default to 0 for legacy wallets
-    // Path: m/44'/501'/accountIndex'/0'
-    const path = `m/44'/501'/${accountIndex}'/0'`;
-    const { key: solanaKey } = derivePath(path, seedHex);
-    const keypair = nacl.default.sign.keyPair.fromSeed(solanaKey);
-    const userPublicKey = bs58.default.encode(keypair.publicKey);
-    
-    console.log('User public key:', userPublicKey);
-    
-    // Get serialized transaction from Jupiter
-    const swapResponse = await fetch('https://quote-api.jup.ag/v6/swap', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        quoteResponse: quote,
-        userPublicKey: userPublicKey,
-        wrapAndUnwrapSol: true,
-        priorityLevelWithMaxLamports: {
-          priorityLevel: priorityFee || 'medium', // low, medium, high, veryHigh
-        },
-        dynamicComputeUnitLimit: true,
-      }),
-    });
-    
-    if (!swapResponse.ok) {
-      const errorText = await swapResponse.text();
-      console.error('Jupiter swap API error:', errorText);
-      throw new Error(`Jupiter swap API error: ${swapResponse.status} - ${errorText}`);
-    }
-    
-    const { swapTransaction } = await swapResponse.json();
-    
-    if (!swapTransaction) {
-      throw new Error('No swap transaction returned from Jupiter');
-    }
-    
-    console.log('✅ Received swap transaction from Jupiter');
-    
-    // Deserialize and sign the transaction
-    const { Connection, VersionedTransaction } = await import('npm:@solana/web3.js@1.95.8');
-    
-    // Decode base64 transaction
-    const transactionBuffer = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
-    const transaction = VersionedTransaction.deserialize(transactionBuffer);
-    
-    // Sign the transaction
-    transaction.sign([{
-      publicKey: keypair.publicKey,
-      secretKey: keypair.secretKey,
-    }]);
-    
-    console.log('Transaction signed');
-    
-    // Send transaction to Solana
-    const heliusApiKey = Deno.env.get('HELIUS_API_KEY');
-    if (!heliusApiKey) {
-      throw new Error('HELIUS_API_KEY not configured');
-    }
-    
-    const connection = new Connection(
-      `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
-      'confirmed'
-    );
-    
-    const signature = await connection.sendRawTransaction(transaction.serialize(), {
-      skipPreflight: false,
-      maxRetries: 3,
-    });
-    
-    console.log('🎉 Transaction sent! Signature:', signature);
-    
-    // Wait for confirmation
-    const confirmation = await connection.confirmTransaction(signature, 'confirmed');
-    
-    if (confirmation.value.err) {
-      throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
-    }
-    
-    console.log('✅ Transaction confirmed!');
-    
-    // Record the swap in activity
-    const activities = await kv.get(`wallet:${walletId}:activities`) || [];
-    
-    const newActivity = {
-      id: signature,
-      type: 'swap',
-      fromToken: quote.inputMint,
-      toToken: quote.outputMint,
-      fromAmount: parseFloat(quote.inAmount) / Math.pow(10, 9),
-      toAmount: parseFloat(quote.outAmount) / Math.pow(10, 9),
-      status: 'confirmed',
-      timestamp: new Date().toISOString(),
-      signature: signature,
-      network: 'mainnet',
-      isJupiter: true,
-      priceImpact: quote.priceImpactPct,
-    };
-    
-    activities.unshift(newActivity);
-    await kv.set(`wallet:${walletId}:activities`, activities);
-    
-    return c.json({
-      success: true,
-      signature,
-      explorerUrl: `https://solscan.io/tx/${signature}`,
-      activity: newActivity,
-    });
-    
-  } catch (error: any) {
-    console.error('❌ Jupiter swap error:', error);
-    return c.json({ 
-      error: error.message || 'Failed to execute Jupiter swap',
-      details: error.toString(),
-    }, 500);
-  }
+// DISABLED: Transaction signing must happen client-side only (web3 security)
+app.post("/make-server-e5bc10d1/jupiter-swap", (c) => {
+  return c.json({ error: 'Endpoint disabled — swap signing is client-side only' }, 410);
 });
-
 // Get supported tokens for Jupiter
 app.get("/make-server-e5bc10d1/jupiter-tokens", async (c) => {
   try {
@@ -5831,6 +3681,19 @@ app.post("/make-server-e5bc10d1/send-verification-code", async (c) => {
     if (!email) {
       return c.json({ error: "Email is required" }, 400);
     }
+
+    // Rate limit: max 5 codes per email per 15 minutes
+    const rateLimitKey = `ratelimit:email:${email.toLowerCase()}`;
+    const rateData = await kv.get(rateLimitKey) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
+    if (Date.now() > rateData.resetAt) {
+      rateData.count = 0;
+      rateData.resetAt = Date.now() + 15 * 60 * 1000;
+    }
+    if (rateData.count >= 5) {
+      return c.json({ error: 'Too many verification attempts. Please try again later.' }, 429);
+    }
+    rateData.count++;
+    await kv.set(rateLimitKey, rateData);
 
     // Generate cryptographically secure 6-digit code
     const randomBytes = crypto.getRandomValues(new Uint32Array(1));
@@ -5920,129 +3783,10 @@ app.post("/make-server-e5bc10d1/send-verification-code", async (c) => {
 });
 
 // Verify email signup endpoint
-app.post("/make-server-e5bc10d1/verify-email-signup", async (c) => {
-  try {
-    const { email, password, code } = await c.req.json();
-
-    if (!email || !password || !code) {
-      return c.json({ error: "Email, password, and code are required" }, 400);
-    }
-
-    // Verify code
-    const codeKey = `verification:${email.toLowerCase()}`;
-    const storedCode = await retryWithBackoff(() => kv.get(codeKey));
-
-    if (!storedCode) {
-      return c.json({ error: "Verification code expired or invalid" }, 400);
-    }
-
-    if (storedCode.code !== code) {
-      return c.json({ error: "Invalid verification code" }, 400);
-    }
-
-    // Check if code expired
-    if (new Date(storedCode.expiresAt) < new Date()) {
-      await retryWithBackoff(() => kv.del(codeKey));
-      return c.json({ error: "Verification code expired" }, 400);
-    }
-
-    // Delete used code
-    await retryWithBackoff(() => kv.del(codeKey));
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return c.json({ error: "Invalid email format" }, 400);
-    }
-
-    // Validate password length
-    if (password.length < 8) {
-      return c.json({ error: "Password must be at least 8 characters" }, 400);
-    }
-
-    // Check if email already exists
-    const existingUser = await retryWithBackoff(() => kv.get(`email:${email.toLowerCase()}`));
-    if (existingUser) {
-      return c.json({ error: "Email already registered" }, 400);
-    }
-
-    // Generate a unique wallet ID from email
-    const encoder = new TextEncoder();
-    const data = encoder.encode(email.toLowerCase() + Date.now());
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const walletId = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
-
-    // Generate default username with @ prefix
-    const defaultUsername = `@User${walletId.substring(0, 6)}`;
-
-    // Hash password
-    const passwordData = encoder.encode(password + walletId);
-    const passwordHashBuffer = await crypto.subtle.digest('SHA-256', passwordData);
-    const passwordHashArray = Array.from(new Uint8Array(passwordHashBuffer));
-    const passwordHash = passwordHashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-    // Generate a recovery phrase for the wallet
-    const wordList = [
-      'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract', 'absurd', 'abuse',
-      'access', 'accident', 'account', 'accuse', 'achieve', 'acid', 'acoustic', 'acquire', 'across', 'act',
-      'action', 'actor', 'actress', 'actual', 'adapt', 'add', 'addict', 'address', 'adjust', 'admit',
-      'adult', 'advance', 'advice', 'aerobic', 'afford', 'afraid', 'again', 'age', 'agent', 'agree',
-      'ahead', 'aim', 'air', 'airport', 'aisle', 'alarm', 'album', 'alcohol', 'alert', 'alien',
-      'all', 'alley', 'allow', 'almost', 'alone', 'alpha', 'already', 'also', 'alter', 'always',
-      'amateur', 'amazing', 'among', 'amount', 'amused', 'analyst', 'anchor', 'ancient', 'anger', 'angle',
-      'angry', 'animal', 'ankle', 'announce', 'annual', 'another', 'answer', 'antenna', 'antique', 'anxiety',
-      'any', 'apart', 'apology', 'appear', 'apple', 'approve', 'april', 'arch', 'arctic', 'area',
-      'arena', 'argue', 'arm', 'armed', 'armor', 'army', 'around', 'arrange', 'arrest', 'arrive',
-      'arrow', 'art', 'artefact', 'artist', 'artwork', 'ask', 'aspect', 'assault', 'asset', 'assist',
-      'assume', 'asthma', 'athlete', 'atom', 'attack', 'attend', 'attitude', 'attract', 'auction', 'audit',
-      'august', 'aunt', 'author', 'auto', 'autumn', 'average', 'avocado', 'avoid', 'awake', 'aware',
-      'away', 'awesome', 'awful', 'awkward', 'axis', 'baby', 'bachelor', 'bacon', 'badge', 'bag',
-      'balance', 'balcony', 'ball', 'bamboo', 'banana', 'banner', 'bar', 'barely', 'bargain', 'barrel',
-      'base', 'basic', 'basket', 'battle', 'beach', 'bean', 'beauty', 'because', 'become', 'beef',
-      'before', 'begin', 'behave', 'behind', 'believe', 'below', 'belt', 'bench', 'benefit', 'best',
-      'betray', 'better', 'between', 'beyond', 'bicycle', 'bid', 'bike', 'bind', 'biology', 'bird',
-      'birth', 'bitter', 'black', 'blade', 'blame', 'blanket', 'blast', 'bleak', 'bless', 'blind',
-      'blood', 'blossom', 'blouse', 'blue', 'blur', 'blush', 'board', 'boat', 'body', 'boil',
-    ];
-    
-    // Use crypto.getRandomValues for secure randomness
-    const randomIndices = crypto.getRandomValues(new Uint32Array(12));
-    const seedPhrase: string[] = [];
-    for (let i = 0; i < 12; i++) {
-      const randomIndex = randomIndices[i] % wordList.length;
-      seedPhrase.push(wordList[randomIndex]);
-    }
-    const seedPhraseString = seedPhrase.join(' ');
-
-    // Create wallet data
-    const walletData = {
-      walletId,
-      email: email.toLowerCase(),
-      passwordHash,
-      username: defaultUsername,
-      authMethod: 'email',
-      seedPhrase: seedPhraseString,
-      createdAt: new Date().toISOString(),
-      walletName: 'Saturn Wallet',
-    };
-
-    // Store wallet and email mapping
-    await retryWithBackoff(() => kv.set(`wallet:${walletId}`, walletData));
-    await retryWithBackoff(() => kv.set(`email:${email.toLowerCase()}`, { walletId }));
-
-    // User created successfully
-
-    return c.json({
-      success: true,
-      walletId,
-    });
-  } catch (error: any) {
-    // Email signup verification error
-    return c.json({ error: error.message || 'Failed to create account' }, 500);
-  }
+// DISABLED: Seed phrase generation must happen client-side only (web3 security)
+app.post("/make-server-e5bc10d1/verify-email-signup", (c) => {
+  return c.json({ error: 'Endpoint disabled — wallet creation is client-side only' }, 410);
 });
-
 // Verify email signin endpoint
 app.post("/make-server-e5bc10d1/verify-email-signin", async (c) => {
   try {
@@ -6052,26 +3796,36 @@ app.post("/make-server-e5bc10d1/verify-email-signin", async (c) => {
       return c.json({ error: "Email, password, and code are required" }, 400);
     }
 
-    // Verify code
+    // Rate limit: max 10 verification attempts per email per 15 minutes
+    const rateLimitKey = `ratelimit:verify:${email.toLowerCase()}`;
+    const rateData = await kv.get(rateLimitKey) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
+    if (Date.now() > rateData.resetAt) {
+      rateData.count = 0;
+      rateData.resetAt = Date.now() + 15 * 60 * 1000;
+    }
+    if (rateData.count >= 10) {
+      return c.json({ error: 'Too many verification attempts. Please try again later.' }, 429);
+    }
+    rateData.count++;
+    await kv.set(rateLimitKey, rateData);
+
+    // Verify code — delete FIRST to prevent race condition reuse
     const codeKey = `verification:${email.toLowerCase()}`;
     const storedCode = await retryWithBackoff(() => kv.get(codeKey));
+    await retryWithBackoff(() => kv.del(codeKey)); // Invalidate immediately
 
     if (!storedCode) {
       return c.json({ error: "Verification code expired or invalid" }, 400);
     }
 
-    if (storedCode.code !== code) {
+    if (!constantTimeEqual(storedCode.code, code)) {
       return c.json({ error: "Invalid verification code" }, 400);
     }
 
     // Check if code expired
     if (new Date(storedCode.expiresAt) < new Date()) {
-      await retryWithBackoff(() => kv.del(codeKey));
       return c.json({ error: "Verification code expired" }, 400);
     }
-
-    // Delete used code
-    await retryWithBackoff(() => kv.del(codeKey));
 
     // Get wallet ID from email
     const emailMapping = await retryWithBackoff(() => kv.get(`email:${email.toLowerCase()}`));
@@ -6094,7 +3848,7 @@ app.post("/make-server-e5bc10d1/verify-email-signin", async (c) => {
     const passwordHashArray = Array.from(new Uint8Array(passwordHashBuffer));
     const passwordHash = passwordHashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-    if (wallet.passwordHash !== passwordHash) {
+    if (!constantTimeEqual(wallet.passwordHash, passwordHash)) {
       return c.json({ error: "Invalid email or password" }, 401);
     }
 
@@ -6111,108 +3865,10 @@ app.post("/make-server-e5bc10d1/verify-email-signin", async (c) => {
 });
 
 // Email signup endpoint
-app.post("/make-server-e5bc10d1/email-signup", async (c) => {
-  try {
-    const { email, password } = await c.req.json();
-
-    if (!email || !password) {
-      return c.json({ error: "Email and password are required" }, 400);
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return c.json({ error: "Invalid email format" }, 400);
-    }
-
-    // Validate password length
-    if (password.length < 8) {
-      return c.json({ error: "Password must be at least 8 characters" }, 400);
-    }
-
-    // Check if email already exists
-    const existingUser = await retryWithBackoff(() => kv.get(`email:${email.toLowerCase()}`));
-    if (existingUser) {
-      return c.json({ error: "Email already registered" }, 400);
-    }
-
-    // Generate a unique wallet ID from email
-    const encoder = new TextEncoder();
-    const data = encoder.encode(email.toLowerCase() + Date.now());
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const walletId = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
-
-    // Generate default username with @ prefix
-    const defaultUsername = `@User${walletId.substring(0, 6)}`;
-
-    // Hash password
-    const passwordData = encoder.encode(password + walletId);
-    const passwordHashBuffer = await crypto.subtle.digest('SHA-256', passwordData);
-    const passwordHashArray = Array.from(new Uint8Array(passwordHashBuffer));
-    const passwordHash = passwordHashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-    // Generate a recovery phrase for the wallet (BIP39 word list subset)
-    const wordList = [
-      'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract', 'absurd', 'abuse',
-      'access', 'accident', 'account', 'accuse', 'achieve', 'acid', 'acoustic', 'acquire', 'across', 'act',
-      'action', 'actor', 'actress', 'actual', 'adapt', 'add', 'addict', 'address', 'adjust', 'admit',
-      'adult', 'advance', 'advice', 'aerobic', 'afford', 'afraid', 'again', 'age', 'agent', 'agree',
-      'ahead', 'aim', 'air', 'airport', 'aisle', 'alarm', 'album', 'alcohol', 'alert', 'alien',
-      'all', 'alley', 'allow', 'almost', 'alone', 'alpha', 'already', 'also', 'alter', 'always',
-      'amateur', 'amazing', 'among', 'amount', 'amused', 'analyst', 'anchor', 'ancient', 'anger', 'angle',
-      'angry', 'animal', 'ankle', 'announce', 'annual', 'another', 'answer', 'antenna', 'antique', 'anxiety',
-      'any', 'apart', 'apology', 'appear', 'apple', 'approve', 'april', 'arch', 'arctic', 'area',
-      'arena', 'argue', 'arm', 'armed', 'armor', 'army', 'around', 'arrange', 'arrest', 'arrive',
-      'arrow', 'art', 'artefact', 'artist', 'artwork', 'ask', 'aspect', 'assault', 'asset', 'assist',
-      'assume', 'asthma', 'athlete', 'atom', 'attack', 'attend', 'attitude', 'attract', 'auction', 'audit',
-      'august', 'aunt', 'author', 'auto', 'autumn', 'average', 'avocado', 'avoid', 'awake', 'aware',
-      'away', 'awesome', 'awful', 'awkward', 'axis', 'baby', 'bachelor', 'bacon', 'badge', 'bag',
-      'balance', 'balcony', 'ball', 'bamboo', 'banana', 'banner', 'bar', 'barely', 'bargain', 'barrel',
-      'base', 'basic', 'basket', 'battle', 'beach', 'bean', 'beauty', 'because', 'become', 'beef',
-      'before', 'begin', 'behave', 'behind', 'believe', 'below', 'belt', 'bench', 'benefit', 'best',
-      'betray', 'better', 'between', 'beyond', 'bicycle', 'bid', 'bike', 'bind', 'biology', 'bird',
-      'birth', 'bitter', 'black', 'blade', 'blame', 'blanket', 'blast', 'bleak', 'bless', 'blind',
-      'blood', 'blossom', 'blouse', 'blue', 'blur', 'blush', 'board', 'boat', 'body', 'boil',
-    ];
-    
-    // Use crypto.getRandomValues for secure randomness
-    const randomIndices = crypto.getRandomValues(new Uint32Array(12));
-    const seedPhrase: string[] = [];
-    for (let i = 0; i < 12; i++) {
-      const randomIndex = randomIndices[i] % wordList.length;
-      seedPhrase.push(wordList[randomIndex]);
-    }
-    const seedPhraseString = seedPhrase.join(' ');
-
-    // Create wallet data
-    const walletData = {
-      walletId,
-      email: email.toLowerCase(),
-      passwordHash,
-      username: defaultUsername,
-      authMethod: 'email',
-      seedPhrase: seedPhraseString,
-      createdAt: new Date().toISOString(),
-      walletName: 'Saturn Wallet',
-    };
-
-    // Store wallet and email mapping
-    await retryWithBackoff(() => kv.set(`wallet:${walletId}`, walletData));
-    await retryWithBackoff(() => kv.set(`email:${email.toLowerCase()}`, { walletId }));
-
-    // User created successfully
-
-    return c.json({
-      success: true,
-      walletId,
-    });
-  } catch (error: any) {
-    // Email signup error
-    return c.json({ error: error.message || 'Failed to create account' }, 500);
-  }
+// DISABLED: Seed phrase generation must happen client-side only (web3 security)
+app.post("/make-server-e5bc10d1/email-signup", (c) => {
+  return c.json({ error: 'Endpoint disabled — wallet creation is client-side only' }, 410);
 });
-
 // Email signin endpoint
 app.post("/make-server-e5bc10d1/email-signin", async (c) => {
   try {
@@ -6243,7 +3899,7 @@ app.post("/make-server-e5bc10d1/email-signin", async (c) => {
     const passwordHashArray = Array.from(new Uint8Array(passwordHashBuffer));
     const passwordHash = passwordHashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-    if (wallet.passwordHash !== passwordHash) {
+    if (!constantTimeEqual(wallet.passwordHash, passwordHash)) {
       return c.json({ error: "Invalid email or password" }, 401);
     }
 
@@ -6266,74 +3922,10 @@ console.log('✅ Email authentication endpoints registered');
 // ═══════════════════════════════════════════════════════════
 
 // Direct Email Signup (No Verification Code)
-app.post("/make-server-e5bc10d1/email-signup", async (c) => {
-  try {
-    const { email, password } = await c.req.json();
-
-    if (!email || !password) {
-      return c.json({ error: "Email and password are required" }, 400);
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return c.json({ error: "Invalid email format" }, 400);
-    }
-
-    // Validate password length
-    if (password.length < 8) {
-      return c.json({ error: "Password must be at least 8 characters" }, 400);
-    }
-
-    // Check if email already exists
-    const existingUser = await retryWithBackoff(() => kv.get(`email:${email.toLowerCase()}`));
-    if (existingUser) {
-      return c.json({ error: "Email already registered" }, 400);
-    }
-
-    // Generate a unique wallet ID from email
-    const encoder = new TextEncoder();
-    const data = encoder.encode(email.toLowerCase() + Date.now());
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const walletId = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
-
-    // Generate default username with @ prefix
-    const defaultUsername = `@User${walletId.substring(0, 6)}`;
-
-    // Hash password
-    const passwordData = encoder.encode(password + walletId);
-    const passwordHashBuffer = await crypto.subtle.digest('SHA-256', passwordData);
-    const passwordHashArray = Array.from(new Uint8Array(passwordHashBuffer));
-    const passwordHash = passwordHashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-    // Create wallet data
-    const walletData = {
-      walletId,
-      email: email.toLowerCase(),
-      passwordHash,
-      username: defaultUsername,
-      authMethod: 'email',
-      createdAt: new Date().toISOString(),
-      walletName: 'Saturn Wallet',
-    };
-
-    // Store wallet and email mapping
-    await retryWithBackoff(() => kv.set(`wallet:${walletId}`, walletData));
-    await retryWithBackoff(() => kv.set(`email:${email.toLowerCase()}`, { walletId }));
-
-    // User created successfully
-
-    return c.json({
-      success: true,
-      walletId,
-    });
-  } catch (error: any) {
-    // Email signup error
-    return c.json({ error: error.message || 'Failed to create account' }, 500);
-  }
+// DISABLED: Seed phrase generation must happen client-side only (web3 security)
+app.post("/make-server-e5bc10d1/email-signup", (c) => {
+  return c.json({ error: 'Endpoint disabled — wallet creation is client-side only' }, 410);
 });
-
 // Direct Email Signin (No Verification Code)
 app.post("/make-server-e5bc10d1/email-signin", async (c) => {
   try {
@@ -6362,7 +3954,7 @@ app.post("/make-server-e5bc10d1/email-signin", async (c) => {
     const passwordHashArray = Array.from(new Uint8Array(passwordHashBuffer));
     const passwordHash = passwordHashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-    if (walletData.passwordHash !== passwordHash) {
+    if (!constantTimeEqual(walletData.passwordHash, passwordHash)) {
       return c.json({ error: "Invalid email or password" }, 401);
     }
 
@@ -6456,96 +4048,16 @@ app.get("/make-server-e5bc10d1/token-image/:symbol", async (c) => {
 console.log('✅ Token image proxy endpoint registered');
 
 // Update token balance (for testnet mode)
-app.post("/make-server-e5bc10d1/update-token-balance", async (c) => {
-  try {
-    const { walletId, tokenSymbol, network, newBalance, mint } = await c.req.json();
-    
-    if (!walletId || !tokenSymbol) {
-      return c.json({ error: 'Wallet ID and token symbol are required' }, 400);
-    }
-    
-    console.log('[Update Balance] Updating balance for wallet:', walletId, 'token:', tokenSymbol, 'new balance:', newBalance);
-    
-    // Get current tokens
-    const tokens = await retryWithBackoff(() => kv.get(`wallet:${walletId}:tokens`)) || {};
-    
-    // Update the token balance
-    if (tokens[tokenSymbol]) {
-      tokens[tokenSymbol].amount = newBalance;
-      console.log('[Update Balance] Updated existing token:', tokenSymbol);
-    } else {
-      // Token doesn't exist, create it
-      tokens[tokenSymbol] = {
-        name: tokenSymbol,
-        symbol: tokenSymbol,
-        amount: newBalance,
-        price: 1.0, // Default price
-        logo: tokenSymbol.charAt(0),
-        change24h: 0,
-        network: network || 'solana',
-        mint: mint || '',
-      };
-      console.log('[Update Balance] Created new token:', tokenSymbol);
-    }
-    
-    // Save updated tokens
-    await retryWithBackoff(() => kv.set(`wallet:${walletId}:tokens`, tokens));
-    
-    console.log('[Update Balance] ✅ Balance updated successfully');
-    
-    return c.json({ success: true });
-  } catch (error: any) {
-    console.error('[Update Balance] Error:', error);
-    return c.json({ error: error.message || 'Failed to update balance' }, 500);
-  }
+// DISABLED: No auth — balances are fetched from blockchain directly
+app.post("/make-server-e5bc10d1/update-token-balance", (c) => {
+  return c.json({ error: 'Endpoint disabled — balances are fetched from blockchain' }, 410);
 });
 
 // Save transaction (for testnet mode)
-app.post("/make-server-e5bc10d1/save-transaction", async (c) => {
-  try {
-    const { walletId, type, tokenSymbol, amount, toAddress, signature, network, isTestnet, timestamp } = await c.req.json();
-    
-    if (!walletId || !type || !tokenSymbol) {
-      return c.json({ error: 'Wallet ID, type, and token symbol are required' }, 400);
-    }
-    
-    // Get current activities
-    const activities = await retryWithBackoff(() => kv.get(`wallet:${walletId}:activities`)) || [];
-
-    // Create new transaction
-    const txIdBytes = crypto.getRandomValues(new Uint8Array(8));
-    const transaction = {
-      id: `tx_${Date.now()}_${Array.from(txIdBytes, b => b.toString(16).padStart(2, '0')).join('')}`,
-      type,
-      tokenSymbol,
-      amount,
-      toAddress,
-      signature,
-      network,
-      isTestnet: isTestnet || false,
-      timestamp: timestamp || Date.now(),
-      status: 'completed',
-    };
-    
-    // Add to beginning of activities
-    activities.unshift(transaction);
-    
-    // Keep only last 100 transactions
-    if (activities.length > 100) {
-      activities.length = 100;
-    }
-    
-    // Save updated activities
-    await retryWithBackoff(() => kv.set(`wallet:${walletId}:activities`, activities));
-    
-    console.log('[Save Transaction] ✅ Transaction saved successfully');
-    
-    return c.json({ success: true, transaction });
-  } catch (error: any) {
-    console.error('[Save Transaction] Error:', error);
-    return c.json({ error: error.message || 'Failed to save transaction' }, 500);
-  }
+app.post("/make-server-e5bc10d1/save-transaction", (c) => {
+  return c.json({ error: 'Endpoint disabled — data is stored client-side only' }, 410);
 });
+
 
 console.log('✅ Testnet balance and transaction endpoints registered');
 
@@ -6554,176 +4066,15 @@ console.log('✅ Testnet balance and transaction endpoints registered');
 // ===================================================================
 
 // Store encrypted recovery phrase for OAuth users
-app.post("/make-server-e5bc10d1/oauth/store-phrase", async (c) => {
-  try {
-    // Get authorization header
-    const authHeader = c.req.header('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return c.json({ error: 'Unauthorized' }, 401);
-    }
-    
-    const accessToken = authHeader.split(' ')[1];
-    
-    // Verify user with Supabase Auth
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    );
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
-    
-    if (authError || !user) {
-      console.error('[OAuth] Auth error:', authError);
-      return c.json({ error: 'Unauthorized' }, 401);
-    }
-    
-    const { userId, seedPhrase, provider, email } = await c.req.json();
-    
-    if (!userId || !seedPhrase || !provider) {
-      return c.json({ error: 'Missing required fields' }, 400);
-    }
-    
-    // Verify userId matches authenticated user
-    if (userId !== user.id) {
-      return c.json({ error: 'User ID mismatch' }, 403);
-    }
-    
-    // Encrypt the seed phrase with a server-side key
-    // Using simple encryption with user's email + provider as key
-    const encoder = new TextEncoder();
-    const keyMaterial = encoder.encode(`${email}_${provider}_${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`);
-    
-    // Create a hash of the key for consistent key size
-    const keyHashBuffer = await crypto.subtle.digest('SHA-256', keyMaterial);
-    const key = await crypto.subtle.importKey(
-      'raw',
-      keyHashBuffer,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['encrypt']
-    );
-    
-    // Generate IV
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    
-    // Encrypt seed phrase
-    const phraseData = encoder.encode(seedPhrase);
-    const encryptedData = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv: iv },
-      key,
-      phraseData
-    );
-    
-    // Convert to base64 for storage
-    const encryptedArray = new Uint8Array(encryptedData);
-    const ivArray = Array.from(iv);
-    const encryptedArrayData = Array.from(encryptedArray);
-    
-    // Store encrypted data
-    await kv.set(`oauth:${userId}:phrase`, {
-      encrypted: encryptedArrayData,
-      iv: ivArray,
-      provider: provider,
-      email: email,
-      createdAt: new Date().toISOString(),
-    });
-    
-    console.log(`[OAuth] ✅ Recovery phrase stored securely for user ${userId} (${provider})`);
-    
-    return c.json({ 
-      success: true,
-      message: 'Recovery phrase stored securely'
-    });
-  } catch (error: any) {
-    console.error('[OAuth] Store phrase error:', error);
-    return c.json({ error: error.message || 'Failed to store recovery phrase' }, 500);
-  }
+// DISABLED: Seed phrases must never be stored on or returned from the server (web3 security)
+app.post("/make-server-e5bc10d1/oauth/store-phrase", (c) => {
+  return c.json({ error: 'Endpoint disabled — seed phrase operations are client-side only' }, 410);
 });
-
 // Export recovery phrase for OAuth users
-app.post("/make-server-e5bc10d1/oauth/export-phrase", async (c) => {
-  try {
-    // Get authorization header
-    const authHeader = c.req.header('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return c.json({ error: 'Unauthorized' }, 401);
-    }
-    
-    const accessToken = authHeader.split(' ')[1];
-    
-    // Verify user with Supabase Auth
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    );
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
-    
-    if (authError || !user) {
-      console.error('[OAuth] Auth error:', authError);
-      return c.json({ error: 'Unauthorized' }, 401);
-    }
-    
-    const { userId } = await c.req.json();
-    
-    if (!userId) {
-      return c.json({ error: 'User ID is required' }, 400);
-    }
-    
-    // Verify userId matches authenticated user
-    if (userId !== user.id) {
-      return c.json({ error: 'User ID mismatch' }, 403);
-    }
-    
-    // Get encrypted data
-    const encryptedData = await kv.get(`oauth:${userId}:phrase`);
-    
-    if (!encryptedData) {
-      return c.json({ error: 'Recovery phrase not found' }, 404);
-    }
-    
-    // Decrypt the seed phrase
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-    const keyMaterial = encoder.encode(`${encryptedData.email}_${encryptedData.provider}_${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`);
-    
-    // Create a hash of the key for consistent key size
-    const keyHashBuffer = await crypto.subtle.digest('SHA-256', keyMaterial);
-    const key = await crypto.subtle.importKey(
-      'raw',
-      keyHashBuffer,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['decrypt']
-    );
-    
-    // Convert arrays back to Uint8Array
-    const iv = new Uint8Array(encryptedData.iv);
-    const encrypted = new Uint8Array(encryptedData.encrypted);
-    
-    // Decrypt
-    const decryptedData = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: iv },
-      key,
-      encrypted
-    );
-    
-    const seedPhrase = decoder.decode(decryptedData);
-    
-    console.log(`[OAuth] ✅ Recovery phrase exported for user ${userId}`);
-    
-    return c.json({ 
-      success: true,
-      seedPhrase: seedPhrase,
-      provider: encryptedData.provider,
-      email: encryptedData.email,
-    });
-  } catch (error: any) {
-    console.error('[OAuth] Export phrase error:', error);
-    return c.json({ error: error.message || 'Failed to export recovery phrase' }, 500);
-  }
+// DISABLED: Seed phrases must never be stored on or returned from the server (web3 security)
+app.post("/make-server-e5bc10d1/oauth/export-phrase", (c) => {
+  return c.json({ error: 'Endpoint disabled — seed phrase operations are client-side only' }, 410);
 });
-
 console.log('✅ OAuth endpoints registered');
 
 // Clear coin cache for a specific mint (force refresh)
@@ -6854,8 +4205,9 @@ app.get("/make-server-e5bc10d1/coingecko-coin-details/:coinId", async (c) => {
 // Cleanup duplicate tokens endpoint
 app.post("/make-server-e5bc10d1/cleanup-duplicate-tokens", async (c) => {
   try {
-    const { walletId } = await c.req.json();
-    
+    const { walletId: rawWalletId } = await c.req.json();
+    const walletId = rawWalletId ? sanitizeKvKey(rawWalletId) : '';
+
     if (!walletId) {
       return c.json({ error: 'Wallet ID is required' }, 400);
     }

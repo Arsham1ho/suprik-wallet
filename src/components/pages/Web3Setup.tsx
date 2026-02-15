@@ -81,8 +81,9 @@ export function Web3Setup({ onComplete }: { onComplete: () => void }) {
     }
   };
 
-  const copySeedPhrase = () => {
-    navigator.clipboard.writeText(seedPhrase);
+  const copySeedPhrase = async () => {
+    const { copyToClipboardWithAutoClear } = await import("../../utils/clipboard");
+    await copyToClipboardWithAutoClear(seedPhrase);
     setCopiedSeed(true);
     toast.success('Seed phrase copied to clipboard');
     setTimeout(() => setCopiedSeed(false), 2000);

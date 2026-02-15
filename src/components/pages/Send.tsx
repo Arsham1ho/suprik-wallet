@@ -23,7 +23,7 @@ import {
   sendERC20TokenTransaction,
 } from '../../utils/transactions';
 import { AccountManager } from '../../utils/accountManager';
-import { decryptWithPassword } from '../../utils/wallet';
+import { decryptWithPassword, decryptImportedSecret } from '../../utils/wallet';
 import { TOKEN_REGISTRY, TOKEN_BY_MINT } from '../../utils/tokenRegistry';
 import { playSendWhoosh } from '../../utils/sounds';
 import cosmicBackground from 'figma:asset/4c2d67025139ca6ca7ae0065c97386bd40e32baa.png';
@@ -587,7 +587,14 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
         scannedAddress = result.substring(9).split('?')[0];
       }
       
-      // Set the address
+      // Validate the scanned address before setting
+      const validation = validateAddress(scannedAddress, network.isTestnet ? 'testnet' : 'mainnet');
+      if (!validation.valid) {
+        setScannerError(validation.error || 'Invalid address in QR code');
+        toast.error(validation.error || 'Invalid address in QR code');
+        return;
+      }
+
       setAddress(scannedAddress);
       setShowQRScanner(false);
       setScannerError('');
@@ -728,15 +735,14 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
         console.log('[Send] ⚠️ Using stored private key for secondary account');
 
         let privateKeyBase58: string | undefined;
-        const base64Key = storedPrivateKeys[accountAddress!];
+        const storedKey = storedPrivateKeys[accountAddress!];
 
-        if (base64Key) {
-          try {
-            privateKeyBase58 = atob(base64Key);
-            console.log('[Send] Retrieved private key, length:', privateKeyBase58?.length);
-          } catch (e) {
-            console.error('[Send] Failed to decode private key:', e);
-            toast.error('Failed to retrieve private key. Please delete and re-import this account.');
+        if (storedKey) {
+          const decrypted = await decryptImportedSecret(storedKey, wallet.password);
+          if (decrypted) {
+            privateKeyBase58 = decrypted;
+          } else {
+            toast.error('Failed to decrypt private key. Please delete and re-import this account.');
             setSending(false);
             setTransactionStatus('idle');
             return;
@@ -899,14 +905,15 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
 
           mnemonicToUse = decryptedMnemonic;
         } else if (activeAccount?.importedWalletId) {
-          // Check for mnemonic stored in saturn_imported_mnemonics (base64 encoded)
+          // Check for mnemonic stored in saturn_imported_mnemonics (encrypted or legacy base64)
           const storedMnemonics = JSON.parse(localStorage.getItem('saturn_imported_mnemonics') || '{}');
-          const base64Mnemonic = storedMnemonics[activeAccount.importedWalletId];
-          if (base64Mnemonic) {
-            try {
-              mnemonicToUse = atob(base64Mnemonic);
-            } catch {
-              toast.error('Failed to retrieve imported account mnemonic. Please delete and re-import this account.');
+          const storedMnemonic = storedMnemonics[activeAccount.importedWalletId];
+          if (storedMnemonic) {
+            const decrypted = await decryptImportedSecret(storedMnemonic, wallet.password);
+            if (decrypted) {
+              mnemonicToUse = decrypted;
+            } else {
+              toast.error('Failed to decrypt imported account mnemonic. Please delete and re-import this account.');
               setSending(false);
               setTransactionStatus('idle');
               return;
@@ -1340,7 +1347,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                   >
                     <div className="w-28 h-28 mx-auto rounded-full overflow-hidden flex items-center justify-center">
                       <video
-                        src="/Send.mp4"
+                        src="/send.mp4"
                         autoPlay
                         loop
                         muted
@@ -1356,7 +1363,7 @@ export function Send({ onNavigate, tokens = [], walletId, onSendComplete }: Send
                     transition={{ delay: 0.6 }}
                   >
                     <h3 className="text-2xl text-white mb-2">
-                      {network.isTestnet ? 'Transaction Simulated! 🧪' : 'Transaction Successful! 🎉'}
+                      {network.isTestnet ? 'Transaction Simulated!' : 'Transaction Successful!'}
                     </h3>
                     <p className="text-slate-400 mb-4">
                       {network.isTestnet ? 'Simulated sending' : 'Successfully sent'} {amount} {selectedToken?.symbol}

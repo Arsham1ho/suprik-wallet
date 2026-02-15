@@ -5,9 +5,8 @@ import { Label } from '../ui/label';
 import { Separator } from '../ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../ui/alert-dialog';
-import { ArrowLeft, Plus, Trash2, User, Check, Wallet, X, Loader2, Smile, Key, FileText, Sparkles, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, User, Check, Wallet, X, Loader2, Smile, Key, FileText, Sparkles, ChevronRight, Mail, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { toast } from 'sonner';
 import { AnimalAvatar } from '../AnimalAvatar';
 import { EmojiSelector } from '../EmojiSelector';
@@ -26,10 +25,9 @@ interface AccountSettingsProps {
 }
 
 interface WalletInfo {
-  seedPhrase: string;
-  createdAt: string;
   username?: string;
   profilePicture?: string;
+  [key: string]: any;
 }
 
 interface Account {
@@ -118,33 +116,9 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
       return;
     }
 
-    setCheckingNewUsername(true);
+    // Username is a local-only label — format is valid
+    setNewUsernameAvailable(true);
     setNewUsernameError('');
-
-    try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/check-username/${encodeURIComponent(usernameToCheck)}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setNewUsernameAvailable(data.available);
-        if (!data.available) {
-          setNewUsernameError('This username is already taken');
-        }
-      }
-    } catch (error) {
-      console.error('Error checking username:', error);
-      setNewUsernameError('Failed to check username availability');
-      setNewUsernameAvailable(null);
-    } finally {
-      setCheckingNewUsername(false);
-    }
   };
 
   const handleNewAccountNameChange = (value: string) => {
@@ -175,32 +149,9 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
 
   const loadWalletInfo = async () => {
     try {
-      // Load username from localStorage first (this is the source of truth for local state)
+      // Load username from localStorage (source of truth — no server storage)
       const localUsername = localStorage.getItem('saturn_username');
-      let username = localUsername || '@account1';
-
-      try {
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/wallet/${walletId}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${publicAnonKey}`,
-            },
-          }
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.username) {
-            username = data.username;
-            // Sync to localStorage
-            localStorage.setItem('saturn_username', username);
-          }
-        }
-      } catch (fetchError) {
-        // If backend fetch fails, use the localStorage value we already loaded
-        console.log('[AccountSettings] Could not fetch from backend, using localStorage:', localUsername);
-      }
+      const username = localUsername || '@account1';
       
       const walletName = localStorage.getItem('saturn_wallet_name') || 'Suprik Wallet';
       const savedEmoji = localStorage.getItem(`saturn_avatar_emoji_${walletId}`);
@@ -215,13 +166,7 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
       
       setWalletInfo({
         username: formattedUsername,
-        walletName,
-        seedPhrase: null,
-        email: null,
-        authMethod: 'recovery-phrase',
-        createdAt: null,
         profilePicture: null,
-        networkStatus: null,
       });
       
       setUsername(formattedUsername);
@@ -312,33 +257,9 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
       return;
     }
 
-    setCheckingUsername(true);
+    // Username is a local-only label — format is valid
+    setUsernameAvailable(true);
     setUsernameError('');
-
-    try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/check-username/${encodeURIComponent(usernameToCheck)}?walletId=${walletId}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setUsernameAvailable(data.available);
-        if (!data.available) {
-          setUsernameError('This username is already taken');
-        }
-      }
-    } catch (error) {
-      console.error('Error checking username:', error);
-      setUsernameError('Failed to check username availability');
-      setUsernameAvailable(null);
-    } finally {
-      setCheckingUsername(false);
-    }
   };
 
   const handleUsernameChange = (value: string) => {
@@ -390,38 +311,13 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
       // Normalize username
       const normalizedUsername = username.toLowerCase();
 
-      // Save locally FIRST (this is the primary storage for client-side wallet)
+      // Save to localStorage (source of truth — no server storage)
       localStorage.setItem('saturn_username', normalizedUsername);
 
       // Update state immediately
       setOriginalUsername(normalizedUsername);
       setUsername(normalizedUsername);
       setUsernameAvailable(null);
-
-      // Try to sync with server (optional - don't fail if server doesn't have wallet)
-      if (walletId) {
-        try {
-          const response = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/update-username`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${publicAnonKey}`,
-              },
-              body: JSON.stringify({ walletId, username: normalizedUsername }),
-            }
-          );
-
-          if (!response.ok) {
-            // Server sync failed - that's okay, we saved locally
-            console.log('[AccountSettings] Server sync failed, but username saved locally');
-          }
-        } catch (serverError) {
-          // Server sync failed - that's okay, we saved locally
-          console.log('[AccountSettings] Server sync error:', serverError);
-        }
-      }
 
       toast.success('Username updated successfully');
       loadWalletInfo();
@@ -452,27 +348,25 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
 
     setCreatingAccount(true);
     try {
-      // Ensure username starts with @
-      const formattedUsername = newAccountName.startsWith('@') ? newAccountName : '@' + newAccountName;
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/create-account`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ 
-            parentWalletId: walletId,
-            username: formattedUsername,
-          }),
-        }
-      );
+      // Client-side account creation — seed phrase never leaves the device
+      const mnemonic = wallet.getMnemonic();
+      if (!mnemonic || !wallet.isUnlocked) {
+        toast.error('Please unlock your wallet first');
+        return;
+      }
 
-      if (!response.ok) throw new Error('Failed to create account');
-      
-      const data = await response.json();
+      const formattedUsername = newAccountName.startsWith('@') ? newAccountName : '@' + newAccountName;
+
+      // Derive addresses client-side
+      const nextIndex = AccountManager.getNextAccountIndex();
+      const newAddresses = await deriveAddresses(mnemonic, nextIndex);
+
+      // Create account in local AccountManager
+      const newAccount = AccountManager.createNewAccount(walletId, {
+        solana: newAddresses.solana,
+        ethereum: newAddresses.ethereum,
+      });
+
       toast.success('Account created successfully');
       setShowAddAccountDialog(false);
       setNewAccountName('');
@@ -559,23 +453,6 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
       // If this is the last account, delete everything and sign out
       if (allAccounts.length <= 1) {
         console.log('[AccountSettings] ⚠️ This is the last account - full wallet deletion');
-
-        // Delete from backend
-        try {
-          await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/delete-wallet`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${publicAnonKey}`,
-              },
-              body: JSON.stringify({ walletId }),
-            }
-          );
-        } catch (backendError) {
-          console.warn('[AccountSettings] Backend deletion failed (continuing with local):', backendError);
-        }
 
         // Clear all local storage
         localStorage.removeItem('saturn_accounts');
@@ -789,6 +666,80 @@ export function AccountSettings({ onBack, walletId, onSignOut, onSwitchAccount }
             </AnimatePresence>
           </div>
         </div>
+
+        {/* Sign-in Method */}
+        {(() => {
+          const authMethod = localStorage.getItem(`${walletId}_auth_method`);
+          const socialProvider = localStorage.getItem(`${walletId}_social_provider`);
+          const socialEmail = localStorage.getItem(`${walletId}_social_email`);
+
+          // Mask email: "john.doe@gmail.com" → "jo****e@gm***l.com"
+          const maskEmail = (email: string): string => {
+            const [local, domain] = email.split('@');
+            if (!domain) return '****';
+            const maskedLocal = local.length <= 2
+              ? local[0] + '****'
+              : local[0] + local[1] + '****' + local[local.length - 1];
+            const [domName, ...domExt] = domain.split('.');
+            const maskedDom = domName.length <= 2
+              ? domName + '***'
+              : domName[0] + domName[1] + '***' + domName[domName.length - 1];
+            return `${maskedLocal}@${maskedDom}.${domExt.join('.')}`;
+          };
+
+          let methodLabel = 'Recovery Phrase';
+          let methodIcon = <Shield className="w-5 h-5 text-purple-400" />;
+          let methodDescription = 'Signed in using a 12-word recovery phrase';
+
+          if (authMethod === 'social' || (!authMethod && socialProvider)) {
+            if (socialProvider === 'google') {
+              methodLabel = 'Google';
+              methodIcon = (
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+              );
+              methodDescription = socialEmail ? maskEmail(socialEmail) : 'Signed in with Google';
+            } else if (socialProvider === 'apple') {
+              methodLabel = 'Apple';
+              methodIcon = (
+                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+                </svg>
+              );
+              methodDescription = socialEmail ? maskEmail(socialEmail) : 'Signed in with Apple';
+            } else {
+              methodLabel = 'Social Login';
+              methodIcon = <Shield className="w-5 h-5 text-blue-400" />;
+              methodDescription = socialEmail ? maskEmail(socialEmail) : 'Signed in with social account';
+            }
+          } else if (authMethod === 'email') {
+            methodLabel = 'Email';
+            methodIcon = <Mail className="w-5 h-5 text-blue-400" />;
+            methodDescription = socialEmail ? maskEmail(socialEmail) : 'Signed in with email verification';
+          }
+
+          return (
+            <div className="space-y-3 bg-slate-900/50 rounded-xl p-4 border border-slate-800/30">
+              <Label className="text-white flex items-center gap-2">
+                <Shield className="w-4 h-4 text-slate-400" />
+                Sign-in Method
+              </Label>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-950/50 border border-slate-800/30">
+                <div className="w-10 h-10 rounded-full bg-slate-800/80 flex items-center justify-center flex-shrink-0">
+                  {methodIcon}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-white font-medium text-sm">{methodLabel}</p>
+                  <p className="text-slate-400 text-xs truncate">{methodDescription}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Accounts */}
         <div className="space-y-3">

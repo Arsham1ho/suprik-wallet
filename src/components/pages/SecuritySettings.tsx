@@ -1,9 +1,16 @@
-import { useState, useEffect, useLayoutEffect } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Separator } from "../ui/separator";
 import { Switch } from "../ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "../ui/dialog";
 import {
   ArrowLeft,
   Shield,
@@ -26,8 +33,9 @@ import {
   getBiometricTypeName,
   type BiometricSettings,
 } from "../../utils/biometric";
-import { SecureStorage, WalletStorage, decryptWithPassword } from "../../utils/wallet";
+import { SecureStorage, WalletStorage, decryptWithPassword, decryptImportedSecret } from "../../utils/wallet";
 import { useWallet } from "../../utils/WalletContext";
+import { useTheme } from "../../utils/ThemeContext";
 import { exportPrivateKey } from "../../utils/web3/walletManager";
 import { AccountManager } from "../../utils/accountManager";
 import { scrollToTop } from "../../utils/scrollToTop";
@@ -59,6 +67,7 @@ interface UserSettings {
 
 export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
   const wallet = useWallet();
+  const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
@@ -80,6 +89,40 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
   const [privateKeyConfirmed, setPrivateKeyConfirmed] = useState(false);
   const [loadingPrivateKey, setLoadingPrivateKey] = useState(false);
   const [copiedPrivateKey, setCopiedPrivateKey] = useState(false);
+
+  // Password dialog state (replaces browser prompt())
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [passwordDialogInput, setPasswordDialogInput] = useState("");
+  const [passwordDialogTitle, setPasswordDialogTitle] = useState("");
+  const [passwordDialogLoading, setPasswordDialogLoading] = useState(false);
+  const passwordResolveRef = useRef<((value: string | null) => void) | null>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
+
+  const requestPassword = useCallback((title: string): Promise<string | null> => {
+    return new Promise((resolve) => {
+      passwordResolveRef.current = resolve;
+      setPasswordDialogInput("");
+      setPasswordDialogTitle(title);
+      setPasswordDialogLoading(false);
+      setPasswordDialogOpen(true);
+      // Auto-focus after dialog opens
+      setTimeout(() => passwordInputRef.current?.focus(), 100);
+    });
+  }, []);
+
+  const handlePasswordSubmit = useCallback(() => {
+    if (!passwordDialogInput) return;
+    setPasswordDialogLoading(true);
+    setPasswordDialogOpen(false);
+    passwordResolveRef.current?.(passwordDialogInput);
+    passwordResolveRef.current = null;
+  }, [passwordDialogInput]);
+
+  const handlePasswordCancel = useCallback(() => {
+    setPasswordDialogOpen(false);
+    passwordResolveRef.current?.(null);
+    passwordResolveRef.current = null;
+  }, []);
 
   // Track active account address to detect account switches (reactive from WalletContext)
   const currentSolanaAddress = wallet.addresses?.solana;
@@ -241,8 +284,8 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
       }
 
       // Ask user for their password to store it securely
-      const password = prompt(
-        "Enter your wallet password to enable fingerprint authentication:"
+      const password = await requestPassword(
+        "Enter your wallet password to enable fingerprint authentication"
       );
 
       if (!password) {
@@ -441,7 +484,8 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
 
   const copyToClipboard = async (text: string, wordIndex?: number) => {
     try {
-      await navigator.clipboard.writeText(text);
+      const { copyToClipboardWithAutoClear } = await import("../../utils/clipboard");
+      await copyToClipboardWithAutoClear(text);
       if (wordIndex !== undefined) {
         setCopiedWord(wordIndex);
         setTimeout(() => setCopiedWord(null), 2000);
@@ -485,9 +529,9 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
         password = wallet.getPassword();
       }
 
-      // If still no password, prompt for it
+      // If still no password, ask for it
       if (!password) {
-        password = prompt("Enter your wallet password to view recovery phrase:");
+        password = await requestPassword("Enter your wallet password to view recovery phrase");
         if (!password) {
           toast.error("Password required to view recovery phrase");
           setLoadingPhrase(false);
@@ -519,16 +563,17 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
 
       // Check if this is an imported account with mnemonic stored in saturn_imported_mnemonics
       if (!mnemonic && activeAccount?.importedWalletId) {
-        console.log("[SecuritySettings] 📦 Account has importedWalletId, checking saturn_imported_mnemonics...");
         try {
           const storedMnemonics = JSON.parse(localStorage.getItem('saturn_imported_mnemonics') || '{}');
-          const encodedMnemonic = storedMnemonics[activeAccount.importedWalletId];
-          if (encodedMnemonic) {
-            mnemonic = atob(encodedMnemonic);
-            console.log("[SecuritySettings] ✅ Retrieved mnemonic from saturn_imported_mnemonics");
+          const storedMnemonic = storedMnemonics[activeAccount.importedWalletId];
+          if (storedMnemonic) {
+            const decrypted = await decryptImportedSecret(storedMnemonic, wallet.password);
+            if (decrypted) {
+              mnemonic = decrypted;
+            }
           }
         } catch (storageError) {
-          console.error("[SecuritySettings] ❌ Failed to retrieve mnemonic from storage:", storageError);
+          console.error("[SecuritySettings] Failed to retrieve mnemonic from storage:", storageError);
         }
       }
 
@@ -600,20 +645,21 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
 
       // Case 1: Account imported via private key - retrieve from saturn_imported_private_keys
       if (activeAcc.isPrivateKeyImport && activeAcc.importedPrivateKeyAddress) {
-        console.log("[SecuritySettings] 📦 Private key import detected, retrieving from storage...");
         try {
           const storedPrivateKeys = JSON.parse(localStorage.getItem('saturn_imported_private_keys') || '{}');
-          const encodedKey = storedPrivateKeys[activeAcc.importedPrivateKeyAddress];
-          if (encodedKey) {
-            const privateKeyValue = atob(encodedKey);
-            setPrivateKey(privateKeyValue);
-            setPrivateKeyConfirmed(true);
-            toast.success("Private key loaded");
-            setLoadingPrivateKey(false);
-            return;
+          const storedKey = storedPrivateKeys[activeAcc.importedPrivateKeyAddress];
+          if (storedKey) {
+            const privateKeyValue = await decryptImportedSecret(storedKey, wallet.password);
+            if (privateKeyValue) {
+              setPrivateKey(privateKeyValue);
+              setPrivateKeyConfirmed(true);
+              toast.success("Private key loaded");
+              setLoadingPrivateKey(false);
+              return;
+            }
           }
         } catch (storageError) {
-          console.error("[SecuritySettings] ❌ Failed to retrieve private key from storage:", storageError);
+          console.error("[SecuritySettings] Failed to retrieve private key from storage:", storageError);
         }
         toast.error("Private key not found in storage");
         setLoadingPrivateKey(false);
@@ -622,25 +668,26 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
 
       // Case 2: Account imported via seed phrase - retrieve mnemonic from saturn_imported_mnemonics
       if (activeAcc.isImportedSeedPhrase && activeAcc.importedWalletId) {
-        console.log("[SecuritySettings] 📦 Imported seed phrase account, retrieving mnemonic...");
         try {
           const storedMnemonics = JSON.parse(localStorage.getItem('saturn_imported_mnemonics') || '{}');
-          const encodedMnemonic = storedMnemonics[activeAcc.importedWalletId];
-          if (encodedMnemonic) {
-            const mnemonic = atob(encodedMnemonic);
-            // Derive private key from the imported mnemonic using the account's accountIndex
-            const result = await exportPrivateKey(mnemonic, '', activeAcc.accountIndex || 0);
-            if (result.success && result.privateKey.length) {
-              const privateKeyBase58 = bs58.encode(result.privateKey);
-              setPrivateKey(privateKeyBase58);
-              setPrivateKeyConfirmed(true);
-              toast.success("Private key loaded");
-              setLoadingPrivateKey(false);
-              return;
+          const storedMnemonic = storedMnemonics[activeAcc.importedWalletId];
+          if (storedMnemonic) {
+            const mnemonic = await decryptImportedSecret(storedMnemonic, wallet.password);
+            if (mnemonic) {
+              // Derive private key from the imported mnemonic using the account's accountIndex
+              const result = await exportPrivateKey(mnemonic, '', activeAcc.accountIndex || 0);
+              if (result.success && result.privateKey.length) {
+                const privateKeyBase58 = bs58.encode(result.privateKey);
+                setPrivateKey(privateKeyBase58);
+                setPrivateKeyConfirmed(true);
+                toast.success("Private key loaded");
+                setLoadingPrivateKey(false);
+                return;
+              }
             }
           }
         } catch (storageError) {
-          console.error("[SecuritySettings] ❌ Failed to retrieve mnemonic from storage:", storageError);
+          console.error("[SecuritySettings] Failed to retrieve mnemonic from storage:", storageError);
         }
         toast.error("Could not derive private key for this imported account");
         setLoadingPrivateKey(false);
@@ -658,7 +705,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
       }
 
       if (!password) {
-        password = prompt("Enter your wallet password to view private key:");
+        password = await requestPassword("Enter your wallet password to view private key");
         if (!password) {
           toast.error("Password required to view private key");
           setLoadingPrivateKey(false);
@@ -986,7 +1033,8 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
                       className="flex-1 bg-purple-600 hover:bg-purple-700"
                       onClick={async () => {
                         if (privateKey) {
-                          await navigator.clipboard.writeText(privateKey);
+                          const { copyToClipboardWithAutoClear } = await import("../../utils/clipboard");
+                          await copyToClipboardWithAutoClear(privateKey);
                           setCopiedPrivateKey(true);
                           setTimeout(() => setCopiedPrivateKey(false), 2000);
                           toast.success("Private key copied to clipboard");
@@ -1277,6 +1325,87 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
           </ul>
         </motion.div>
       </div>
+
+      {/* Password Dialog */}
+      <Dialog open={passwordDialogOpen} onOpenChange={(open) => { if (!open) handlePasswordCancel(); }}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Lock className="w-6 h-6" style={{ color: colors.accent }} />
+              Password Required
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              {passwordDialogTitle}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Lock icon with animated glow */}
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex justify-center py-4"
+            >
+              <div className="relative">
+                <div
+                  className="absolute inset-0 rounded-full blur-xl animate-pulse"
+                  style={{ backgroundColor: `${colors.primary}33` }}
+                />
+                <div
+                  className="relative w-16 h-16 rounded-full flex items-center justify-center"
+                  style={{ background: `linear-gradient(to bottom right, ${colors.primary}, ${colors.secondary})` }}
+                >
+                  <Lock className="w-8 h-8 text-white" />
+                </div>
+              </div>
+            </motion.div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handlePasswordSubmit();
+              }}
+              className="space-y-4"
+            >
+              <Input
+                ref={passwordInputRef}
+                type="password"
+                value={passwordDialogInput}
+                onChange={(e) => setPasswordDialogInput(e.target.value)}
+                placeholder="Enter your password"
+                className="bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 h-12 rounded-xl"
+                style={{ '--tw-ring-color': `${colors.primary}33` } as React.CSSProperties}
+                autoFocus
+              />
+              <div className="flex gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handlePasswordCancel}
+                  className="flex-1 border-slate-700 hover:bg-slate-800"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={!passwordDialogInput || passwordDialogLoading}
+                  className="flex-1 text-white disabled:opacity-50"
+                  style={{
+                    background: `linear-gradient(to right, ${colors.primary}, ${colors.secondary})`,
+                    boxShadow: `0 4px 14px -3px ${colors.primary}4D`,
+                  }}
+                >
+                  {passwordDialogLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  ) : (
+                    "Confirm"
+                  )}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

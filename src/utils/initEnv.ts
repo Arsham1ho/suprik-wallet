@@ -51,56 +51,11 @@ export async function initializeEnvironment(): Promise<void> {
     return;
   }
 
-  try {
-    console.log('[ENV] 🔧 Initializing environment variables...');
-
-    // Import Supabase info
-    const { projectId, publicAnonKey } = await import('./supabase/info');
-
-    // Fetch API keys from server with timeout
-    const response = await fetchWithTimeout(
-      `https://${projectId}.supabase.co/functions/v1/make-server-e5bc10d1/api-keys`,
-      {
-        headers: {
-          'Authorization': `Bearer ${publicAnonKey}`
-        }
-      },
-      FETCH_TIMEOUT
-    );
-
-    if (response.ok) {
-      const data = await response.json();
-
-      // Set environment variables on window object
-      window.ENV = {
-        HELIUS_API_KEY: data.heliusKey,
-        ALCHEMY_API_KEY: data.alchemyKey,
-      };
-      window.ENV_INITIALIZED = true;
-
-      console.log('[ENV] ✅ Environment initialized successfully');
-      console.log('[ENV] Helius API:', data.heliusKey ? '✓ Available' : '✗ Missing');
-      console.log('[ENV] Alchemy API:', data.alchemyKey ? '✓ Available' : '✗ Missing');
-    } else {
-      console.warn('[ENV] ⚠️ Failed to fetch API keys:', response.status);
-
-      // Set empty environment - app can still work with public RPC
-      window.ENV = {};
-      window.ENV_INITIALIZED = true;
-      window.ENV_ERROR = `Server returned ${response.status}`;
-    }
-  } catch (error: any) {
-    const errorMessage = error.message || 'Unknown error';
-    console.warn('[ENV] ⚠️ Error initializing environment:', errorMessage);
-
-    // Set empty environment - app can still work with public RPC
-    window.ENV = {};
-    window.ENV_INITIALIZED = true;
-    window.ENV_ERROR = errorMessage;
-
-    // Don't throw - allow app to continue with fallback RPC
-    console.log('[ENV] 📡 App will use fallback public RPC endpoints');
-  }
+  // API keys are no longer fetched from the server (security: keys must not be sent to clients).
+  // The app works with public/fallback RPC endpoints.
+  window.ENV = {};
+  window.ENV_INITIALIZED = true;
+  console.log('[ENV] ✅ Environment initialized (using public RPC endpoints)');
 }
 
 /**

@@ -10,7 +10,6 @@ import { SignInOptions } from './components/SignInOptions';
 import { SignUp } from './components/SignUp';
 import { SignUpOptions } from './components/SignUpOptions';
 import { EmailSignIn } from './components/EmailSignIn';
-import { OAuthSignUp } from './components/OAuthSignUp';
 import { SetupPassword } from './components/SetupPassword';
 import { MainApp } from './components/MainApp';
 import { BiometricLock } from './components/BiometricLock';
@@ -42,7 +41,7 @@ export default function App() {
   const [showAccountCreated, setShowAccountCreated] = useState(false);
   const [showPageTransition, setShowPageTransition] = useState(false);
   const [nextPage, setNextPage] = useState<'signin-options' | 'signup-options' | null>(null);
-  const [currentPage, setCurrentPage] = useState<'landing' | 'signin' | 'signin-options' | 'signin-email' | 'signup' | 'signup-options' | 'signup-email' | 'signup-oauth-google' | 'signup-oauth-apple' | 'setup-password' | 'unlock' | 'app'>('landing');
+  const [currentPage, setCurrentPage] = useState<'landing' | 'signin' | 'signin-options' | 'signin-email' | 'signup' | 'signup-options' | 'signup-email' | 'setup-password' | 'unlock' | 'app'>('landing');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [walletId, setWalletId] = useState<string | null>(null);
   const [biometricSettings, setBiometricSettings] = useState<BiometricSettings | null>(null);
@@ -90,7 +89,8 @@ export default function App() {
           if (searchParams.has('error')) {
             const error = searchParams.get('error');
             const errorDescription = searchParams.get('error_description');
-            toast.error(`OAuth error: ${errorDescription || error}`);
+            console.error('OAuth error:', error, errorDescription);
+            toast.error('Sign-in failed. Please try again.');
             window.history.replaceState({}, document.title, window.location.pathname);
             setProcessingOAuth(false);
             return;
@@ -104,26 +104,39 @@ export default function App() {
           }
           
           if (session && session.user) {
-            // Check if wallet already exists for this user
+            // Check intent: did user come from "Create New Wallet" (signup) or "Sign In" (signin)?
+            const oauthIntent = localStorage.getItem('oauth_intent') || 'signin';
+            localStorage.removeItem('oauth_intent');
+
             const socialWalletKey = `social_wallet_${session.user.id}`;
             const existingWalletId = localStorage.getItem(socialWalletKey);
-            
-            if (existingWalletId && SecureStorage.hasWallet()) {
-              // User has existing wallet from social login - route to unlock screen
+
+            if (oauthIntent === 'signin' && existingWalletId && SecureStorage.hasWallet()) {
+              // Returning user signing in — restore existing wallet
               WalletStorage.setWalletId(existingWalletId);
               setWalletId(existingWalletId);
               setNeedsUnlock(true);
               setCurrentPage('unlock');
             } else {
-              // New social login or stale reference (wallet was deleted after sign out)
+              // New sign-up OR sign-in with no existing wallet — create fresh wallet
+              // Clean up ALL old wallet data so the new wallet starts clean
               if (existingWalletId) {
-                // Clean up stale social wallet link
                 localStorage.removeItem(socialWalletKey);
                 localStorage.removeItem(`${existingWalletId}_auth_method`);
                 localStorage.removeItem(`${existingWalletId}_social_provider`);
                 localStorage.removeItem(`${existingWalletId}_social_email`);
                 localStorage.removeItem(`${existingWalletId}_password_hint`);
+                localStorage.removeItem(`biometric_credential_${existingWalletId}`);
+                localStorage.removeItem(`biometric_last_auth_${existingWalletId}`);
               }
+              // Clear old AccountManager data so Home.tsx creates a fresh account
+              localStorage.removeItem('saturn_accounts');
+              localStorage.removeItem('saturn_active_account_id');
+              localStorage.removeItem('saturn_accounts_ck');
+              // Clear stale caches from previous wallet
+              localStorage.removeItem('saturn_custom_tokens');
+              localStorage.removeItem('suprik_swap_history');
+              localStorage.removeItem('suprik_contacts');
 
               // Create new wallet
               const { generateMnemonic } = await import('./utils/wallet');
@@ -155,7 +168,12 @@ export default function App() {
               WalletStorage.setWalletId(walletId);
               WalletStorage.setCurrentAccount(0);
 
-              // Set wallet state, go to password setup first (like recovery phrase flow)
+              // Generate default username from email
+              const emailPrefix = session.user.email?.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user';
+              const defaultUsername = `@${emailPrefix}${walletId.substring(0, 4)}`;
+              localStorage.setItem('saturn_username', defaultUsername);
+
+              // Route to password setup (same flow as recovery phrase)
               // After password setup → account created animation → app
               setWalletId(walletId);
               setNeedsUnlock(true);
@@ -520,11 +538,9 @@ export default function App() {
                     
                     {/* Sign Up Flow */}
                     {currentPage === 'signup-options' && (
-                      <SignUpOptions 
+                      <SignUpOptions
                         onSelectRecoveryPhrase={() => setCurrentPage('signup')}
                         onSelectEmail={() => setCurrentPage('signup-email')}
-                        onSelectGoogle={() => setCurrentPage('signup-oauth-google')}
-                        onSelectApple={() => setCurrentPage('signup-oauth-apple')}
                         onBack={() => setCurrentPage('landing')}
                       />
                     )}
@@ -539,23 +555,6 @@ export default function App() {
                     {currentPage === 'signup-email' && (
                       <EmailSignIn 
                         isSignUp={true}
-                        onSuccess={(token, wId) => handleAuthSuccess(token, wId, true)}
-                        onBack={() => setCurrentPage('signup-options')}
-                      />
-                    )}
-                    
-                    {/* OAuth Sign Up Screens */}
-                    {currentPage === 'signup-oauth-google' && (
-                      <OAuthSignUp 
-                        provider="google"
-                        onSuccess={(token, wId) => handleAuthSuccess(token, wId, true)}
-                        onBack={() => setCurrentPage('signup-options')}
-                      />
-                    )}
-                    
-                    {currentPage === 'signup-oauth-apple' && (
-                      <OAuthSignUp 
-                        provider="apple"
                         onSuccess={(token, wId) => handleAuthSuccess(token, wId, true)}
                         onBack={() => setCurrentPage('signup-options')}
                       />
@@ -604,7 +603,15 @@ export default function App() {
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-theme-accent"></div>
                           </div>
                         ) : isLocked ? (
-                          <BiometricLock walletId={walletId} onUnlock={handleUnlock} />
+                          <BiometricLock
+                            walletId={walletId}
+                            onUnlock={handleUnlock}
+                            onFallbackToPassword={() => {
+                              setIsLocked(false);
+                              setNeedsUnlock(true);
+                              setCurrentPage('unlock');
+                            }}
+                          />
                         ) : (
                           <MainApp 
                             accessToken={walletId}

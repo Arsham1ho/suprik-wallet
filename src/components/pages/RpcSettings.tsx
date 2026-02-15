@@ -30,9 +30,13 @@ export function RpcSettings({ onBack }: RpcSettingsProps) {
   }, [customRpcUrl]);
 
   const testConnection = async (url: string) => {
+    if (!isSecureRpcUrl(url)) {
+      toast.error('Custom RPC must use HTTPS (HTTP allowed only for localhost)');
+      return false;
+    }
     setTesting(true);
     setTestResult(null);
-    
+
     try {
       // Test Solana RPC connection
       const connection = new Connection(url, 'confirmed');
@@ -52,6 +56,18 @@ export function RpcSettings({ onBack }: RpcSettingsProps) {
     }
   };
 
+  const isSecureRpcUrl = (url: string): boolean => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:') return true;
+      // Allow HTTP only for localhost development
+      if (parsed.protocol === 'http:' && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')) return true;
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
   const handleSaveCustomRpc = async () => {
     if (!customRpcInput.trim()) {
       toast.error('Please enter an RPC URL');
@@ -63,6 +79,12 @@ export function RpcSettings({ onBack }: RpcSettingsProps) {
       new URL(customRpcInput);
     } catch {
       toast.error('Invalid URL format');
+      return;
+    }
+
+    // Enforce HTTPS (except localhost)
+    if (!isSecureRpcUrl(customRpcInput)) {
+      toast.error('Custom RPC must use HTTPS (HTTP allowed only for localhost)');
       return;
     }
 

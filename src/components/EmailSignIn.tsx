@@ -27,6 +27,8 @@ export function EmailSignIn({ onSuccess, onBack, isSignUp = false }: EmailSignIn
   const handleSocialSignIn = async (provider: 'google' | 'apple') => {
     setSocialLoading(provider);
     try {
+      // Inherit intent from the page context (sign-up or sign-in)
+      localStorage.setItem('oauth_intent', isSignUp ? 'signup' : 'signin');
       const supabase = createSupabaseClient();
 
       const { error } = await supabase.auth.signInWithOAuth({
@@ -51,7 +53,8 @@ export function EmailSignIn({ onSuccess, onBack, isSignUp = false }: EmailSignIn
           { duration: 5000 }
         );
       } else {
-        toast.error(`Failed to sign in with ${provider === 'google' ? 'Google' : 'Apple'}: ${error.message}`);
+        console.error(`OAuth error (${provider}):`, error.message);
+        toast.error(`Failed to sign in with ${provider === 'google' ? 'Google' : 'Apple'}. Please try again.`);
       }
       setSocialLoading(null);
     }
@@ -77,8 +80,20 @@ export function EmailSignIn({ onSuccess, onBack, isSignUp = false }: EmailSignIn
     }
 
     if (isSignUp) {
-      if (password.length < 8) {
-        toast.error('Password must be at least 8 characters');
+      if (password.length < 12) {
+        toast.error('Password must be at least 12 characters');
+        return;
+      }
+      if (!/[A-Z]/.test(password)) {
+        toast.error('Password must include at least one uppercase letter');
+        return;
+      }
+      if (!/[0-9]/.test(password)) {
+        toast.error('Password must include at least one number');
+        return;
+      }
+      if (!/[^A-Za-z0-9]/.test(password)) {
+        toast.error('Password must include at least one special character');
         return;
       }
       if (!confirmPassword) {
@@ -123,10 +138,8 @@ export function EmailSignIn({ onSuccess, onBack, isSignUp = false }: EmailSignIn
         WalletStorage.setWalletId(newWalletId);
         WalletStorage.setCurrentAccount(0);
 
-        // Store email auth info
-        localStorage.setItem(`email_wallet_${data.user.id}`, newWalletId);
+        // Store auth method (no plaintext email — fetch from Supabase session if needed)
         localStorage.setItem(`${newWalletId}_auth_method`, 'email');
-        localStorage.setItem(`${newWalletId}_auth_email`, email);
 
         // Generate default username
         const emailPrefix = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '');
@@ -138,6 +151,11 @@ export function EmailSignIn({ onSuccess, onBack, isSignUp = false }: EmailSignIn
         if (!unlocked) {
           throw new Error('Failed to unlock wallet after creation');
         }
+
+        // Clear sensitive state before navigating away
+        setPassword('');
+        setConfirmPassword('');
+        setEmail('');
 
         toast.success('Account created successfully!');
         onSuccess(data.session?.access_token || newWalletId, newWalletId);
@@ -170,6 +188,11 @@ export function EmailSignIn({ onSuccess, onBack, isSignUp = false }: EmailSignIn
         }
 
         const existingWalletId = WalletStorage.getWalletId() || '';
+
+        // Clear sensitive state before navigating away
+        setPassword('');
+        setEmail('');
+
         toast.success('Welcome back!');
         onSuccess(data.session?.access_token || existingWalletId, existingWalletId);
       }
@@ -255,7 +278,7 @@ export function EmailSignIn({ onSuccess, onBack, isSignUp = false }: EmailSignIn
               </button>
             </div>
             {isSignUp && (
-              <p className="text-xs text-slate-500">At least 8 characters</p>
+              <p className="text-xs text-slate-500">At least 12 characters, with uppercase, number, and special character</p>
             )}
           </div>
 

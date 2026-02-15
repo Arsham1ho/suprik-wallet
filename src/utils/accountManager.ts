@@ -30,13 +30,54 @@ export interface Account {
 
 const ACCOUNTS_KEY = 'saturn_accounts';
 const ACTIVE_ACCOUNT_KEY = 'saturn_active_account_id';
+const INTEGRITY_KEY = 'saturn_accounts_ck';
 
 export class AccountManager {
+  // Compute a checksum of account data for tamper detection.
+  // Protects against extension/DevTools/cross-tab localStorage modifications.
+  private static computeChecksum(data: string): string {
+    const pepper = '\x73\x57\x6b\x5f\x61\x32'; // embedded pepper
+    const input = pepper + data;
+    let h = 0x12345678;
+    for (let i = 0; i < input.length; i++) {
+      h ^= input.charCodeAt(i);
+      h = (h << 13) | (h >>> 19);
+      h = Math.imul(h, 0x5bd1e995);
+      h ^= h >>> 15;
+    }
+    return (h >>> 0).toString(36);
+  }
+
+  // Save accounts with integrity checksum
+  private static saveAccounts(accounts: Account[]): void {
+    const data = JSON.stringify(accounts);
+    localStorage.setItem(ACCOUNTS_KEY, data);
+    localStorage.setItem(INTEGRITY_KEY, this.computeChecksum(data));
+  }
+
+  // Verify integrity of stored accounts
+  private static verifyIntegrity(data: string): boolean {
+    const storedChecksum = localStorage.getItem(INTEGRITY_KEY);
+    if (!storedChecksum) {
+      // First run or migration — compute and store checksum
+      localStorage.setItem(INTEGRITY_KEY, this.computeChecksum(data));
+      return true;
+    }
+    return storedChecksum === this.computeChecksum(data);
+  }
+
   // Get all accounts (with automatic deduplication)
   static getAccounts(): Account[] {
     try {
       const stored = localStorage.getItem(ACCOUNTS_KEY);
       if (!stored) return [];
+
+      // Verify data hasn't been tampered with
+      if (!this.verifyIntegrity(stored)) {
+        console.error('[AccountManager] Account data integrity check failed — possible tampering');
+        window.dispatchEvent(new CustomEvent('accountsTampered'));
+      }
+
       const accounts: Account[] = JSON.parse(stored);
 
       // Deduplicate accounts by Solana address (keep the first occurrence)
@@ -52,8 +93,8 @@ export class AccountManager {
 
       // If duplicates were found, save the cleaned list
       if (deduplicated.length !== accounts.length) {
-        console.log('[AccountManager] 🧹 Removed', accounts.length - deduplicated.length, 'duplicate accounts');
-        localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(deduplicated));
+        console.log('[AccountManager] Removed', accounts.length - deduplicated.length, 'duplicate accounts');
+        this.saveAccounts(deduplicated);
       }
 
       return deduplicated;
@@ -84,8 +125,8 @@ export class AccountManager {
   static addAccount(account: Account): void {
     const accounts = this.getAccounts();
     accounts.push(account);
-    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
-    
+    this.saveAccounts(accounts);
+
     // If this is the first account, make it active
     if (accounts.length === 1) {
       this.setActiveAccount(account.id);
@@ -98,7 +139,7 @@ export class AccountManager {
     const index = accounts.findIndex(acc => acc.id === accountId);
     if (index !== -1) {
       accounts[index] = { ...accounts[index], ...updates };
-      localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+      this.saveAccounts(accounts);
     }
   }
 
@@ -111,7 +152,7 @@ export class AccountManager {
     }
 
     const filtered = accounts.filter(acc => acc.id !== accountId);
-    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(filtered));
+    this.saveAccounts(filtered);
 
     // If deleted account was active, switch to first account
     if (this.getActiveAccountId() === accountId) {
