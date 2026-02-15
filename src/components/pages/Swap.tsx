@@ -224,6 +224,10 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
   const [priceImpact, setPriceImpact] = useState<number | null>(null);
   const [route, setRoute] = useState<string | null>(null);
 
+  // Quote version counter — incremented each time a new quote is requested.
+  // Stale responses (from a previous token pair) check this before updating state.
+  const quoteVersionRef = useRef(0);
+
   // Fetch coins from CoinGecko - only on mount
   useEffect(() => {
     fetchAllCoins(true); // Initial load with loading spinner
@@ -489,6 +493,9 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         return;
       }
 
+      // Increment version — any response from a prior version will be discarded
+      const thisVersion = ++quoteVersionRef.current;
+
       setLoadingQuote(true);
 
       try {
@@ -610,6 +617,12 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           setUltraOrderResponse(null);
         }
 
+        // If a newer quote was requested while we were waiting, discard this result
+        if (quoteVersionRef.current !== thisVersion) {
+          console.log("[Swap] Discarding stale quote response (version mismatch)");
+          return;
+        }
+
         if (quote) {
           setJupiterQuote(quote);
           setPriceImpact(quote.priceImpact);
@@ -626,6 +639,13 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           throw new Error("No quote available");
         }
       } catch (error: any) {
+        // If a newer quote was requested, suppress errors from this stale request
+        if (quoteVersionRef.current !== thisVersion) {
+          console.log("[Swap] Suppressing error from stale quote request");
+          setLoadingQuote(false);
+          return;
+        }
+
         console.error("❌ [Swap] Jupiter quote error:", error);
 
         // Better error messages based on error type
@@ -670,13 +690,7 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
         setJupiterQuote(null);
         setPriceImpact(null);
         setRoute(null);
-
-        // Fallback: Calculate simple exchange rate
-        if (fromTokenData && toTokenData && amount) {
-          const calculatedTo =
-            (parseFloat(amount) * fromTokenData.price) / toTokenData.price;
-          setToAmount(calculatedTo.toFixed(6));
-        }
+        setToAmount("");
       } finally {
         setLoadingQuote(false);
       }
@@ -796,18 +810,26 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             "| Output mint:",
             outputMint
           );
-          const calculatedTo =
-            (parseFloat(value) * fromTokenData.price) / toTokenData.price;
-          setToAmount(calculatedTo.toFixed(6));
+          if (fromTokenData.price > 0 && toTokenData.price > 0) {
+            const calculatedTo =
+              (parseFloat(value) * fromTokenData.price) / toTokenData.price;
+            setToAmount(calculatedTo.toFixed(6));
+          } else {
+            setToAmount("");
+          }
           setJupiterQuote(null);
           setPriceImpact(null);
           setRoute(null);
         }
       } else {
         // Fallback to simple price calculation
-        const calculatedTo =
-          (parseFloat(value) * fromTokenData.price) / toTokenData.price;
-        setToAmount(calculatedTo.toFixed(6));
+        if (fromTokenData.price > 0 && toTokenData.price > 0) {
+          const calculatedTo =
+            (parseFloat(value) * fromTokenData.price) / toTokenData.price;
+          setToAmount(calculatedTo.toFixed(6));
+        } else {
+          setToAmount("");
+        }
         setJupiterQuote(null);
         setPriceImpact(null);
         setRoute(null);
@@ -955,10 +977,12 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           setFromToken(matchedToken.id);
           setShowFromTokenSearch(false);
 
-          // Clear old quote data - the useEffect will refetch
+          // Clear old quote data and output amount — the useEffect will refetch
           setJupiterQuote(null);
+          setUltraOrderResponse(null);
           setPriceImpact(null);
           setRoute(null);
+          setToAmount("");
 
           // Haptic feedback
           if ("vibrate" in navigator) {
@@ -1038,11 +1062,12 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
           // This order is important for React's batched updates
           setToToken(matchedToken.id);
 
-          // Clear old quote data - the useEffect will refetch
+          // Clear old quote data and output amount — the useEffect will refetch
           setJupiterQuote(null);
+          setUltraOrderResponse(null);
           setPriceImpact(null);
           setRoute(null);
-          // Don't clear toAmount here - let the quote fetch update it
+          setToAmount("");
 
           // Haptic feedback
           if ("vibrate" in navigator) {
@@ -1075,11 +1100,12 @@ export function Swap({ tokens, walletId, onSwapComplete }: SwapProps) {
             return [...prev, newToken];
           });
 
-          // Clear old quote data - the useEffect will refetch
+          // Clear old quote data and output amount — the useEffect will refetch
           setJupiterQuote(null);
+          setUltraOrderResponse(null);
           setPriceImpact(null);
           setRoute(null);
-          // Don't clear toAmount here - let the quote fetch update it
+          setToAmount("");
 
           // Haptic feedback
           if ("vibrate" in navigator) {

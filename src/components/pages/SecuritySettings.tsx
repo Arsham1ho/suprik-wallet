@@ -253,6 +253,12 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
       // Re-encrypt mnemonic with new password
       await SecureStorage.storeMnemonic(mnemonic, newPassword);
 
+      // Update OAuth auto-unlock password so Google/Apple sign-in still auto-unlocks
+      const authMethod = localStorage.getItem(`${walletId}_auth_method`);
+      if (authMethod === 'social') {
+        await WalletStorage.setOAuthPassword(newPassword);
+      }
+
       // Also update server settings (non-blocking, for backup)
       try {
         await updateSettings({ usePassword: true });

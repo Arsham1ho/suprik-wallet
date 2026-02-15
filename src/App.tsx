@@ -104,28 +104,33 @@ export default function App() {
           }
           
           if (session && session.user) {
-            // Check intent: did user come from "Create New Wallet" (signup) or "Sign In" (signin)?
-            const oauthIntent = localStorage.getItem('oauth_intent') || 'signin';
             localStorage.removeItem('oauth_intent');
 
             const socialWalletKey = `social_wallet_${session.user.id}`;
             const existingWalletId = localStorage.getItem(socialWalletKey);
 
-            if (oauthIntent === 'signin' && existingWalletId && SecureStorage.hasWallet()) {
-              // Returning user signing in — restore existing wallet
+            if (existingWalletId && SecureStorage.hasWallet()) {
+              // Returning user — restore existing wallet (regardless of signup/signin intent).
+              // This prevents accidental wallet destruction if user clicks "Create Wallet"
+              // instead of "Sign In" when they already have a wallet.
               WalletStorage.setWalletId(existingWalletId);
               setWalletId(existingWalletId);
               setNeedsUnlock(true);
-              setCurrentPage('unlock');
+
+              // Always route to setup-password on OAuth sign-in.
+              // The user proved identity via Google/Apple, now they create a
+              // fresh device password. The same wallet (mnemonic/address) is kept.
+              setCurrentPage('setup-password');
             } else {
-              // New sign-up OR sign-in with no existing wallet — create fresh wallet
-              // Clean up ALL old wallet data so the new wallet starts clean
+              // First-time sign-up — no existing wallet for this Google/Apple account
+              // Clean up any stale data
               if (existingWalletId) {
                 localStorage.removeItem(socialWalletKey);
                 localStorage.removeItem(`${existingWalletId}_auth_method`);
                 localStorage.removeItem(`${existingWalletId}_social_provider`);
                 localStorage.removeItem(`${existingWalletId}_social_email`);
                 localStorage.removeItem(`${existingWalletId}_password_hint`);
+                localStorage.removeItem(`${existingWalletId}_password_setup_complete`);
                 localStorage.removeItem(`biometric_credential_${existingWalletId}`);
                 localStorage.removeItem(`biometric_last_auth_${existingWalletId}`);
               }
@@ -265,7 +270,16 @@ export default function App() {
       
       setWalletId(savedWalletId);
       setNeedsUnlock(true);
-      setCurrentPage('unlock');
+
+      // Social wallets that never completed password setup should go to
+      // SetupPassword instead of auto-unlocking with the random password
+      const isSocial = localStorage.getItem(`${savedWalletId}_auth_method`) === 'social';
+      const setupDone = localStorage.getItem(`${savedWalletId}_password_setup_complete`);
+      if (isSocial && !setupDone) {
+        setCurrentPage('setup-password');
+      } else {
+        setCurrentPage('unlock');
+      }
       // Skip all onboarding if wallet exists
       setShowWelcome(false);
       setShowWelcomePage(false);
