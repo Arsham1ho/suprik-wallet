@@ -381,7 +381,7 @@ export const translations: Record<string, Translations> = {
       activity: 'Activity',
       settings: 'Settings',
       chat: 'Chat',
-      stocks: 'Stocks',
+      stocks: 'AI Chat',
     },
     home: {
       totalBalance: 'Total Balance',
@@ -674,7 +674,7 @@ export const translations: Record<string, Translations> = {
       activity: 'فعالیت',
       settings: 'تنظیمات',
       chat: 'چت',
-      stocks: 'سهام',
+      stocks: 'چت هوشمند',
     },
     home: {
       totalBalance: 'موجودی کل',
@@ -968,7 +968,7 @@ export const translations: Record<string, Translations> = {
       activity: 'Actividad',
       settings: 'Ajustes',
       chat: 'Chat',
-      stocks: 'Acciones',
+      stocks: 'Chat IA',
     },
     home: {
       totalBalance: 'Saldo total',

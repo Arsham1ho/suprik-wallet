@@ -98,25 +98,25 @@ export function SetupPassword({ walletId, onComplete }: SetupPasswordProps) {
   const finalizePassword = async (shouldEnableBiometric: boolean) => {
     setLoading(true);
     try {
-      // Get the temporary OAuth password to decrypt the mnemonic
-      const oauthPassword = await WalletStorage.getOAuthPassword();
+      // Get the temporary OAuth password to decrypt the mnemonic (per-wallet key)
+      const oauthPassword = await WalletStorage.getOAuthPassword(walletId);
       if (!oauthPassword) {
         throw new Error('Failed to retrieve wallet data');
       }
 
-      // Decrypt mnemonic with the temporary OAuth password
-      const mnemonic = await SecureStorage.retrieveMnemonic(oauthPassword);
+      // Decrypt mnemonic with the temporary OAuth password (per-wallet key)
+      const mnemonic = await SecureStorage.retrieveMnemonic(oauthPassword, walletId);
       if (!mnemonic) {
         throw new Error('Failed to decrypt wallet');
       }
 
-      // Re-encrypt with the user's chosen password
-      await SecureStorage.storeMnemonic(mnemonic, password);
+      // Re-encrypt with the user's chosen password (per-wallet key)
+      await SecureStorage.storeMnemonic(mnemonic, password, walletId);
 
       // Store the user's password for auto-unlock on future OAuth sign-ins.
       // This replaces the temporary random password so UnlockWallet can
       // seamlessly unlock the wallet when the user signs in with Google/Apple.
-      await WalletStorage.setOAuthPassword(password);
+      await WalletStorage.setOAuthPassword(password, walletId);
 
       // Unlock wallet with the new password
       const unlocked = await wallet.unlock(password);
@@ -147,6 +147,14 @@ export function SetupPassword({ walletId, onComplete }: SetupPasswordProps) {
       // Mark password setup as complete so returning OAuth sign-ins
       // don't bypass this step
       localStorage.setItem(`${walletId}_password_setup_complete`, 'true');
+
+      // Upload wallet to Supabase for cross-device sync (fire-and-forget).
+      // Pass the plaintext mnemonic — walletSync encrypts it with user.id before uploading.
+      import('../utils/walletSync').then(({ uploadWalletBackup }) => {
+        uploadWalletBackup(walletId, mnemonic).catch((err) => {
+          console.warn('[SetupPassword] Wallet backup upload failed (non-critical):', err);
+        });
+      }).catch(() => {});
 
       // Clear sensitive state
       setPassword('');

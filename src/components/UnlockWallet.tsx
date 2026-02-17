@@ -106,8 +106,8 @@ export function UnlockWallet({
       if (result.success) {
         console.log("[UnlockWallet] ✅ Fingerprint authentication successful");
 
-        // Get the stored password (stored when user enabled fingerprint)
-        const storedPassword = await WalletStorage.getOAuthPassword();
+        // Get the stored password (stored when user enabled fingerprint, per-wallet key)
+        const storedPassword = await WalletStorage.getOAuthPassword(walletId);
 
         if (storedPassword) {
           console.log(

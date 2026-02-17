@@ -244,19 +244,19 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
     // Verify old password by trying to decrypt the mnemonic
     // This is the source of truth - the password encrypts the mnemonic locally
     try {
-      const mnemonic = await SecureStorage.retrieveMnemonic(oldPassword);
+      const mnemonic = await SecureStorage.retrieveMnemonic(oldPassword, walletId);
       if (!mnemonic) {
         toast.error("Current password is incorrect");
         return;
       }
 
-      // Re-encrypt mnemonic with new password
-      await SecureStorage.storeMnemonic(mnemonic, newPassword);
+      // Re-encrypt mnemonic with new password (per-wallet key)
+      await SecureStorage.storeMnemonic(mnemonic, newPassword, walletId);
 
       // Update OAuth auto-unlock password so Google/Apple sign-in still auto-unlocks
       const authMethod = localStorage.getItem(`${walletId}_auth_method`);
       if (authMethod === 'social') {
-        await WalletStorage.setOAuthPassword(newPassword);
+        await WalletStorage.setOAuthPassword(newPassword, walletId);
       }
 
       // Also update server settings (non-blocking, for backup)
@@ -265,6 +265,14 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
       } catch (e) {
         console.warn("[SecuritySettings] Could not sync password change to server (non-critical)");
       }
+
+      // Upload wallet to Supabase for cross-device sync (fire-and-forget).
+      // Pass the plaintext mnemonic — walletSync encrypts it with user.id before uploading.
+      import('../../utils/walletSync').then(({ uploadWalletBackup }) => {
+        uploadWalletBackup(walletId, mnemonic).catch((err) => {
+          console.warn('[SecuritySettings] Wallet backup upload failed (non-critical):', err);
+        });
+      }).catch(() => {});
 
       setShowPasswordForm(false);
       setNewPassword("");
@@ -303,7 +311,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
 
       // Verify the password is correct by trying to decrypt mnemonic
       try {
-        const mnemonic = await SecureStorage.retrieveMnemonic(password);
+        const mnemonic = await SecureStorage.retrieveMnemonic(password, walletId);
         if (!mnemonic) {
           toast.error("Incorrect password. Please try again.");
           return;
@@ -320,8 +328,8 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
         const result = await registerBiometric(walletId);
 
         if (result.success) {
-          // Store the password securely for fingerprint unlock
-          await WalletStorage.setOAuthPassword(password);
+          // Store the password securely for fingerprint unlock (per-wallet key)
+          await WalletStorage.setOAuthPassword(password, walletId);
           console.log(
             "[SecuritySettings] Password stored securely for fingerprint unlock"
           );
@@ -527,7 +535,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
       const authMethod = localStorage.getItem(`${walletId}_auth_method`);
       if (authMethod === "social") {
         console.log("[SecuritySettings] 🔑 OAuth wallet detected, trying auto-unlock...");
-        password = await WalletStorage.getOAuthPassword();
+        password = await WalletStorage.getOAuthPassword(walletId);
       }
 
       // If no OAuth password, check if wallet is unlocked
@@ -600,8 +608,8 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
           mnemonic = wallet.mnemonic;
           console.log("[SecuritySettings] ✅ Using mnemonic from WalletContext");
         } else {
-          // Retrieve from storage
-          mnemonic = await SecureStorage.retrieveMnemonic(password);
+          // Retrieve from storage (per-wallet key)
+          mnemonic = await SecureStorage.retrieveMnemonic(password, walletId);
           console.log("[SecuritySettings] ✅ Retrieved mnemonic from SecureStorage");
         }
       }
@@ -707,7 +715,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
       let password: string | null = null;
       const authMethod = localStorage.getItem(`${walletId}_auth_method`);
       if (authMethod === "social") {
-        password = await WalletStorage.getOAuthPassword();
+        password = await WalletStorage.getOAuthPassword(walletId);
       }
 
       if (!password) {
@@ -720,7 +728,7 @@ export function SecuritySettings({ onBack, walletId }: SecuritySettingsProps) {
       }
 
       // Retrieve and verify mnemonic
-      const mnemonic = await SecureStorage.retrieveMnemonic(password);
+      const mnemonic = await SecureStorage.retrieveMnemonic(password, walletId);
       if (!mnemonic) {
         toast.error("Incorrect password. Please try again.");
         setLoadingPrivateKey(false);

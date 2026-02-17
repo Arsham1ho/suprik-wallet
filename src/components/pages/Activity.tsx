@@ -296,7 +296,7 @@ export function Activity({ walletId }: ActivityProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black text-white pb-20 w-full flex items-center justify-center">
+      <div className="bg-black text-white w-full flex items-center justify-center" style={{ height: 'calc(100vh - 80px)' }}>
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" style={{ color: colors.primary }} />
           <p className="text-slate-400">Loading transactions...</p>

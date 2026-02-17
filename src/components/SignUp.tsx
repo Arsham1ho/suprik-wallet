@@ -149,8 +149,8 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
       localStorage.removeItem('saturn_accounts');
       localStorage.removeItem('saturn_active_account_id');
 
-      // Encrypt and store mnemonic in localStorage
-      await SecureStorage.storeMnemonic(seedPhrase, password);
+      // Encrypt and store mnemonic in localStorage (per-wallet key)
+      await SecureStorage.storeMnemonic(seedPhrase, password, walletId);
 
       // Store wallet ID (unencrypted, just for identification)
       WalletStorage.setWalletId(walletId);
@@ -179,9 +179,9 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
             autoLockMinutes: 5,
           }, walletId);
 
-          // Also store the password for biometric unlock
+          // Also store the password for biometric unlock (per-wallet key)
           // This is needed so biometric can unlock the wallet
-          await WalletStorage.setOAuthPassword(password);
+          await WalletStorage.setOAuthPassword(password, walletId);
 
           toast.success(`Wallet created with ${biometricName} enabled!`);
         } else if (!biometricResult.cancelled) {

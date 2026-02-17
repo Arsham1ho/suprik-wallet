@@ -1,4 +1,4 @@
-import { Home, ArrowLeftRight, Activity, Settings, TrendingUp } from 'lucide-react';
+import { Home, ArrowLeftRight, Activity, Settings, Bot } from 'lucide-react';
 import { useLanguage } from '../utils/i18n/LanguageContext';
 import { useTheme } from '../utils/ThemeContext';
 
@@ -12,7 +12,7 @@ export function BottomNav({ currentPage, onNavigate }: BottomNavProps) {
   const { colors } = useTheme();
 
   const navItems = [
-    { id: 'stocks', icon: TrendingUp, label: t.nav.stocks },
+    { id: 'stocks', icon: Bot, label: t.nav.stocks },
     { id: 'swap', icon: ArrowLeftRight, label: t.nav.swap },
     { id: 'home', icon: Home, label: t.nav.home },
     { id: 'activity', icon: Activity, label: t.nav.activity },
