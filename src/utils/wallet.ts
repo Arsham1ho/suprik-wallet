@@ -69,18 +69,42 @@ export class SecureStorage {
   private static STORAGE_KEY = 'saturn_encrypted_wallet';
 
   /**
-   * Encrypt and store mnemonic
+   * Get the storage key for a specific wallet.
+   * Per-wallet keys prevent different users on the same device from overwriting
+   * each other's encrypted mnemonics.
    */
-  static async storeMnemonic(mnemonic: string, password: string): Promise<void> {
+  private static getKey(walletId?: string): string {
+    if (walletId) return `${this.STORAGE_KEY}_${walletId}`;
+    return this.STORAGE_KEY;
+  }
+
+  /**
+   * Migrate legacy shared storage to per-wallet key.
+   * Call this when we know the walletId but data might still be in the legacy key.
+   */
+  static migrateToPerWallet(walletId: string): void {
+    const perWalletKey = this.getKey(walletId);
+    if (localStorage.getItem(perWalletKey)) return; // Already migrated
+    const legacy = localStorage.getItem(this.STORAGE_KEY);
+    if (legacy) {
+      localStorage.setItem(perWalletKey, legacy);
+    }
+  }
+
+  /**
+   * Encrypt and store mnemonic
+   * @param walletId - When provided, stores under a per-wallet key for isolation
+   */
+  static async storeMnemonic(mnemonic: string, password: string, walletId?: string): Promise<void> {
     try {
-      
+
       const encoder = new TextEncoder();
       const data = encoder.encode(mnemonic);
-      
+
       // Generate random salt and IV
       const salt = crypto.getRandomValues(new Uint8Array(16));
       const iv = crypto.getRandomValues(new Uint8Array(12));
-      
+
       // Derive key from password using PBKDF2
       const passwordBuffer = encoder.encode(password);
       const keyMaterial = await crypto.subtle.importKey(
@@ -90,7 +114,7 @@ export class SecureStorage {
         false,
         ['deriveBits', 'deriveKey']
       );
-      
+
       const key = await crypto.subtle.deriveKey(
         {
           name: 'PBKDF2',
@@ -110,13 +134,13 @@ export class SecureStorage {
         key,
         data
       );
-      
+
       // Convert to base64 for storage
       const encryptedArray = new Uint8Array(encryptedData);
       const encryptedBase64 = btoa(String.fromCharCode(...encryptedArray));
       const saltBase64 = btoa(String.fromCharCode(...salt));
       const ivBase64 = btoa(String.fromCharCode(...iv));
-      
+
       // Store as JSON with salt, iv, and encrypted data
       const encryptedWallet = {
         encrypted: encryptedBase64,
@@ -124,7 +148,12 @@ export class SecureStorage {
         iv: ivBase64,
         version: 2 // Mark as Web Crypto API version
       };
-      
+
+      const storageKey = this.getKey(walletId);
+      localStorage.setItem(storageKey, JSON.stringify(encryptedWallet));
+
+      // Also write to legacy key for backward compatibility with code paths
+      // that haven't been migrated yet
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(encryptedWallet));
     } catch (error) {
       throw new Error('Failed to encrypt mnemonic');
@@ -133,10 +162,18 @@ export class SecureStorage {
 
   /**
    * Retrieve and decrypt mnemonic
+   * @param walletId - When provided, reads from per-wallet key first, then legacy fallback
    */
-  static async retrieveMnemonic(password: string): Promise<string | null> {
+  static async retrieveMnemonic(password: string, walletId?: string): Promise<string | null> {
     try {
-      const stored = localStorage.getItem(this.STORAGE_KEY);
+      // Try per-wallet key first, then legacy fallback
+      let stored: string | null = null;
+      if (walletId) {
+        stored = localStorage.getItem(this.getKey(walletId));
+      }
+      if (!stored) {
+        stored = localStorage.getItem(this.STORAGE_KEY);
+      }
       if (!stored) {
         return null;
       }
@@ -147,10 +184,10 @@ export class SecureStorage {
       if (!encryptedWallet.encrypted || !encryptedWallet.salt || !encryptedWallet.iv) {
         return null;
       }
-      
+
       const encoder = new TextEncoder();
       const decoder = new TextDecoder();
-      
+
       // Decode from base64
       const encryptedArray = new Uint8Array(
         atob(encryptedWallet.encrypted).split('').map(c => c.charCodeAt(0))
@@ -161,7 +198,7 @@ export class SecureStorage {
       const iv = new Uint8Array(
         atob(encryptedWallet.iv).split('').map(c => c.charCodeAt(0))
       );
-      
+
       // Derive key from password
       const passwordBuffer = encoder.encode(password);
       const keyMaterial = await crypto.subtle.importKey(
@@ -171,7 +208,7 @@ export class SecureStorage {
         false,
         ['deriveBits', 'deriveKey']
       );
-      
+
       const key = await crypto.subtle.deriveKey(
         {
           name: 'PBKDF2',
@@ -212,24 +249,38 @@ export class SecureStorage {
 
   /**
    * Check if wallet exists
+   * @param walletId - When provided, checks per-wallet key first, then legacy
    */
-  static hasWallet(): boolean {
+  static hasWallet(walletId?: string): boolean {
+    if (walletId) {
+      if (localStorage.getItem(this.getKey(walletId)) !== null) return true;
+    }
     return localStorage.getItem(this.STORAGE_KEY) !== null;
   }
 
   /**
    * Delete stored wallet
+   * @param walletId - When provided, deletes the per-wallet key
    */
-  static deleteWallet(): void {
+  static deleteWallet(walletId?: string): void {
+    if (walletId) {
+      localStorage.removeItem(this.getKey(walletId));
+    }
     localStorage.removeItem(this.STORAGE_KEY);
   }
-  
+
   /**
    * Migrate old wallet format to new format if needed
    */
-  static async migrateIfNeeded(): Promise<boolean> {
+  static async migrateIfNeeded(walletId?: string): Promise<boolean> {
     try {
-      const stored = localStorage.getItem(this.STORAGE_KEY);
+      let stored: string | null = null;
+      if (walletId) {
+        stored = localStorage.getItem(this.getKey(walletId));
+      }
+      if (!stored) {
+        stored = localStorage.getItem(this.STORAGE_KEY);
+      }
       if (!stored) return false;
 
       // Try to parse as JSON first
@@ -295,11 +346,33 @@ export class WalletStorage {
   }
 
   /**
+   * Get the OAuth password storage key for a specific wallet.
+   * Per-wallet keys prevent different users from overwriting each other's passwords.
+   */
+  private static getOAuthKey(walletId?: string): string {
+    if (walletId) return `${this.OAUTH_PASSWORD_KEY}_${walletId}`;
+    return this.OAUTH_PASSWORD_KEY;
+  }
+
+  /**
+   * Migrate legacy OAuth password to per-wallet key.
+   */
+  static migrateOAuthToPerWallet(walletId: string): void {
+    const perWalletKey = this.getOAuthKey(walletId);
+    if (localStorage.getItem(perWalletKey)) return; // Already migrated
+    const legacy = localStorage.getItem(this.OAUTH_PASSWORD_KEY);
+    if (legacy) {
+      localStorage.setItem(perWalletKey, legacy);
+    }
+  }
+
+  /**
    * Store OAuth password with proper encryption
    * Uses: Device-specific random secret + PBKDF2 key derivation + AES-256-GCM
    * This allows seamless OAuth re-authentication on the same device
+   * @param walletId - When provided, stores under a per-wallet key for isolation
    */
-  static async setOAuthPassword(password: string): Promise<void> {
+  static async setOAuthPassword(password: string, walletId?: string): Promise<void> {
     try {
       const encoder = new TextEncoder();
       const data = encoder.encode(password);
@@ -353,6 +426,10 @@ export class WalletStorage {
         version: 2 // Mark as secure version
       });
 
+      const storageKey = this.getOAuthKey(walletId);
+      localStorage.setItem(storageKey, stored);
+
+      // Also write to legacy key for backward compatibility
       localStorage.setItem(this.OAUTH_PASSWORD_KEY, stored);
     } catch {
       // Silently fail - OAuth password storage is a convenience feature
@@ -362,17 +439,25 @@ export class WalletStorage {
   /**
    * Retrieve OAuth password (if available and on same device)
    * Will fail if device secret doesn't exist (different device)
+   * @param walletId - When provided, reads from per-wallet key first, then legacy
    */
-  static async getOAuthPassword(): Promise<string | null> {
+  static async getOAuthPassword(walletId?: string): Promise<string | null> {
     try {
-      const stored = localStorage.getItem(this.OAUTH_PASSWORD_KEY);
+      // Try per-wallet key first, then legacy fallback
+      let stored: string | null = null;
+      if (walletId) {
+        stored = localStorage.getItem(this.getOAuthKey(walletId));
+      }
+      if (!stored) {
+        stored = localStorage.getItem(this.OAUTH_PASSWORD_KEY);
+      }
       if (!stored) return null;
 
       // Get device secret - if it doesn't exist, we can't decrypt
       const deviceSecret = localStorage.getItem(this.DEVICE_SECRET_KEY);
       if (!deviceSecret) {
         // Different device or secret was cleared
-        this.clearOAuthPassword();
+        this.clearOAuthPassword(walletId);
         return null;
       }
 
@@ -385,13 +470,13 @@ export class WalletStorage {
         parsedData = JSON.parse(stored);
       } catch {
         // Old format - clear and return null
-        this.clearOAuthPassword();
+        this.clearOAuthPassword(walletId);
         return null;
       }
 
       // Check version - old version needs migration
       if (!parsedData.version || parsedData.version < 2) {
-        this.clearOAuthPassword();
+        this.clearOAuthPassword(walletId);
         return null;
       }
 
@@ -448,12 +533,15 @@ export class WalletStorage {
       return result;
     } catch {
       // Decryption failed - clear invalid data
-      this.clearOAuthPassword();
+      this.clearOAuthPassword(walletId);
       return null;
     }
   }
 
-  static clearOAuthPassword(): void {
+  static clearOAuthPassword(walletId?: string): void {
+    if (walletId) {
+      localStorage.removeItem(this.getOAuthKey(walletId));
+    }
     localStorage.removeItem(this.OAUTH_PASSWORD_KEY);
     // Note: We don't clear DEVICE_SECRET_KEY as it may be used by other features
   }

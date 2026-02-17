@@ -831,6 +831,17 @@ html, body {
   border-color: var(--color-primary) !important;
 }
 
+/* Inline token/stock icon in AI chat messages */
+.token-icon-inline {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  vertical-align: middle;
+  display: inline-block;
+  margin: 0 2px 0 0;
+  object-fit: cover;
+}
+
 /* ===========================================
    RESPONSIVE WALLET CONTAINER SYSTEM
    - Desktop/Laptop: Fixed 430px centered (phone-like frame)

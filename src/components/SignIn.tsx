@@ -254,7 +254,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
       // Store the private key encrypted (we'll store it as a special format)
       // For private key imports, we store the base58 encoded secret key
       const privateKeyBase58 = bs58.encode(secretKey);
-      await SecureStorage.storeMnemonic(`PRIVKEY:${privateKeyBase58}`, password);
+      await SecureStorage.storeMnemonic(`PRIVKEY:${privateKeyBase58}`, password, walletId);
 
       // Store wallet ID
       WalletStorage.setWalletId(walletId);
@@ -397,8 +397,8 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
       localStorage.removeItem('saturn_accounts');
       localStorage.removeItem('saturn_active_account_id');
 
-      // Encrypt and store mnemonic in localStorage
-      await SecureStorage.storeMnemonic(mnemonic, password);
+      // Encrypt and store mnemonic in localStorage (per-wallet key)
+      await SecureStorage.storeMnemonic(mnemonic, password, walletId);
 
       // Store wallet ID
       WalletStorage.setWalletId(walletId);

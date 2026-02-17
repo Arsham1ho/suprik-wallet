@@ -62,12 +62,6 @@ export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount 
     setCurrentPage('coinDetail');
   };
 
-  const handleViewStockDetail = (token: Token) => {
-    setSelectedCoinForDetail(token);
-    setCoinDetailBackPage('stocks');
-    setCurrentPage('coinDetail');
-  };
-
   return (
     <div className="min-h-screen bg-black text-white w-full">
       <div style={{ display: currentPage === 'home' ? 'block' : 'none' }}>
@@ -76,7 +70,7 @@ export function MainApp({ accessToken, onSignOut, onLockWallet, onSwitchAccount 
       {currentPage === 'swap' && <Swap tokens={tokensData} walletId={accessToken || ''} />}
       {currentPage === 'activity' && <Activity walletId={accessToken || ''} />}
       {currentPage === 'settings' && <Settings onSignOut={onSignOut} walletId={accessToken || ''} onLockWallet={onLockWallet} onSwitchAccount={onSwitchAccount} onSubpageChange={setHideBottomNav} />}
-      {currentPage === 'stocks' && <StockMarket walletId={accessToken || ''} onViewStock={handleViewStockDetail} />}
+      {currentPage === 'stocks' && <StockMarket walletId={accessToken || ''} />}
       {currentPage === 'send' && <Send onNavigate={setCurrentPage} tokens={tokensData} walletId={accessToken || ''} />}
       {currentPage === 'receive' && <Receive onBack={() => setCurrentPage('home')} walletId={accessToken || ''} />}
       {currentPage === 'search' && (

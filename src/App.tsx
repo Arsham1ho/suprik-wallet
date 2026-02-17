@@ -9,7 +9,6 @@ import { SignIn } from './components/SignIn';
 import { SignInOptions } from './components/SignInOptions';
 import { SignUp } from './components/SignUp';
 import { SignUpOptions } from './components/SignUpOptions';
-import { EmailSignIn } from './components/EmailSignIn';
 import { SetupPassword } from './components/SetupPassword';
 import { MainApp } from './components/MainApp';
 import { BiometricLock } from './components/BiometricLock';
@@ -41,7 +40,7 @@ export default function App() {
   const [showAccountCreated, setShowAccountCreated] = useState(false);
   const [showPageTransition, setShowPageTransition] = useState(false);
   const [nextPage, setNextPage] = useState<'signin-options' | 'signup-options' | null>(null);
-  const [currentPage, setCurrentPage] = useState<'landing' | 'signin' | 'signin-options' | 'signin-email' | 'signup' | 'signup-options' | 'signup-email' | 'setup-password' | 'unlock' | 'app'>('landing');
+  const [currentPage, setCurrentPage] = useState<'landing' | 'signin' | 'signin-options' | 'signup' | 'signup-options' | 'setup-password' | 'unlock' | 'app'>('landing');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [walletId, setWalletId] = useState<string | null>(null);
   const [biometricSettings, setBiometricSettings] = useState<BiometricSettings | null>(null);
@@ -59,6 +58,62 @@ export default function App() {
       // Environment initialization failed silently
     });
   }, []);
+
+  // Helper: create a brand new wallet for a first-time OAuth user
+  const createNewOAuthWallet = async (
+    session: { user: { id: string; email?: string | null; app_metadata: { provider?: string } } },
+    socialWalletKey: string
+  ) => {
+    // Clear old AccountManager data so Home.tsx creates a fresh account
+    localStorage.removeItem('saturn_accounts');
+    localStorage.removeItem('saturn_active_account_id');
+    localStorage.removeItem('saturn_accounts_ck');
+    // Clear stale caches from previous wallet
+    localStorage.removeItem('saturn_custom_tokens');
+    localStorage.removeItem('suprik_swap_history');
+    localStorage.removeItem('suprik_contacts');
+
+    // Create new wallet
+    const { generateMnemonic } = await import('./utils/wallet');
+    const mnemonic = await generateMnemonic();
+    // Generate cryptographically secure wallet ID
+    const walletIdBytes = crypto.getRandomValues(new Uint8Array(16));
+    const newWalletId = `wallet_${Array.from(walletIdBytes, b => b.toString(16).padStart(2, '0')).join('')}`;
+
+    // Generate cryptographically secure random password for OAuth users
+    const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+    const defaultPassword = Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('');
+
+    // Store the wallet with encryption using the default password (per-wallet key)
+    await SecureStorage.storeMnemonic(mnemonic, defaultPassword, newWalletId);
+
+    // Store OAuth password for seamless re-authentication (per-wallet key)
+    await WalletStorage.setOAuthPassword(defaultPassword, newWalletId);
+
+    // Store the default password hint (NOT the actual password)
+    localStorage.setItem(`${newWalletId}_password_hint`, 'oauth_login');
+
+    // Link social account to wallet
+    localStorage.setItem(socialWalletKey, newWalletId);
+    localStorage.setItem(`${newWalletId}_auth_method`, 'social');
+    localStorage.setItem(`${newWalletId}_social_provider`, session.user.app_metadata.provider || 'unknown');
+    localStorage.setItem(`${newWalletId}_social_email`, session.user.email || '');
+
+    // Store wallet ID and set initial account
+    WalletStorage.setWalletId(newWalletId);
+    WalletStorage.setCurrentAccount(0);
+
+    // Generate default username from email
+    const emailPrefix = session.user.email?.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user';
+    const defaultUsername = `@${emailPrefix}${newWalletId.substring(0, 4)}`;
+    localStorage.setItem('saturn_username', defaultUsername);
+
+    // Route to password setup (same flow as recovery phrase)
+    sessionStorage.setItem('pending_password_setup', 'true');
+    setWalletId(newWalletId);
+    setNeedsUnlock(true);
+    setCurrentPage('setup-password');
+  };
 
   // Handle OAuth callback (Google/Apple Sign In)
   useEffect(() => {
@@ -109,83 +164,59 @@ export default function App() {
             const socialWalletKey = `social_wallet_${session.user.id}`;
             const existingWalletId = localStorage.getItem(socialWalletKey);
 
-            if (existingWalletId && SecureStorage.hasWallet()) {
-              // Returning user — restore existing wallet (regardless of signup/signin intent).
-              // This prevents accidental wallet destruction if user clicks "Create Wallet"
-              // instead of "Sign In" when they already have a wallet.
+            // Migrate legacy shared storage to per-wallet key (for existing users upgrading)
+            if (existingWalletId) {
+              SecureStorage.migrateToPerWallet(existingWalletId);
+              WalletStorage.migrateOAuthToPerWallet(existingWalletId);
+            }
+
+            if (existingWalletId && SecureStorage.hasWallet(existingWalletId)) {
+              // SAME DEVICE returning user — wallet data already in localStorage.
+              // Always route to setup-password: user creates a new password each sign-in.
               WalletStorage.setWalletId(existingWalletId);
               setWalletId(existingWalletId);
               setNeedsUnlock(true);
-
-              // Always route to setup-password on OAuth sign-in.
-              // The user proved identity via Google/Apple, now they create a
-              // fresh device password. The same wallet (mnemonic/address) is kept.
-              // Session flag ensures refreshes during setup still go to setup-password.
               sessionStorage.setItem('pending_password_setup', 'true');
               setCurrentPage('setup-password');
             } else {
-              // First-time sign-up — no existing wallet for this Google/Apple account
-              // Clean up any stale data
-              if (existingWalletId) {
-                localStorage.removeItem(socialWalletKey);
-                localStorage.removeItem(`${existingWalletId}_auth_method`);
-                localStorage.removeItem(`${existingWalletId}_social_provider`);
-                localStorage.removeItem(`${existingWalletId}_social_email`);
-                localStorage.removeItem(`${existingWalletId}_password_hint`);
-                localStorage.removeItem(`${existingWalletId}_password_setup_complete`);
-                localStorage.removeItem(`biometric_credential_${existingWalletId}`);
-                localStorage.removeItem(`biometric_last_auth_${existingWalletId}`);
+              // Either a NEW DEVICE or a first-time user.
+              // Check Supabase for an existing wallet backup (by user_id).
+              try {
+                const { downloadWalletBackup } = await import('./utils/walletSync');
+                const backup = await downloadWalletBackup();
+
+                if (backup) {
+                  // Backup found — restore wallet to this device.
+                  const { walletId: backupWalletId, mnemonic } = backup;
+
+                  // Generate a temp random password to store mnemonic locally.
+                  // SetupPassword will re-encrypt with the user's chosen password.
+                  const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+                  const tempPassword = Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('');
+
+                  await SecureStorage.storeMnemonic(mnemonic, tempPassword, backupWalletId);
+                  await WalletStorage.setOAuthPassword(tempPassword, backupWalletId);
+
+                  // Set up social wallet link on this device
+                  localStorage.setItem(socialWalletKey, backupWalletId);
+                  localStorage.setItem(`${backupWalletId}_auth_method`, 'social');
+                  localStorage.setItem(`${backupWalletId}_social_provider`, session.user.app_metadata.provider || 'unknown');
+                  localStorage.setItem(`${backupWalletId}_social_email`, session.user.email || '');
+
+                  WalletStorage.setWalletId(backupWalletId);
+                  WalletStorage.setCurrentAccount(0);
+                  setWalletId(backupWalletId);
+                  setNeedsUnlock(true);
+                  sessionStorage.setItem('pending_password_setup', 'true');
+                  setCurrentPage('setup-password');
+                } else {
+                  // No backup — first-time user, create a new wallet.
+                  await createNewOAuthWallet(session, socialWalletKey);
+                }
+              } catch (syncError) {
+                console.warn('[App] Supabase sync check failed, creating new wallet:', syncError);
+                await createNewOAuthWallet(session, socialWalletKey);
               }
-              // Clear old AccountManager data so Home.tsx creates a fresh account
-              localStorage.removeItem('saturn_accounts');
-              localStorage.removeItem('saturn_active_account_id');
-              localStorage.removeItem('saturn_accounts_ck');
-              // Clear stale caches from previous wallet
-              localStorage.removeItem('saturn_custom_tokens');
-              localStorage.removeItem('suprik_swap_history');
-              localStorage.removeItem('suprik_contacts');
-
-              // Create new wallet
-              const { generateMnemonic } = await import('./utils/wallet');
-              const mnemonic = await generateMnemonic();
-              // Generate cryptographically secure wallet ID
-              const walletIdBytes = crypto.getRandomValues(new Uint8Array(16));
-              const walletId = `wallet_${Array.from(walletIdBytes, b => b.toString(16).padStart(2, '0')).join('')}`;
-
-              // Generate cryptographically secure random password for OAuth users
-              const randomBytes = crypto.getRandomValues(new Uint8Array(32));
-              const defaultPassword = Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('');
-              
-              // Store the wallet with encryption using the default password
-              await SecureStorage.storeMnemonic(mnemonic, defaultPassword);
-              
-              // Store OAuth password for seamless re-authentication (encrypted with device fingerprint)
-              await WalletStorage.setOAuthPassword(defaultPassword);
-              
-              // Store the default password hint (NOT the actual password)
-              localStorage.setItem(`${walletId}_password_hint`, 'oauth_login');
-              
-              // Link social account to wallet
-              localStorage.setItem(socialWalletKey, walletId);
-              localStorage.setItem(`${walletId}_auth_method`, 'social');
-              localStorage.setItem(`${walletId}_social_provider`, session.user.app_metadata.provider || 'unknown');
-              localStorage.setItem(`${walletId}_social_email`, session.user.email || '');
-              
-              // Store wallet ID and set initial account
-              WalletStorage.setWalletId(walletId);
-              WalletStorage.setCurrentAccount(0);
-
-              // Generate default username from email
-              const emailPrefix = session.user.email?.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user';
-              const defaultUsername = `@${emailPrefix}${walletId.substring(0, 4)}`;
-              localStorage.setItem('saturn_username', defaultUsername);
-
-              // Route to password setup (same flow as recovery phrase)
-              // After password setup → account created animation → app
-              sessionStorage.setItem('pending_password_setup', 'true');
-              setWalletId(walletId);
-              setNeedsUnlock(true);
-              setCurrentPage('setup-password');
             }
             
             // Clean up URL
@@ -260,12 +291,19 @@ export default function App() {
     }
 
     // Check if wallet exists in localStorage (new client-side architecture)
-    const hasWallet = SecureStorage.hasWallet();
     const savedWalletId = WalletStorage.getWalletId();
+
+    // Migrate legacy shared storage to per-wallet key if needed
+    if (savedWalletId) {
+      SecureStorage.migrateToPerWallet(savedWalletId);
+      WalletStorage.migrateOAuthToPerWallet(savedWalletId);
+    }
+
+    const hasWallet = SecureStorage.hasWallet(savedWalletId || undefined);
 
     if (hasWallet && savedWalletId) {
       // Check for wallet format migration
-      SecureStorage.migrateIfNeeded().then(migrated => {
+      SecureStorage.migrateIfNeeded(savedWalletId).then(migrated => {
         if (!migrated) {
           toast.info('Please re-import your recovery phrase to update wallet format');
         }
@@ -420,14 +458,21 @@ export default function App() {
   };
 
   const handleSignOut = () => {
-    // Soft sign out: preserve wallet data in localStorage so user can sign back in
-    // with Google/Apple/email and recover the same wallet (same address)
-    // The encrypted mnemonic + social_wallet links stay intact
+    // Sign out: clear active wallet ID so a different user on the same device
+    // won't be routed to the old wallet's unlock screen.
+    // The encrypted mnemonic + social_wallet links stay intact so the SAME
+    // user can recover their wallet when they sign back in via OAuth.
 
     // Sign out from Supabase session
     import('./utils/supabase/client').then(({ createSupabaseClient }) => {
       createSupabaseClient().auth.signOut();
     }).catch(() => {});
+
+    // Clear the active wallet pointer. This prevents the wallet-check effect
+    // from auto-routing to the unlock screen if a different user opens the app.
+    // When the same user signs back in via OAuth, the callback will restore
+    // the wallet ID from the social_wallet_${userId} link.
+    localStorage.removeItem('saturn_wallet_id');
 
     // Mark as signed out so wallet check effect doesn't auto-redirect to unlock
     sessionStorage.setItem('justSignedOut', 'true');
@@ -533,9 +578,8 @@ export default function App() {
                     
                     {/* Sign In Flow */}
                     {currentPage === 'signin-options' && (
-                      <SignInOptions 
+                      <SignInOptions
                         onSelectRecoveryPhrase={() => setCurrentPage('signin')}
-                        onSelectEmail={() => setCurrentPage('signin-email')}
                         onBack={() => setCurrentPage('landing')}
                       />
                     )}
@@ -547,33 +591,16 @@ export default function App() {
                       />
                     )}
                     
-                    {currentPage === 'signin-email' && (
-                      <EmailSignIn 
-                        isSignUp={false}
-                        onSuccess={(token, wId) => handleAuthSuccess(token, wId, false)}
-                        onBack={() => setCurrentPage('signin-options')}
-                      />
-                    )}
-                    
                     {/* Sign Up Flow */}
                     {currentPage === 'signup-options' && (
                       <SignUpOptions
                         onSelectRecoveryPhrase={() => setCurrentPage('signup')}
-                        onSelectEmail={() => setCurrentPage('signup-email')}
                         onBack={() => setCurrentPage('landing')}
                       />
                     )}
                     
                     {currentPage === 'signup' && (
                       <SignUp 
-                        onSuccess={(token, wId) => handleAuthSuccess(token, wId, true)}
-                        onBack={() => setCurrentPage('signup-options')}
-                      />
-                    )}
-                    
-                    {currentPage === 'signup-email' && (
-                      <EmailSignIn 
-                        isSignUp={true}
                         onSuccess={(token, wId) => handleAuthSuccess(token, wId, true)}
                         onBack={() => setCurrentPage('signup-options')}
                       />

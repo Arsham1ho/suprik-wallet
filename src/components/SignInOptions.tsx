@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from './ui/button';
-import { ArrowLeft, Key, Mail } from 'lucide-react';
+import { ArrowLeft, Key } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { createSupabaseClient } from '../utils/supabase/client';
@@ -8,11 +8,10 @@ import backgroundImage from 'figma:asset/7fff6c0f4086de297821ed0e75fcf92b1f55b37
 
 interface SignInOptionsProps {
   onSelectRecoveryPhrase: () => void;
-  onSelectEmail: () => void;
   onBack: () => void;
 }
 
-export function SignInOptions({ onSelectRecoveryPhrase, onSelectEmail, onBack }: SignInOptionsProps) {
+export function SignInOptions({ onSelectRecoveryPhrase, onBack }: SignInOptionsProps) {
   const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
 
   const handleSocialSignIn = async (provider: 'google' | 'apple') => {
@@ -26,6 +25,8 @@ export function SignInOptions({ onSelectRecoveryPhrase, onSelectEmail, onBack }:
         provider,
         options: {
           redirectTo: window.location.origin,
+          // Force account picker so users can choose which Google/Apple account to use
+          queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
         }
       });
 
@@ -122,19 +123,6 @@ export function SignInOptions({ onSelectRecoveryPhrase, onSelectEmail, onBack }:
             {/* Social & Email Section */}
             <div className="w-full">
               <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-all relative overflow-hidden backdrop-blur-sm">
-                {/* Section Header */}
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                    <Mail className="w-5 h-5 text-blue-400" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold">Email & Password</h3>
-                    <p className="text-xs text-slate-400">
-                      Sign in with social or email
-                    </p>
-                  </div>
-                </div>
-
                 {/* Social Login Buttons */}
                 <div className="space-y-3">
                   {/* Google Button */}
@@ -180,23 +168,6 @@ export function SignInOptions({ onSelectRecoveryPhrase, onSelectEmail, onBack }:
                     </button>
                   </motion.div>
 
-                  {/* Divider */}
-                  <div className="flex items-center gap-3 py-1">
-                    <div className="flex-1 h-px bg-slate-700/50"></div>
-                    <span className="text-xs text-slate-500">or</span>
-                    <div className="flex-1 h-px bg-slate-700/50"></div>
-                  </div>
-
-                  {/* Email Button */}
-                  <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                    <button
-                      onClick={onSelectEmail}
-                      className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-xl p-4 flex items-center justify-center gap-3 transition-all font-semibold"
-                    >
-                      <Mail className="w-5 h-5" />
-                      Continue with Email
-                    </button>
-                  </motion.div>
                 </div>
               </div>
             </div>

@@ -280,7 +280,7 @@ export function WalletProvider({
     }
 
     try {
-      const decryptedData = await SecureStorage.retrieveMnemonic(password);
+      const decryptedData = await SecureStorage.retrieveMnemonic(password, walletId);
 
       if (!decryptedData) {
         // Record failed attempt for rate limiting

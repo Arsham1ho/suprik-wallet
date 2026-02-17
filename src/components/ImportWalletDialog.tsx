@@ -397,8 +397,8 @@ export function ImportWalletDialog({
       const isAddingToExisting = existingAccounts.length > 0;
 
       if (!isAddingToExisting) {
-        // New wallet: Store encrypted mnemonic as main wallet
-        await SecureStorage.storeMnemonic(mnemonic, pwd);
+        // New wallet: Store encrypted mnemonic as main wallet (per-wallet key)
+        await SecureStorage.storeMnemonic(mnemonic, pwd, walletId);
         WalletStorage.setWalletId(walletId);
         WalletStorage.setCurrentAccount(0);
       }
@@ -622,8 +622,8 @@ export function ImportWalletDialog({
     // Derive addresses from the mnemonic (always use index 0 for imported wallets)
     const addresses = await deriveAddresses(mnemonic, 0);
 
-    // Store encrypted mnemonic
-    await SecureStorage.storeMnemonic(mnemonic, pwd);
+    // Store encrypted mnemonic (per-wallet key)
+    await SecureStorage.storeMnemonic(mnemonic, pwd, walletId);
 
     // Store wallet ID (like SignIn does)
     WalletStorage.setWalletId(walletId);
@@ -689,9 +689,9 @@ export function ImportWalletDialog({
     const hashArray = Array.from(new Uint8Array(hash));
     const walletId = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 
-    // Store private key with prefix to identify it
+    // Store private key with prefix to identify it (per-wallet key)
     const privateKeyData = `PRIVKEY:${key}`;
-    await SecureStorage.storeMnemonic(privateKeyData, pwd);
+    await SecureStorage.storeMnemonic(privateKeyData, pwd, walletId);
 
     // Store wallet ID (like SignIn does)
     WalletStorage.setWalletId(walletId);

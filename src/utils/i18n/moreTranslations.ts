@@ -44,7 +44,7 @@ export const moreTranslations: Record<string, Translations> = {
       activity: 'アクティビティ',
       settings: '設定',
       chat: 'チャット',
-      stocks: '株式',
+      stocks: 'AIチャット',
     },
     home: {
       totalBalance: '総残高',
@@ -338,7 +338,7 @@ export const moreTranslations: Record<string, Translations> = {
       activity: '활동',
       settings: '설정',
       chat: '채팅',
-      stocks: '주식',
+      stocks: 'AI 채팅',
     },
     home: {
       totalBalance: '총 잔액',
@@ -632,7 +632,7 @@ export const moreTranslations: Record<string, Translations> = {
       activity: 'Atividade',
       settings: 'Configurações',
       chat: 'Chat',
-      stocks: 'Ações',
+      stocks: 'Chat IA',
     },
     home: {
       totalBalance: 'Saldo total',
@@ -926,7 +926,7 @@ export const moreTranslations: Record<string, Translations> = {
       activity: 'Активность',
       settings: 'Настройки',
       chat: 'Чат',
-      stocks: 'Акции',
+      stocks: 'ИИ Чат',
     },
     home: {
       totalBalance: 'Общий баланс',
@@ -1220,7 +1220,7 @@ export const moreTranslations: Record<string, Translations> = {
       activity: 'Aktivite',
       settings: 'Ayarlar',
       chat: 'Sohbet',
-      stocks: 'Hisse',
+      stocks: 'AI Sohbet',
     },
     home: {
       totalBalance: 'Toplam Bakiye',
