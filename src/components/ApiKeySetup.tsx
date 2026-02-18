@@ -5,9 +5,11 @@ import { Eye, EyeOff, Check, X, AlertCircle, ExternalLink } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { areApiKeysConfigured, saveEncryptedApiKey, getEncryptedApiKey, removeApiKey } from '../utils/env';
+import { setCloudflareWorkerURL, getCloudflareWorkerURL } from '../utils/puterAI';
 
 export function ApiKeySetup() {
   const [heliusKey, setHeliusKey] = useState('');
+  const [cfWorkerUrl, setCfWorkerUrl] = useState('');
   const [alchemyKey, setAlchemyKey] = useState('');
   const [jupiterKey, setJupiterKey] = useState('');
   const [showHelius, setShowHelius] = useState(false);
@@ -25,6 +27,7 @@ export function ApiKeySetup() {
       setHeliusKey(existingHelius);
       setAlchemyKey(existingAlchemy);
       setJupiterKey(existingJupiter);
+      setCfWorkerUrl(getCloudflareWorkerURL());
 
       // Check status
       checkApiStatus();
@@ -313,6 +316,52 @@ export function ApiKeySetup() {
             </p>
           </div>
         )}
+      </motion.div>
+
+      {/* Cloudflare Worker URL */}
+      <motion.div
+        className="space-y-3 p-4 rounded-xl bg-slate-900/50 border border-slate-800/30"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-white">Cloudflare AI Worker</h3>
+            {cfWorkerUrl && <Check className="w-4 h-4 text-green-500" />}
+          </div>
+          <span className="text-xs text-orange-400">Optional</span>
+        </div>
+
+        <p className="text-xs text-slate-400">
+          Fallback AI provider using Cloudflare Workers AI (Llama 3.1). Deploy your own worker for free AI.
+        </p>
+
+        <div className="space-y-2">
+          <Input
+            type="text"
+            placeholder="https://suprik-ai.your-subdomain.workers.dev"
+            value={cfWorkerUrl}
+            onChange={(e) => setCfWorkerUrl(e.target.value)}
+            className="bg-slate-950/50 border-slate-700 text-xs"
+          />
+
+          <Button
+            onClick={() => {
+              const url = cfWorkerUrl.trim();
+              if (!url) {
+                toast.error('Please enter your Cloudflare Worker URL');
+                return;
+              }
+              setCloudflareWorkerURL(url);
+              toast.success('Cloudflare Worker URL saved! Reload the page to apply.');
+            }}
+            className="w-full bg-orange-600 hover:bg-orange-700"
+            disabled={!cfWorkerUrl.trim()}
+          >
+            Save Worker URL
+          </Button>
+        </div>
       </motion.div>
 
       {/* Info Box */}

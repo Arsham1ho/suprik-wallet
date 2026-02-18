@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Send, Loader2, Trash2, Bot, Users, Square } from 'lucide-react';
+import { Send, Loader2, Trash2, Bot, Users, Square, Mic, MicOff } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { useTheme } from '../../utils/ThemeContext';
@@ -14,14 +14,24 @@ import {
   isRoundtableRequest,
   hasExplicitMention,
   fetchPriceContext,
+  fetchNewsContext,
+  extractTickers,
   type Agent,
   type ChatMessage,
+  getAIProvider,
+  setAIProvider,
+  isPuterDisabled,
+  resetPuter,
+  type AIProvider,
 } from '../../utils/puterAI';
 import { TOKEN_REGISTRY } from '../../utils/tokenRegistry';
 import { STOCK_TOKENS } from '../../utils/stockTokens';
+import { SYMBOL_TO_COINGECKO, fetchCoinGeckoChartCached, fetchCoinGeckoPrices } from '../../utils/coingecko';
+import type { Token } from './Home';
 
 interface StockAIChatProps {
   walletId: string;
+  tokensData?: Token[];
 }
 
 interface DisplayMessage extends ChatMessage {
@@ -200,7 +210,87 @@ const AUTOCOMPLETE_INDEX: AutocompleteItem[] = (() => {
   return items;
 })();
 
-export function StockAIChat({ walletId }: StockAIChatProps) {
+// --- Portfolio context builder ---
+function buildPortfolioContext(tokens?: Token[]): string {
+  if (!tokens || tokens.length === 0) return '';
+  const total = tokens.reduce((sum, t) => sum + (t.value || 0), 0);
+  if (total === 0) return '';
+
+  const holdings = tokens
+    .filter(t => t.value > 0.01)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10)
+    .map(t => {
+      const amtStr = t.amount >= 1000000
+        ? `${(t.amount / 1000000).toFixed(1)}M`
+        : t.amount >= 1000
+          ? `${(t.amount / 1000).toFixed(1)}K`
+          : t.amount.toFixed(t.amount < 1 ? 4 : 2);
+      return `${t.symbol}: ${amtStr} ($${t.value.toFixed(2)})`;
+    })
+    .join(', ');
+
+  return `\n\n[User's Portfolio: ${holdings}. Total: $${total.toFixed(2)}]`;
+}
+
+// --- Sparkline chart component ---
+interface SparklineProps {
+  data: Array<{ time: string; price: number }>;
+  symbol: string;
+  price: number;
+  change24h: number;
+}
+
+function SparklineChart({ data, symbol, price, change24h }: SparklineProps) {
+  if (data.length < 2) return null;
+
+  const prices = data.map(d => d.price);
+  const maxPrice = Math.max(...prices);
+  const minPrice = Math.min(...prices);
+  const range = maxPrice - minPrice || 1;
+  const paddedRange = range * 1.1;
+  const paddedMin = minPrice - range * 0.05;
+
+  const path = data.map((point, idx) => {
+    const x = (idx / (data.length - 1)) * 100;
+    const y = 100 - ((point.price - paddedMin) / paddedRange) * 100;
+    return `${idx === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).join(' ');
+
+  const isPositive = change24h >= 0;
+  const color = isPositive ? '#10b981' : '#ef4444';
+  const priceStr = price >= 1
+    ? `$${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+    : `$${price.toPrecision(4)}`;
+  const changeStr = isPositive ? `+${change24h.toFixed(1)}%` : `${change24h.toFixed(1)}%`;
+  const gradId = `spark-${symbol}-${Date.now()}`;
+
+  return (
+    <div className="mt-2 rounded-lg bg-slate-900/60 border border-slate-800/30 p-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[11px] font-semibold text-white">{symbol} 7d</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] text-slate-300">{priceStr}</span>
+          <span className={`text-[10px] font-medium ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+            {changeStr}
+          </span>
+        </div>
+      </div>
+      <svg className="w-full" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ height: '60px' }}>
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.2" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={`${path} L 100 100 L 0 100 Z`} fill={`url(#${gradId})`} />
+        <path d={path} stroke={color} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
+  );
+}
+
+export function StockAIChat({ walletId, tokensData }: StockAIChatProps) {
   const { colors } = useTheme();
   const accentHex = colors.accent || colors.primary || '#7c3aed';
   const primaryHex = colors.primary || '#7c3aed';
@@ -211,11 +301,18 @@ export function StockAIChat({ walletId }: StockAIChatProps) {
   const [sdkReady, setSdkReady] = useState(false);
   const [sdkError, setSdkError] = useState(false);
   const [roundtableMode, setRoundtableMode] = useState(true);
+  const [aiProvider, setAiProvider] = useState<AIProvider>(getAIProvider());
   const [roundtableProgress, setRoundtableProgress] = useState<{ current: number; total: number; agentName: string } | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [messageCharts, setMessageCharts] = useState<
+    Record<string, Array<{ symbol: string; price: number; change24h: number; data: Array<{ time: string; price: number }> }>>
+  >({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
+  const voiceBaseInputRef = useRef<string>('');
 
   // All known agents (including moderator) for restoring from localStorage
   const allAgents = [...AGENTS, MODERATOR_AGENT];
@@ -256,17 +353,114 @@ export function StockAIChat({ walletId }: StockAIChatProps) {
     }
   }, [messages, walletId]);
 
-  // Load Puter SDK on mount
+  // Load Puter SDK on mount (Cloudflare AI fallback available if Puter fails)
   useEffect(() => {
     loadPuterSDK()
       .then(() => setSdkReady(true))
-      .catch(() => setSdkError(true));
+      .catch(() => {
+        // Puter SDK failed but Cloudflare AI fallback is available — still allow usage
+        console.warn('[StockAIChat] Puter SDK unavailable, Cloudflare AI fallback active');
+        setSdkReady(true);
+      });
   }, []);
 
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Voice input setup
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event: any) => {
+      // Collect all results into one transcript, using the latest version of each result
+      let transcript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      // Replace input with base (before listening) + live transcript
+      const base = voiceBaseInputRef.current;
+      setInput(base ? base + ' ' + transcript : transcript);
+
+      // Check if all results are final
+      const allFinal = Array.from(event.results).every((r: any) => r.isFinal);
+      if (allFinal) {
+        setIsListening(false);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.warn('[Voice] Error:', event.error);
+      setIsListening(false);
+      if (event.error === 'not-allowed') {
+        toast.error('Microphone access denied');
+      }
+    };
+
+    recognition.onend = () => setIsListening(false);
+
+    recognitionRef.current = recognition;
+    return () => recognition.abort();
+  }, []);
+
+  const handleVoiceToggle = () => {
+    if (!recognitionRef.current) {
+      toast.error('Voice input not supported in this browser');
+      return;
+    }
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      // Save current input as base so we replace (not duplicate) the transcript
+      voiceBaseInputRef.current = input;
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
+  };
+
+  // Fetch sparkline charts for a completed message
+  const fetchChartsForMessage = async (msgId: string, content: string) => {
+    const tickers = extractTickers(content).slice(0, 2);
+    if (tickers.length === 0) return;
+    if (messageCharts[msgId]) return;
+
+    const charts: Array<{ symbol: string; price: number; change24h: number; data: Array<{ time: string; price: number }> }> = [];
+
+    for (const ticker of tickers) {
+      const cgId = SYMBOL_TO_COINGECKO[ticker];
+      if (!cgId) continue;
+
+      try {
+        const [chartData, priceData] = await Promise.all([
+          fetchCoinGeckoChartCached(cgId, 7),
+          fetchCoinGeckoPrices([cgId]).then(p => p[cgId] || null),
+        ]);
+
+        if (chartData.length > 0 && priceData) {
+          charts.push({
+            symbol: ticker,
+            price: priceData.price,
+            change24h: priceData.change24h,
+            data: chartData,
+          });
+        }
+      } catch {
+        // Non-blocking
+      }
+    }
+
+    if (charts.length > 0) {
+      setMessageCharts(prev => ({ ...prev, [msgId]: charts }));
+    }
+  };
 
   // Autocomplete: reactively compute suggestions from current input
   const suggestions = useMemo(() => {
@@ -331,8 +525,12 @@ export function StockAIChat({ walletId }: StockAIChatProps) {
     const agent = resolveAgent(trimmed);
     const cleanContent = stripMention(trimmed);
 
-    // Fetch live price data for mentioned tickers (non-blocking — proceeds if it fails)
-    const priceContext = await fetchPriceContext(cleanContent).catch(() => '');
+    // Fetch live price data + news in parallel (non-blocking)
+    const [priceContext, newsContext] = await Promise.all([
+      fetchPriceContext(cleanContent).catch(() => ''),
+      fetchNewsContext(cleanContent).catch(() => ''),
+    ]);
+    const portfolioContext = buildPortfolioContext(tokensData);
 
     // Add placeholder for assistant
     const assistantId = `asst_${Date.now()}`;
@@ -349,7 +547,7 @@ export function StockAIChat({ walletId }: StockAIChatProps) {
     setMessages(prev => [...prev, assistantMsg]);
 
     try {
-      const enrichedContent = cleanContent + priceContext;
+      const enrichedContent = cleanContent + priceContext + portfolioContext + newsContext;
       const contextMessages: ChatMessage[] = [
         ...messages.filter(m => !m.isStreaming).map(m => ({
           id: m.id,
@@ -380,19 +578,31 @@ export function StockAIChat({ walletId }: StockAIChatProps) {
             : m
         )
       );
+
+      // Fetch sparkline charts for the response
+      fetchChartsForMessage(assistantId, finalText);
     } catch (error: any) {
       if (abortController.signal.aborted) return;
       setMessages(prev => prev.filter(m => m.id !== assistantId));
-      toast.error(error.message || 'Failed to get response');
+      const msg = error.message || '';
+      if (msg.includes('Cloudflare Worker URL not configured')) {
+        toast.error('AI unavailable — set up Cloudflare Worker in Settings > API Keys');
+      } else {
+        toast.error(msg || 'Failed to get response');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   const executeRoundtable = async (trimmed: string, abortController: AbortController) => {
-    // Fetch live price data for mentioned tickers
-    const priceContext = await fetchPriceContext(trimmed).catch(() => '');
-    const enrichedMessage = trimmed + priceContext;
+    // Fetch live price data + news in parallel
+    const [priceContext, newsContext] = await Promise.all([
+      fetchPriceContext(trimmed).catch(() => ''),
+      fetchNewsContext(trimmed).catch(() => ''),
+    ]);
+    const portfolioContext = buildPortfolioContext(tokensData);
+    const enrichedMessage = trimmed + priceContext + portfolioContext + newsContext;
 
     try {
       await callRoundtable(
@@ -426,6 +636,10 @@ export function StockAIChat({ walletId }: StockAIChatProps) {
                 m.id === msgId ? { ...m, content: finalText, isStreaming: false } : m
               )
             );
+            // Fetch charts for moderator summary
+            if (msgId.startsWith('rt_moderator_')) {
+              fetchChartsForMessage(msgId, finalText);
+            }
           },
           onProgress: (current: number, total: number, agent: Agent) => {
             setRoundtableProgress({ current, total, agentName: agent.name });
@@ -435,7 +649,12 @@ export function StockAIChat({ walletId }: StockAIChatProps) {
       );
     } catch (error: any) {
       if (!abortController.signal.aborted) {
-        toast.error(error.message || 'Roundtable discussion failed');
+        const msg = error.message || '';
+        if (msg.includes('Cloudflare Worker URL not configured')) {
+          toast.error('AI unavailable — set up Cloudflare Worker in Settings > API Keys');
+        } else {
+          toast.error(msg || 'Roundtable discussion failed');
+        }
       }
     } finally {
       setIsLoading(false);
@@ -502,7 +721,7 @@ export function StockAIChat({ walletId }: StockAIChatProps) {
               </span>
             </button>
           ))}
-          {/* Roundtable toggle + Clear */}
+          {/* Roundtable toggle */}
           <div className="flex flex-col items-center gap-1 flex-shrink-0">
             <button
               onClick={() => setRoundtableMode(prev => !prev)}
@@ -521,6 +740,42 @@ export function StockAIChat({ walletId }: StockAIChatProps) {
                 Discuss
               </span>
             </button>
+          </div>
+          {/* AI Provider switch */}
+          <div
+            onClick={() => {
+              const next: AIProvider = aiProvider === 'puter' ? 'cloudflare' : 'puter';
+              if (next === 'puter' && isPuterDisabled()) {
+                resetPuter();
+                toast.success('Switched to Puter (GPT-4o) — credits reset');
+              } else {
+                toast.success(`Switched to ${next === 'puter' ? 'Puter (GPT-4o)' : 'Cloudflare (Llama 3.1)'}`);
+              }
+              setAIProvider(next);
+              setAiProvider(next);
+            }}
+            className="flex flex-col items-center gap-1 flex-shrink-0 cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-0.5">
+              <span className={`text-[9px] font-medium transition-colors ${aiProvider === 'puter' ? 'text-purple-400' : 'text-slate-600'}`}>
+                Puter
+              </span>
+              <div
+                className="relative w-9 h-5 rounded-full mx-0.5 transition-colors"
+                style={{ backgroundColor: aiProvider === 'cloudflare' ? 'rgba(249, 115, 22, 0.3)' : 'rgba(168, 85, 247, 0.3)' }}
+              >
+                <div
+                  className="absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-all duration-200"
+                  style={{
+                    left: aiProvider === 'cloudflare' ? '18px' : '2px',
+                    backgroundColor: aiProvider === 'cloudflare' ? '#fb923c' : '#a855f7',
+                  }}
+                />
+              </div>
+              <span className={`text-[9px] font-medium transition-colors ${aiProvider === 'cloudflare' ? 'text-orange-400' : 'text-slate-600'}`}>
+                CF
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -694,6 +949,21 @@ export function StockAIChat({ walletId }: StockAIChatProps) {
                   {msg.isStreaming && msg.content && (
                     <span className="inline-block w-1 h-4 bg-white/60 ml-0.5 animate-pulse align-middle" />
                   )}
+
+                  {/* Inline sparkline charts */}
+                  {!msg.isStreaming && msg.role === 'assistant' && messageCharts[msg.id] && (
+                    <div className="mt-1 space-y-1">
+                      {messageCharts[msg.id].map(chart => (
+                        <SparklineChart
+                          key={chart.symbol}
+                          data={chart.data}
+                          symbol={chart.symbol}
+                          price={chart.price}
+                          change24h={chart.change24h}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </motion.div>
             ))}
@@ -778,6 +1048,22 @@ export function StockAIChat({ walletId }: StockAIChatProps) {
               borderColor: roundtableMode ? 'rgba(168, 85, 247, 0.2)' : undefined,
             } as React.CSSProperties}
           />
+          {/* Voice input button */}
+          <button
+            onClick={handleVoiceToggle}
+            disabled={!sdkReady || sdkError || isLoading}
+            className={`w-11 h-11 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
+              isListening
+                ? 'bg-red-500/80 animate-pulse'
+                : 'bg-slate-900/50 border border-slate-800/30 hover:bg-slate-800/50'
+            } disabled:opacity-30`}
+          >
+            {isListening ? (
+              <MicOff className="w-5 h-5 text-white" />
+            ) : (
+              <Mic className="w-5 h-5 text-slate-400" />
+            )}
+          </button>
           <button
             onClick={handleSend}
             disabled={!input.trim() || isLoading || !sdkReady}
