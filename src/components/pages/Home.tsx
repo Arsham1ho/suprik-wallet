@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { RefreshCw, Grid2X2, Send as SendIcon, Plus, Search, DollarSign, QrCode, ChevronDown, Loader2 } from 'lucide-react';
+import { RefreshCw, Grid2X2, Send as SendIcon, Plus, Search, Mic, QrCode, ChevronDown, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useWallet } from '../../utils/WalletContext';
@@ -41,6 +41,7 @@ interface HomeProps {
   walletId: string;
   onTokensLoaded?: (tokens: Token[]) => void;
   isActive?: boolean;
+  onOpenVoiceAssistant?: () => void;
 }
 
 const balanceBackgrounds: { [key: string]: string } = {
@@ -153,7 +154,7 @@ const comingSoonNetworks = [
   },
 ];
 
-export function Home({ onNavigate, walletId, onTokensLoaded, isActive }: HomeProps) {
+export function Home({ onNavigate, walletId, onTokensLoaded, isActive, onOpenVoiceAssistant }: HomeProps) {
   const { t, formatPrice } = useLanguage();
   const { gradient, colors } = useTheme();
   const wallet = useWallet();
@@ -1434,8 +1435,10 @@ Check console for full details!
           <motion.button
             onClick={() => {
               setBuyBtnTapped(true);
-              setTimeout(() => setBuyBtnTapped(false), 500);
-              toast.info('Buy feature coming soon!');
+              setTimeout(() => {
+                setBuyBtnTapped(false);
+                onOpenVoiceAssistant?.();
+              }, 300);
             }}
             className="flex flex-col items-center gap-2 p-4 rounded-xl relative overflow-hidden"
             style={{
@@ -1487,9 +1490,9 @@ Check console for full details!
               transition={{ duration: 0.5 }}
               className="relative z-10"
             >
-              <DollarSign className="w-6 h-6" style={{ color: colors.accent }} />
+              <Mic className="w-6 h-6" style={{ color: colors.accent }} />
             </motion.div>
-            <span className="text-sm text-slate-300 relative z-10">Buy</span>
+            <span className="text-sm text-slate-300 relative z-10">AI</span>
           </motion.button>
         </div>
 

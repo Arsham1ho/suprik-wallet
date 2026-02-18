@@ -1,9 +1,35 @@
-// Puter.com AI integration - free AI proxy (no API key needed)
-// Provides access to Grok 4, GPT-4o, Claude, Gemini via puter.ai.chat()
+// AI integration — supports multiple providers:
+// 1. Puter.com (free proxy, GPT-4o) — primary
+// 2. Cloudflare Workers AI (free tier, Llama 3.1 8B) — fallback & alternative
 
 import { SYMBOL_TO_COINGECKO, fetchCoinGeckoPrices } from './coingecko';
 
 const AI_MODEL = 'gpt-4o';
+// --- AI Provider Toggle ---
+// User can switch between 'puter' and 'cloudflare' to compare
+export type AIProvider = 'puter' | 'cloudflare';
+
+// Default Cloudflare Worker URL (can be overridden in Settings > API Keys)
+const CLOUDFLARE_WORKER_URL = localStorage.getItem('suprik_cf_worker_url') || 'https://suprik-ai.arsham7hosseini10.workers.dev';
+
+let currentProvider: AIProvider = (localStorage.getItem('suprik_ai_provider') as AIProvider) || 'puter';
+
+export function getAIProvider(): AIProvider {
+  return currentProvider;
+}
+
+export function setAIProvider(provider: AIProvider): void {
+  currentProvider = provider;
+  try { localStorage.setItem('suprik_ai_provider', provider); } catch {}
+}
+
+export function getCloudflareWorkerURL(): string {
+  try { return localStorage.getItem('suprik_cf_worker_url') || ''; } catch { return ''; }
+}
+
+export function setCloudflareWorkerURL(url: string): void {
+  try { localStorage.setItem('suprik_cf_worker_url', url); } catch {}
+}
 
 declare global {
   interface Window {
@@ -13,10 +39,196 @@ declare global {
           messages: Array<{ role: string; content: string }>,
           options: { model: string; stream: boolean }
         ) => Promise<any>;
+        txt2speech: (
+          text: string,
+          options?: {
+            provider?: string;
+            model?: string;
+            voice?: string;
+            instructions?: string;
+            response_format?: string;
+            language?: string;
+          }
+        ) => Promise<HTMLAudioElement>;
       };
     };
     _puterLoading?: Promise<void>;
   }
+}
+
+// --- Puter balance/credits guard ---
+// Persisted: once Puter fails with "Low Balance", skip all Puter API calls to avoid popups
+let puterDisabled = false;
+try { puterDisabled = localStorage.getItem('suprik_puter_disabled') === 'true'; } catch {}
+
+function disablePuter() {
+  puterDisabled = true;
+  try { localStorage.setItem('suprik_puter_disabled', 'true'); } catch {}
+}
+
+export function resetPuter(): void {
+  puterDisabled = false;
+  try { localStorage.removeItem('suprik_puter_disabled'); } catch {}
+}
+
+export function isPuterDisabled(): boolean {
+  return puterDisabled;
+}
+
+// --- Puter popup blocker ---
+// Puter SDK injects "Low Balance" popups into the DOM (possibly via iframe/shadow DOM).
+// This aggressively finds and removes them using multiple strategies.
+let popupBlockerSetup = false;
+
+function setupPuterPopupBlocker(): void {
+  if (popupBlockerSetup || typeof document === 'undefined') return;
+  popupBlockerSetup = true;
+
+  function dismissPuterPopup(el: Element): void {
+    // Try clicking Close button first
+    const buttons = el.querySelectorAll('button');
+    for (const btn of buttons) {
+      const t = btn.textContent?.trim().toLowerCase() || '';
+      if (t === 'close' || t === '×' || t === 'x') {
+        btn.click();
+        disablePuter();
+        return;
+      }
+    }
+    // Fallback: remove the element
+    el.remove();
+    disablePuter();
+  }
+
+  function scanAndDismiss(): void {
+    // Scan all direct children of body for Puter popups
+    const candidates = document.querySelectorAll('body > div, body > iframe');
+    for (const el of candidates) {
+      const text = el.textContent || '';
+      if (text.includes('Low Balance') || text.includes('not enough funding') || text.includes('Upgrade Now')) {
+        dismissPuterPopup(el);
+        return;
+      }
+      // Check for iframes containing the popup
+      if (el instanceof HTMLIFrameElement) {
+        try {
+          const iframeText = el.contentDocument?.body?.textContent || '';
+          if (iframeText.includes('Low Balance') || iframeText.includes('not enough funding')) {
+            el.remove();
+            disablePuter();
+            return;
+          }
+        } catch { /* cross-origin iframe, can't access */ }
+      }
+    }
+    // Also check for any fixed-position overlays with very high z-index
+    for (const el of document.querySelectorAll('div[style]')) {
+      const style = (el as HTMLElement).style;
+      if (style.position === 'fixed' && parseInt(style.zIndex || '0') > 99000) {
+        const text = el.textContent || '';
+        if (text.includes('Low Balance') || text.includes('Upgrade')) {
+          dismissPuterPopup(el);
+          return;
+        }
+      }
+    }
+  }
+
+  // Strategy 1: MutationObserver for immediate detection
+  const observer = new MutationObserver(() => scanAndDismiss());
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  // Strategy 2: Periodic scan (catches iframes, shadow DOM, delayed injections)
+  let scanCount = 0;
+  const scanInterval = setInterval(() => {
+    scanAndDismiss();
+    scanCount++;
+    if (scanCount > 150) clearInterval(scanInterval); // Stop after 30s
+  }, 200);
+}
+
+// --- Cloudflare Workers AI (free tier, Llama 3.1 8B) ---
+
+function isCloudflareConfigured(): boolean {
+  try { return !!(localStorage.getItem('suprik_cf_worker_url') || CLOUDFLARE_WORKER_URL); } catch { return false; }
+}
+
+async function callCloudflareAI(
+  messages: Array<{ role: string; content: string }>,
+  onChunk: (text: string) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const workerUrl = localStorage.getItem('suprik_cf_worker_url') || CLOUDFLARE_WORKER_URL;
+  if (!workerUrl) {
+    throw new Error('Cloudflare Worker URL not configured. Go to Settings > API Keys to set it up.');
+  }
+
+  const response = await fetch(workerUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, stream: true }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const err = await response.text().catch(() => '');
+    throw new Error(`Cloudflare AI error: ${response.status} ${err}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const text = await response.text();
+    if (text) {
+      try {
+        const parsed = JSON.parse(text);
+        const content = parsed.response || text;
+        onChunk(content);
+        return content;
+      } catch {
+        onChunk(text);
+        return text;
+      }
+    }
+    throw new Error('No response from Cloudflare AI.');
+  }
+
+  const decoder = new TextDecoder();
+  let fullText = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (signal?.aborted) { reader.cancel(); break; }
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') continue;
+
+      try {
+        const parsed = JSON.parse(data);
+        // Cloudflare Workers AI format: { response: "text" }
+        const delta = parsed.response;
+        if (delta) {
+          fullText += delta;
+          onChunk(fullText);
+        }
+      } catch {
+        // Skip unparseable
+      }
+    }
+  }
+
+  if (!fullText) {
+    throw new Error('No response from Cloudflare AI.');
+  }
+
+  return fullText;
 }
 
 // --- Puter CDN Loader ---
@@ -58,6 +270,9 @@ export async function loadPuterSDK(): Promise<void> {
     };
     check();
   });
+
+  // Set up popup blocker as soon as SDK starts loading
+  setupPuterPopupBlocker();
 
   return window._puterLoading;
 }
@@ -197,7 +412,7 @@ export const MODERATOR_AGENT: Agent = {
 
 const ROUNDTABLE_DELAY = 300; // ms between agent calls
 
-function buildRoundtablePrompt(agent: Agent): string {
+export function buildRoundtablePrompt(agent: Agent): string {
   return `You are ${agent.name}, a ${agent.role.toLowerCase()} in a roundtable discussion about a stock or crypto asset. You MUST reference at least one prior analyst by name — say whether you agree or disagree with their take and why. Then add your own unique insight from your specialty. Give a **Score: X/10** at the end. Keep under 100 words.`;
 }
 
@@ -344,6 +559,52 @@ export async function fetchPriceContext(message: string): Promise<string> {
   }
 }
 
+// --- News Context ---
+
+const NEWS_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+const newsMemoryCache = new Map<string, { headlines: string[]; timestamp: number }>();
+
+export async function fetchNewsContext(message: string): Promise<string> {
+  const tickers = extractTickers(message);
+  if (tickers.length === 0) return '';
+
+  const symbols = tickers.slice(0, 2);
+  const allHeadlines: string[] = [];
+
+  for (const symbol of symbols) {
+    const cacheKey = symbol.toLowerCase();
+
+    // Check memory cache
+    const memCached = newsMemoryCache.get(cacheKey);
+    if (memCached && Date.now() - memCached.timestamp < NEWS_CACHE_DURATION) {
+      allHeadlines.push(...memCached.headlines);
+      continue;
+    }
+
+    // Check localStorage cache
+    try {
+      const stored = localStorage.getItem('suprik_news_cache');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed[cacheKey] && Date.now() - parsed[cacheKey].timestamp < NEWS_CACHE_DURATION) {
+          newsMemoryCache.set(cacheKey, parsed[cacheKey]);
+          allHeadlines.push(...parsed[cacheKey].headlines);
+          continue;
+        }
+      }
+    } catch { /* ignore */ }
+
+    // CryptoPanic API is CORS-blocked from browsers — skip the fetch
+    // TODO: Proxy news through Cloudflare Worker to restore this feature
+  }
+
+  if (allHeadlines.length === 0) return '';
+
+  const uniqueHeadlines = [...new Set(allHeadlines)].slice(0, 5);
+  const numbered = uniqueHeadlines.map((h, i) => `${i + 1}. ${h}`).join(' ');
+  return `\n\n[Recent News: ${numbered}]`;
+}
+
 // --- Puter AI Call (Streaming) ---
 
 export async function callPuterAI(
@@ -352,12 +613,6 @@ export async function callPuterAI(
   onChunk: (text: string) => void,
   signal?: AbortSignal,
 ): Promise<string> {
-  await loadPuterSDK();
-
-  if (!window.puter?.ai) {
-    throw new Error('AI service is not available. Please try again.');
-  }
-
   // Build API messages with system prompt + last 10 messages for context
   const recentMessages = messages.slice(-10);
   const apiMessages = [
@@ -367,6 +622,57 @@ export async function callPuterAI(
       content: m.content,
     })),
   ];
+
+  // --- Provider routing: if user selected Cloudflare, use it directly ---
+  if (currentProvider === 'cloudflare') {
+    console.log('[AI] Using Cloudflare Workers AI');
+    return callCloudflareAI(apiMessages, onChunk, signal);
+  }
+
+  // --- Puter path (default) ---
+
+  // If Puter is disabled (credits exhausted), try Cloudflare; if not configured, reset & retry Puter
+  if (puterDisabled) {
+    if (isCloudflareConfigured()) {
+      console.log('[AI] Puter disabled, using Cloudflare AI fallback');
+      return callCloudflareAI(apiMessages, onChunk, signal);
+    }
+    // No Cloudflare configured — reset Puter flag and retry (credits may have refreshed)
+    console.log('[AI] Puter disabled but Cloudflare not configured, resetting Puter and retrying');
+    resetPuter();
+  }
+
+  // Try loading Puter SDK — if it fails, fall back to Cloudflare (or throw)
+  try {
+    await loadPuterSDK();
+  } catch {
+    if (isCloudflareConfigured()) {
+      console.warn('[AI] Puter SDK unavailable, using Cloudflare AI fallback');
+      return callCloudflareAI(apiMessages, onChunk, signal);
+    }
+    throw new Error('AI unavailable. Please configure Cloudflare Worker in Settings > API Keys.');
+  }
+
+  if (!window.puter?.ai) {
+    if (isCloudflareConfigured()) {
+      console.warn('[AI] Puter AI not available, using Cloudflare AI fallback');
+      return callCloudflareAI(apiMessages, onChunk, signal);
+    }
+    throw new Error('AI unavailable. Please configure Cloudflare Worker in Settings > API Keys.');
+  }
+
+  // Helper: detect Puter balance/credit errors in response objects
+  function checkPuterError(resp: any): void {
+    if (resp && typeof resp === 'object' && resp.success === false) {
+      const errMsg = resp.error?.message || resp.error?.code || JSON.stringify(resp.error || '');
+      if (errMsg.includes('balance') || errMsg.includes('funding') || errMsg.includes('credit') || errMsg.includes('limit')) {
+        disablePuter();
+      }
+      // Always disable on {success: false} — Puter is not usable
+      disablePuter();
+      throw new Error('AI credits exhausted. Puter free tier limit reached.');
+    }
+  }
 
   // Try streaming first, fall back to non-streaming
   let fullText = '';
@@ -382,9 +688,13 @@ export async function callPuterAI(
       ),
     ]);
 
+    // Check for error response (e.g. {success: false, error: {...}})
+    checkPuterError(response);
+
     if (response && Symbol.asyncIterator in Object(response)) {
       for await (const chunk of response as any) {
         if (signal?.aborted) break;
+        checkPuterError(chunk);
         const text = chunk?.text || chunk?.message?.content || '';
         if (text) {
           fullText += text;
@@ -394,30 +704,63 @@ export async function callPuterAI(
     } else {
       // Non-streaming response
       const resp = response as any;
-      fullText = resp?.message?.content || resp?.text || String(resp || '');
-      onChunk(fullText);
+      fullText = resp?.message?.content || resp?.text || '';
+      if (!fullText && resp) checkPuterError(resp);
+      if (fullText) onChunk(fullText);
     }
   } catch (streamError: any) {
-    // If streaming failed, try non-streaming as fallback
     if (signal?.aborted) throw streamError;
+
+    // Check if Puter returned a credits/balance error
+    const isCreditsError = streamError?.message?.includes('credits exhausted')
+      || (streamError && typeof streamError === 'object' && streamError.success === false);
+
+    if (isCreditsError) {
+      disablePuter();
+      if (isCloudflareConfigured()) {
+        console.warn('[AI] Puter credits exhausted, falling back to Cloudflare AI');
+        return callCloudflareAI(apiMessages, onChunk, signal);
+      }
+      // No Cloudflare — reset and let user retry
+      resetPuter();
+      throw new Error('AI credits temporarily exhausted. Please try again in a moment.');
+    }
+
     console.warn('[PuterAI] Streaming failed, trying non-streaming:', streamError.message);
 
-    const response = await Promise.race([
-      window.puter.ai.chat(apiMessages, {
-        model: AI_MODEL,
-        stream: false,
-      }),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('AI request timed out')), 30000)
-      ),
-    ]) as any;
+    try {
+      const response = await Promise.race([
+        window.puter.ai.chat(apiMessages, {
+          model: AI_MODEL,
+          stream: false,
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('AI request timed out')), 30000)
+        ),
+      ]) as any;
 
-    fullText = response?.message?.content || response?.text || String(response || '');
-    onChunk(fullText);
+      checkPuterError(response);
+      fullText = response?.message?.content || response?.text || '';
+      if (fullText) onChunk(fullText);
+    } catch (nonStreamError: any) {
+      // Puter completely failed — fall back to Cloudflare if configured
+      if (signal?.aborted) throw nonStreamError;
+      disablePuter();
+      if (isCloudflareConfigured()) {
+        console.warn('[AI] Puter failed completely, falling back to Cloudflare AI:', nonStreamError.message);
+        return callCloudflareAI(apiMessages, onChunk, signal);
+      }
+      resetPuter();
+      throw new Error('AI temporarily unavailable. Please try again.');
+    }
   }
 
   if (!fullText) {
-    throw new Error('No response from AI. Please try again.');
+    if (isCloudflareConfigured()) {
+      console.warn('[AI] Puter returned empty, trying Cloudflare AI fallback');
+      return callCloudflareAI(apiMessages, onChunk, signal);
+    }
+    throw new Error('AI returned an empty response. Please try again.');
   }
 
   return fullText;
@@ -437,10 +780,13 @@ export async function callRoundtable(
   callbacks: RoundtableCallbacks,
   signal: AbortSignal,
 ): Promise<void> {
-  await loadPuterSDK();
-
-  if (!window.puter?.ai) {
-    throw new Error('AI service is not available. Please try again.');
+  // No need to check puterDisabled here — callPuterAI handles fallback to Cloudflare
+  if (!puterDisabled) {
+    try {
+      await loadPuterSDK();
+    } catch {
+      // Puter SDK unavailable — callPuterAI will fall back to Cloudflare
+    }
   }
 
   const cleanMessage = stripMention(userMessage);
