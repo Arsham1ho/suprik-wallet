@@ -4,3 +4,7 @@ compatibility_date = "2024-12-01"
 
 [ai]
 binding = "AI"
+
+# Set these via: wrangler secret put SUPABASE_URL / wrangler secret put SUPABASE_SERVICE_KEY
+# SUPABASE_URL = "https://qagsgxsaxspomcysaesa.supabase.co"
+# SUPABASE_SERVICE_KEY = your service_role key (NOT the anon key)
