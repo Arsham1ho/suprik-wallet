@@ -295,6 +295,7 @@ const MINT_TO_DECIMALS: Record<string, number> = {
   'Df6yfrKC8kZE3KNkrHERKzAetSxbrWeniQfyJY4Jpump': 6, // CHILLGUY
   'BAGE9SrkSGQMsCxvYWg7gxHbFy9HGKqX4nSguLMAppump': 6, // ZEREBRO
   'SupreByajmUdeJGLzvUEUm8W4xv1gF8JBqwYnvG41Dp': 6, // SUPRA
+  '6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN': 6, // TRUMP (Official Trump)
 };
 
 /**
@@ -539,6 +540,7 @@ export async function getJupiterSwapQuote(params: {
   isTestnet?: boolean;
   inputDecimals?: number;
   outputDecimals?: number;
+  swapMode?: 'ExactIn' | 'ExactOut';
 }): Promise<SwapQuote> {
   try {
     const {
@@ -548,7 +550,8 @@ export async function getJupiterSwapQuote(params: {
       slippage = 1,
       isTestnet = false,
       inputDecimals = 9,
-      outputDecimals = 9
+      outputDecimals = 9,
+      swapMode = 'ExactIn',
     } = params;
 
     console.log('[Jupiter] Getting swap quote...');
@@ -610,8 +613,12 @@ export async function getJupiterSwapQuote(params: {
     }
 
     // MAINNET MODE: Use Jupiter API v1
-    const lamportsAmount = Math.floor(amount * Math.pow(10, inputDecimals));
+    // ExactIn: amount is in input token units → convert with inputDecimals
+    // ExactOut: amount is in output token units → convert with outputDecimals
+    const decimalsForAmount = swapMode === 'ExactOut' ? outputDecimals : inputDecimals;
+    const lamportsAmount = Math.floor(amount * Math.pow(10, decimalsForAmount));
 
+    console.log('[Jupiter] Swap mode:', swapMode);
     console.log('[Jupiter] Amount (lamports):', lamportsAmount);
 
     if (lamportsAmount <= 0 || !isFinite(lamportsAmount)) {
@@ -663,6 +670,7 @@ export async function getJupiterSwapQuote(params: {
       outputMint,
       amount: lamportsAmount.toString(),
       slippageBps: slippageBps.toString(),
+      ...(swapMode === 'ExactOut' ? { swapMode: 'ExactOut' } : {}),
       // NOTE: platformFeeBps removed - Legacy API is fallback only, no fee collection
     });
 
@@ -715,10 +723,19 @@ export async function getJupiterSwapQuote(params: {
         throw new Error('No route available for this token pair. Please try a different token.');
       }
 
-      // Parse amounts
+      // Parse amounts — ExactOut returns inAmount (input needed) and outAmount (exact output)
       const outputAmountLamports = parseFloat(quote.outAmount);
       const outputAmount = outputAmountLamports / Math.pow(10, outputDecimals);
-      console.log('[Jupiter] Output amount calculation:', outputAmountLamports, '/', Math.pow(10, outputDecimals), '=', outputAmount);
+
+      let parsedInputAmount: number;
+      if (swapMode === 'ExactOut') {
+        const inputAmountLamports = parseFloat(quote.inAmount);
+        parsedInputAmount = inputAmountLamports / Math.pow(10, inputDecimals);
+        console.log('[Jupiter] ExactOut — input needed:', parsedInputAmount, ', output requested:', outputAmount);
+      } else {
+        parsedInputAmount = amount;
+        console.log('[Jupiter] ExactIn — output amount:', outputAmountLamports, '/', Math.pow(10, outputDecimals), '=', outputAmount);
+      }
 
       // Calculate platform fee from quote
       const platformFeeLamports = quote.platformFee?.amount
@@ -730,7 +747,9 @@ export async function getJupiterSwapQuote(params: {
         ? parseFloat(quote.priceImpactPct)
         : 0;
 
-      const minOutputAmount = outputAmount * (1 - slippage / 100);
+      const minOutputAmount = swapMode === 'ExactOut'
+        ? outputAmount // ExactOut guarantees exact output
+        : outputAmount * (1 - slippage / 100);
 
       // Extract route info
       const route = quote.routePlan?.map((r: any) =>
@@ -740,14 +759,14 @@ export async function getJupiterSwapQuote(params: {
       return {
         inputMint,
         outputMint,
-        inputAmount: amount,
+        inputAmount: parsedInputAmount,
         outputAmount,
         minOutputAmount,
         priceImpact,
         fee: platformFee,
         feePercent: PLATFORM_FEE_BPS / 100,
         route,
-        exchangeRate: outputAmount / amount,
+        exchangeRate: outputAmount / parsedInputAmount,
         quoteResponse: quote, // Store for swap execution
         platformFee,
       };

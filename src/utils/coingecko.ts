@@ -528,6 +528,59 @@ export async function fetchCoinGeckoChart(
 }
 
 /**
+ * Fetch chart data with in-memory + localStorage caching (15 min TTL)
+ */
+const CHART_CACHE_DURATION = 15 * 60 * 1000;
+const chartMemoryCache = new Map<string, { data: Array<{ time: string; price: number }>; timestamp: number }>();
+
+export async function fetchCoinGeckoChartCached(
+  coinGeckoId: string,
+  days: number = 7
+): Promise<Array<{ time: string; price: number }>> {
+  const cacheKey = `${coinGeckoId}_${days}`;
+
+  // Check memory cache
+  const memCached = chartMemoryCache.get(cacheKey);
+  if (memCached && Date.now() - memCached.timestamp < CHART_CACHE_DURATION) {
+    return memCached.data;
+  }
+
+  // Check localStorage cache
+  try {
+    const stored = localStorage.getItem('suprik_coingecko_charts');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed[cacheKey] && Date.now() - parsed[cacheKey].timestamp < CHART_CACHE_DURATION) {
+        chartMemoryCache.set(cacheKey, parsed[cacheKey]);
+        return parsed[cacheKey].data;
+      }
+    }
+  } catch { /* ignore */ }
+
+  // Fetch fresh data
+  const data = await fetchCoinGeckoChart(coinGeckoId, days);
+  if (data.length > 0) {
+    const entry = { data, timestamp: Date.now() };
+    chartMemoryCache.set(cacheKey, entry);
+
+    try {
+      const stored = localStorage.getItem('suprik_coingecko_charts');
+      const parsed = stored ? JSON.parse(stored) : {};
+      parsed[cacheKey] = entry;
+      // Evict oldest if > 10 entries
+      const keys = Object.keys(parsed);
+      if (keys.length > 10) {
+        const oldest = keys.sort((a, b) => parsed[a].timestamp - parsed[b].timestamp)[0];
+        delete parsed[oldest];
+      }
+      localStorage.setItem('suprik_coingecko_charts', JSON.stringify(parsed));
+    } catch { /* ignore */ }
+  }
+
+  return data;
+}
+
+/**
  * Get token price with automatic CoinGecko ID lookup
  * This is the main function to use for getting a token's price
  */

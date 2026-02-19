@@ -1,16 +1,19 @@
 // AI integration — supports multiple providers:
 // 1. Puter.com (free proxy, GPT-4o) — primary
-// 2. Cloudflare Workers AI (free tier, Llama 3.1 8B) — fallback & alternative
+// 2. Cloudflare Workers AI (free tier, Llama 3.1 8B) — fallback
+// 3. Ollama (self-hosted, Llama 3.2 3B) — private server
 
 import { SYMBOL_TO_COINGECKO, fetchCoinGeckoPrices } from './coingecko';
 
 const AI_MODEL = 'gpt-4o';
 // --- AI Provider Toggle ---
-// User can switch between 'puter' and 'cloudflare' to compare
-export type AIProvider = 'puter' | 'cloudflare';
+export type AIProvider = 'puter' | 'cloudflare' | 'ollama';
 
 // Default Cloudflare Worker URL (can be overridden in Settings > API Keys)
 const CLOUDFLARE_WORKER_URL = localStorage.getItem('suprik_cf_worker_url') || 'https://suprik-ai.arsham7hosseini10.workers.dev';
+
+// Ollama server URL — stored in localStorage (no hardcoded IP in source code)
+const DEFAULT_OLLAMA_URL = '';
 
 let currentProvider: AIProvider = (localStorage.getItem('suprik_ai_provider') as AIProvider) || 'puter';
 
@@ -29,6 +32,14 @@ export function getCloudflareWorkerURL(): string {
 
 export function setCloudflareWorkerURL(url: string): void {
   try { localStorage.setItem('suprik_cf_worker_url', url); } catch {}
+}
+
+export function getOllamaURL(): string {
+  try { return localStorage.getItem('suprik_ollama_url') || DEFAULT_OLLAMA_URL; } catch { return DEFAULT_OLLAMA_URL; }
+}
+
+export function setOllamaURL(url: string): void {
+  try { localStorage.setItem('suprik_ollama_url', url); } catch {}
 }
 
 declare global {
@@ -226,6 +237,87 @@ async function callCloudflareAI(
 
   if (!fullText) {
     throw new Error('No response from Cloudflare AI.');
+  }
+
+  return fullText;
+}
+
+// --- Ollama (self-hosted, Llama 3.2 3B) ---
+
+async function callOllamaAI(
+  messages: Array<{ role: string; content: string }>,
+  onChunk: (text: string) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const ollamaUrl = getOllamaURL();
+  if (!ollamaUrl) {
+    throw new Error('Ollama server URL not configured. Go to Settings > API Keys to set it up.');
+  }
+
+  const response = await fetch(`${ollamaUrl}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'voice-fast',
+      messages,
+      stream: true,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const err = await response.text().catch(() => '');
+    throw new Error(`Ollama error: ${response.status} ${err}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const text = await response.text();
+    if (text) {
+      try {
+        const parsed = JSON.parse(text);
+        const content = parsed.message?.content || '';
+        onChunk(content);
+        return content;
+      } catch {
+        onChunk(text);
+        return text;
+      }
+    }
+    throw new Error('No response from Ollama.');
+  }
+
+  const decoder = new TextDecoder();
+  let fullText = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (signal?.aborted) { reader.cancel(); break; }
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const parsed = JSON.parse(line);
+        // Ollama streaming format: { message: { content: "text" }, done: false }
+        const delta = parsed.message?.content;
+        if (delta) {
+          fullText += delta;
+          onChunk(fullText);
+        }
+      } catch {
+        // Skip unparseable
+      }
+    }
+  }
+
+  if (!fullText) {
+    throw new Error('No response from Ollama.');
   }
 
   return fullText;
@@ -623,10 +715,14 @@ export async function callPuterAI(
     })),
   ];
 
-  // --- Provider routing: if user selected Cloudflare, use it directly ---
+  // --- Provider routing: if user selected non-Puter provider, use it directly ---
   if (currentProvider === 'cloudflare') {
     console.log('[AI] Using Cloudflare Workers AI');
     return callCloudflareAI(apiMessages, onChunk, signal);
+  }
+  if (currentProvider === 'ollama') {
+    console.log('[AI] Using Ollama (self-hosted)');
+    return callOllamaAI(apiMessages, onChunk, signal);
   }
 
   // --- Puter path (default) ---
