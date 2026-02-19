@@ -741,41 +741,37 @@ export function StockAIChat({ walletId, tokensData }: StockAIChatProps) {
               </span>
             </button>
           </div>
-          {/* AI Provider switch */}
-          <div
-            onClick={() => {
-              const next: AIProvider = aiProvider === 'puter' ? 'cloudflare' : 'puter';
-              if (next === 'puter' && isPuterDisabled()) {
-                resetPuter();
-                toast.success('Switched to Puter (GPT-4o) — credits reset');
-              } else {
-                toast.success(`Switched to ${next === 'puter' ? 'Puter (GPT-4o)' : 'Cloudflare (Llama 3.1)'}`);
-              }
-              setAIProvider(next);
-              setAiProvider(next);
-            }}
-            className="flex flex-col items-center gap-1 flex-shrink-0 cursor-pointer select-none"
-          >
-            <div className="flex items-center gap-0.5">
-              <span className={`text-[9px] font-medium transition-colors ${aiProvider === 'puter' ? 'text-purple-400' : 'text-slate-600'}`}>
-                Puter
-              </span>
-              <div
-                className="relative w-9 h-5 rounded-full mx-0.5 transition-colors"
-                style={{ backgroundColor: aiProvider === 'cloudflare' ? 'rgba(249, 115, 22, 0.3)' : 'rgba(168, 85, 247, 0.3)' }}
-              >
-                <div
-                  className="absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-all duration-200"
-                  style={{
-                    left: aiProvider === 'cloudflare' ? '18px' : '2px',
-                    backgroundColor: aiProvider === 'cloudflare' ? '#fb923c' : '#a855f7',
+          {/* AI Provider selector */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {(['puter', 'cloudflare', 'ollama'] as AIProvider[]).map((p) => {
+              const label = p === 'puter' ? 'Puter' : p === 'cloudflare' ? 'CF' : 'Ollama';
+              const isActive = aiProvider === p;
+              const color = p === 'puter' ? '#a855f7' : p === 'cloudflare' ? '#fb923c' : '#22c55e';
+              return (
+                <button
+                  key={p}
+                  onClick={() => {
+                    if (p === 'puter' && isPuterDisabled()) {
+                      resetPuter();
+                      toast.success('Switched to Puter (GPT-4o) — credits reset');
+                    } else {
+                      const names = { puter: 'Puter (GPT-4o)', cloudflare: 'Cloudflare (Llama 3.1)', ollama: 'Ollama (Llama 3.2)' };
+                      toast.success(`Switched to ${names[p]}`);
+                    }
+                    setAIProvider(p);
+                    setAiProvider(p);
                   }}
-                />
-              </div>
-              <span className={`text-[9px] font-medium transition-colors ${aiProvider === 'cloudflare' ? 'text-orange-400' : 'text-slate-600'}`}>
-                CF
-              </span>
-            </div>
+                  className="px-2 py-0.5 rounded-full text-[9px] font-medium transition-all"
+                  style={{
+                    backgroundColor: isActive ? `${color}33` : 'transparent',
+                    color: isActive ? color : '#64748b',
+                    border: isActive ? `1px solid ${color}66` : '1px solid transparent',
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
