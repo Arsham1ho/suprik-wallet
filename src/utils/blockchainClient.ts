@@ -12,7 +12,7 @@
 
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { getHeliusApiKey } from './env';
+import { getHeliusApiKey, getJupiterApiKey } from './env';
 import { dedupe } from './requestDeduplication';
 import { TOKEN_BY_MINT } from './tokenRegistry';
 import { executeWithFailover } from './rpcFailover';
@@ -313,9 +313,15 @@ export async function fetchTokenPricesClient(
       try {
         console.log('[BlockchainClient] Fetching prices from Jupiter Price API...');
 
-        // Jupiter Price API v3 - the latest public endpoint
+        // Jupiter Price API v3 — use paid gateway with key, or free lite gateway
+        const jupApiKey = getJupiterApiKey();
+        const jupHeaders: Record<string, string> = {};
+        if (jupApiKey) jupHeaders['x-api-key'] = jupApiKey;
+        const jupHost = jupApiKey ? 'api.jup.ag' : 'lite-api.jup.ag';
+
         const response = await fetch(
-          `https://api.jup.ag/price/v3?ids=${mints.join(',')}`
+          `https://${jupHost}/price/v3?ids=${mints.join(',')}`,
+          { headers: jupHeaders }
         );
 
         if (!response.ok) {

@@ -197,12 +197,6 @@ export async function getEncryptedApiKey(type: 'helius' | 'alchemy' | 'jupiter')
     return await decryptApiKey(encrypted);
   }
 
-  // Fall back to legacy unencrypted storage (not for jupiter)
-  if (type !== 'jupiter') {
-    const legacyKey = type === 'helius' ? 'HELIUS_API_KEY' : 'ALCHEMY_API_KEY';
-    return localStorage.getItem(legacyKey);
-  }
-
   return null;
 }
 
