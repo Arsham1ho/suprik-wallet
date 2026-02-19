@@ -378,7 +378,7 @@ let sessionSeed: { seed: string; expiry: number } | null = null;
 
 export function setSessionSeed(
   seedPhrase: string,
-  durationMs: number = 15 * 60 * 1000
+  durationMs: number = 5 * 60 * 1000
 ): void {
   // Clear any existing session first
   if (sessionSeed) {

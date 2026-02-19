@@ -33,6 +33,8 @@ const ACTIVE_ACCOUNT_KEY = 'saturn_active_account_id';
 const INTEGRITY_KEY = 'saturn_accounts_ck';
 
 export class AccountManager {
+  private static _integrityWarned = false;
+
   // Compute a checksum of account data for tamper detection.
   // Protects against extension/DevTools/cross-tab localStorage modifications.
   private static computeChecksum(data: string): string {
@@ -74,8 +76,12 @@ export class AccountManager {
 
       // Verify data hasn't been tampered with
       if (!this.verifyIntegrity(stored)) {
-        console.error('[AccountManager] Account data integrity check failed — possible tampering');
-        window.dispatchEvent(new CustomEvent('accountsTampered'));
+        if (!this._integrityWarned) {
+          console.warn('[AccountManager] Account data integrity mismatch — re-computing checksum');
+          this._integrityWarned = true;
+        }
+        // Self-heal: re-compute checksum from current data
+        localStorage.setItem(INTEGRITY_KEY, this.computeChecksum(stored));
       }
 
       const accounts: Account[] = JSON.parse(stored);

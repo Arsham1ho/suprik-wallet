@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
-import { ArrowLeft, LayoutGrid, QrCode, DollarSign, Share2, MoreHorizontal, ExternalLink, Send } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, QrCode, DollarSign, Share2, MoreHorizontal, ExternalLink, Send, MessageSquare } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { TokenLogo } from '../TokenLogo';
@@ -26,6 +26,7 @@ interface CoinDetailProps {
   onBack: () => void;
   walletId: string;
   onNavigateToSend?: (token: Token) => void;
+  onNavigateToChat?: (token: Token) => void;
 }
 
 interface CoinDetails {
@@ -46,7 +47,7 @@ interface CoinDetails {
 
 type TimePeriod = '1H' | '1D' | '1W' | '1M' | 'YTD';
 
-export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDetailProps) {
+export function CoinDetail({ token, onBack, walletId, onNavigateToSend, onNavigateToChat }: CoinDetailProps) {
   const { formatPrice, convertPrice } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [coinDetails, setCoinDetails] = useState<CoinDetails | null>(null);
@@ -162,9 +163,14 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
       if (isSolanaMint && price === 0) {
         try {
           console.log(`[CoinDetail] Trying Jupiter v3 for ${token.symbol}...`);
+          const { getJupiterApiKey } = await import('../../utils/env');
+          const jupKey = getJupiterApiKey();
+          const jupHeaders: Record<string, string> = {};
+          if (jupKey) jupHeaders['x-api-key'] = jupKey;
+          const jupHost = jupKey ? 'api.jup.ag' : 'lite-api.jup.ag';
           const jupResponse = await fetch(
-            `https://api.jup.ag/price/v3?ids=${actualMint}`,
-            { signal: AbortSignal.timeout(5000) }
+            `https://${jupHost}/price/v3?ids=${actualMint}`,
+            { signal: AbortSignal.timeout(5000), headers: jupHeaders }
           );
 
           if (jupResponse.ok) {
@@ -611,11 +617,18 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
         const endTime = Math.floor(Date.now() / 1000);
         const startTime = endTime - config.seconds;
 
-        const jupiterHistoryUrl = `https://api.jup.ag/price/v2/history?id=${mint}&type=${config.interval}&time_from=${startTime}&time_to=${endTime}`;
+        // Jupiter price history — v3 with API key, or free lite gateway
+        const { getJupiterApiKey } = await import('../../utils/env');
+        const jupKey = getJupiterApiKey();
+        const jupHeaders: Record<string, string> = {};
+        if (jupKey) jupHeaders['x-api-key'] = jupKey;
+        const jupHost = jupKey ? 'api.jup.ag' : 'lite-api.jup.ag';
+        const jupiterHistoryUrl = `https://${jupHost}/price/v2/history?id=${mint}&type=${config.interval}&time_from=${startTime}&time_to=${endTime}`;
         console.log(`[CoinDetail] Trying Jupiter history for ${token.symbol}`);
 
         const response = await fetch(jupiterHistoryUrl, {
           signal: AbortSignal.timeout(8000),
+          headers: jupHeaders,
         });
 
         if (response.ok) {
@@ -1433,6 +1446,27 @@ export function CoinDetail({ token, onBack, walletId, onNavigateToSend }: CoinDe
             <span className="text-xs font-semibold text-slate-400">More</span>
           </button>
         </div>
+
+        {/* Token Chat Button - Only for Solana tokens with balance */}
+        {(() => {
+          const isSolToken = !['BTC', 'ETH', 'MATIC', 'AVAX', 'BNB'].includes(token.symbol.toUpperCase()) &&
+                             !token.mint?.startsWith('0x') &&
+                             token.symbol.toUpperCase() !== 'BITCOIN' &&
+                             token.symbol.toUpperCase() !== 'ETHEREUM';
+
+          if (isSolToken && token.amount > 0 && onNavigateToChat) {
+            return (
+              <button
+                onClick={() => onNavigateToChat(token)}
+                className="w-full flex items-center justify-center gap-2 py-3 mb-8 rounded-xl bg-slate-950/50 hover:bg-slate-900/50 transition-colors border border-slate-800/30"
+              >
+                <MessageSquare className="w-4 h-4 text-green-400" />
+                <span className="text-sm font-semibold text-slate-300">Chat with {token.symbol} Holders</span>
+              </button>
+            );
+          }
+          return null;
+        })()}
 
         {/* Balance & Value Cards */}
         <div className="grid grid-cols-2 gap-3 mb-3">

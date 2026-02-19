@@ -134,10 +134,15 @@ export async function enhanceToken(
     }
   }
   
-  // If price is still 0, try Jupiter Price API v3 (client-side, like Phantom)
+  // If price is still 0, try Jupiter Price API v2 with API key
   if (price === 0 && mint.length > 32) {
     try {
-      const response = await fetch(`https://api.jup.ag/price/v3?ids=${mint}`);
+      const { getJupiterApiKey } = await import('./env');
+      const jupKey = getJupiterApiKey();
+      const jupHeaders: Record<string, string> = {};
+      if (jupKey) jupHeaders['x-api-key'] = jupKey;
+      const jupHost = jupKey ? 'api.jup.ag' : 'lite-api.jup.ag';
+      const response = await fetch(`https://${jupHost}/price/v3?ids=${mint}`, { headers: jupHeaders });
 
       if (response.ok) {
         const data = await response.json();

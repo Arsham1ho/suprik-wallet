@@ -374,8 +374,10 @@ export async function fetchTokenPrices(symbols: string[]): Promise<Record<string
         headers['x-api-key'] = apiKey;
       }
 
+      // Use api.jup.ag with key, or lite-api.jup.ag for free tier
+      const jupHost = apiKey ? 'api.jup.ag' : 'lite-api.jup.ag';
       const response = await fetch(
-        `https://api.jup.ag/price/v2?ids=${mints.join(',')}`,
+        `https://${jupHost}/price/v3?ids=${mints.join(',')}`,
         { signal: AbortSignal.timeout(5000), headers }
       );
 

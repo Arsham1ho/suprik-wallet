@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { RefreshCw, Grid2X2, Send as SendIcon, Plus, Search, Mic, QrCode, ChevronDown, Loader2 } from 'lucide-react';
+import { RefreshCw, Grid2X2, Send as SendIcon, Plus, Search, BotMessageSquare, QrCode, ChevronDown, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useWallet } from '../../utils/WalletContext';
@@ -42,6 +42,7 @@ interface HomeProps {
   onTokensLoaded?: (tokens: Token[]) => void;
   isActive?: boolean;
   onOpenVoiceAssistant?: () => void;
+  onNavigateToChat?: (token: Token) => void;
 }
 
 const balanceBackgrounds: { [key: string]: string } = {
@@ -154,7 +155,7 @@ const comingSoonNetworks = [
   },
 ];
 
-export function Home({ onNavigate, walletId, onTokensLoaded, isActive, onOpenVoiceAssistant }: HomeProps) {
+export function Home({ onNavigate, walletId, onTokensLoaded, isActive, onOpenVoiceAssistant, onNavigateToChat }: HomeProps) {
   const { t, formatPrice } = useLanguage();
   const { gradient, colors } = useTheme();
   const wallet = useWallet();
@@ -1110,6 +1111,7 @@ Check console for full details!
           // Store selected token for Send page
           localStorage.setItem('saturn_send_selected_token', JSON.stringify(token));
         }}
+        onNavigateToChat={onNavigateToChat}
       />
     );
   }
@@ -1490,7 +1492,7 @@ Check console for full details!
               transition={{ duration: 0.5 }}
               className="relative z-10"
             >
-              <Mic className="w-6 h-6" style={{ color: colors.accent }} />
+              <BotMessageSquare className="w-6 h-6" style={{ color: colors.accent }} />
             </motion.div>
             <span className="text-sm text-slate-300 relative z-10">AI</span>
           </motion.button>

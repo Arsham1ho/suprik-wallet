@@ -1,5 +1,6 @@
 // Text-to-Speech wrapper — uses Puter.js (OpenAI voices) for natural speech,
-// falls back to browser SpeechSynthesis when Puter credits are exhausted.
+// falls back to Piper TTS (self-hosted neural voices on Ollama server),
+// then to browser SpeechSynthesis as last resort.
 
 let currentAudio: HTMLAudioElement | null = null;
 let currentAudioUrl: string | null = null;
@@ -15,6 +16,27 @@ try {
     || localStorage.getItem('suprik_puter_disabled') === 'true';
 } catch {}
 
+// --- Piper TTS (self-hosted neural voices) ---
+// URL stored in localStorage — no hardcoded IP in source code
+function getPiperURL(): string {
+  try { return localStorage.getItem('suprik_piper_url') || ''; } catch { return ''; }
+}
+export function setPiperURL(url: string): void {
+  try { localStorage.setItem('suprik_piper_url', url); } catch {}
+}
+
+// Map agents to Piper voices (lessac=highest quality male, ryan=male authoritative, joe=male warm, amy=female)
+const PIPER_VOICES: Record<string, string> = {
+  alex: 'lessac',    // Male, confident — highest quality
+  warren: 'joe',     // Male, calm/wise
+  cathie: 'amy',     // Female, friendly
+  linda: 'amy',      // Female, professional
+  ray: 'lessac',     // Male, authoritative — highest quality
+  nassim: 'joe',     // Male, warm
+  moderator: 'lessac', // Balanced — highest quality
+};
+const DEFAULT_PIPER_VOICE = 'lessac';
+
 function disablePuterTTS() {
   puterTTSDisabled = true;
   try { localStorage.setItem('suprik_puter_tts_disabled', 'true'); } catch {}
@@ -24,6 +46,11 @@ function disablePuterTTS() {
 let prefetchPromise: Promise<HTMLAudioElement | null> | null = null;
 let prefetchedCleanText: string = '';
 let prefetchAgentId: string | undefined;
+
+// --- Piper prefetch (runs in parallel with Puter — ensures fast fallback) ---
+let piperPrefetchPromise: Promise<{ blob: Blob; url: string } | null> | null = null;
+let piperPrefetchText: string = '';
+let piperPrefetchAgentId: string | undefined;
 
 // OpenAI voice IDs mapped to each agent for distinct personalities
 // alloy=neutral, ash=sharp, coral=warm, echo=deep, nova=bright, onyx=authoritative, sage=calm, shimmer=clear
@@ -61,7 +88,8 @@ export const AGENT_VOICES: Record<string, { voice: string; instructions: string 
 const DEFAULT_VOICE = { voice: 'nova', instructions: 'Speak clearly and naturally like a helpful assistant.' };
 
 export function isTTSSupported(): boolean {
-  return !!(window as any).puter?.ai || 'speechSynthesis' in window;
+  // Piper TTS (self-hosted) is always available as fallback
+  return true;
 }
 
 function cleanTextForSpeech(text: string): string {
@@ -93,40 +121,66 @@ function truncateForTTS(text: string, maxLen = 2800): string {
  * Pre-generate TTS audio while AI is still streaming.
  * Call once from the streaming callback when the first complete sentence is detected.
  * speak() will automatically use the prefetched audio to eliminate delay.
+ * Prefetches from BOTH Puter and Piper in parallel — whichever path speak() takes,
+ * the audio is already generated.
  */
 export function prefetchTTS(rawText: string, agentId?: string): void {
-  if (puterTTSDisabled) return;
-  const puter = (window as any).puter;
-  if (!puter?.ai?.txt2speech) return;
-
   const clean = cleanTextForSpeech(rawText);
   if (!clean || clean.length < 10) return;
 
-  // Already prefetching? Don't restart (preserve the head start)
-  if (prefetchPromise) return;
+  // --- Puter prefetch (if available) ---
+  if (!prefetchPromise && !puterTTSDisabled) {
+    const puter = (window as any).puter;
+    if (puter?.ai?.txt2speech) {
+      prefetchedCleanText = truncateForTTS(clean);
+      prefetchAgentId = agentId;
 
-  prefetchedCleanText = truncateForTTS(clean);
-  prefetchAgentId = agentId;
+      const profile = (agentId && AGENT_VOICES[agentId]) || DEFAULT_VOICE;
 
-  const profile = (agentId && AGENT_VOICES[agentId]) || DEFAULT_VOICE;
+      prefetchPromise = puter.ai.txt2speech(prefetchedCleanText, {
+        provider: 'openai',
+        model: 'gpt-4o-mini-tts',
+        voice: profile.voice,
+        instructions: profile.instructions,
+        response_format: 'mp3',
+      }).then((audio: HTMLAudioElement) => audio)
+        .catch(() => {
+          disablePuterTTS();
+          return null;
+        });
+    }
+  }
 
-  prefetchPromise = puter.ai.txt2speech(prefetchedCleanText, {
-    provider: 'openai',
-    model: 'gpt-4o-mini-tts',
-    voice: profile.voice,
-    instructions: profile.instructions,
-    response_format: 'mp3',
-  }).then((audio: HTMLAudioElement) => audio)
-    .catch(() => {
-      disablePuterTTS();
-      return null;
-    });
+  // --- Piper prefetch (always, as fallback) ---
+  if (!piperPrefetchPromise && getPiperURL()) {
+    const piperText = truncateForTTS(clean, 3500);
+    piperPrefetchText = piperText;
+    piperPrefetchAgentId = agentId;
+    const voice = (agentId && PIPER_VOICES[agentId]) || DEFAULT_PIPER_VOICE;
+
+    piperPrefetchPromise = fetch(getPiperURL(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: piperText, voice }),
+    })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        if (blob.size < 100) return null;
+        const url = URL.createObjectURL(blob);
+        return { blob, url };
+      })
+      .catch(() => null);
+  }
 }
 
 export function clearPrefetch(): void {
   prefetchPromise = null;
   prefetchedCleanText = '';
   prefetchAgentId = undefined;
+  piperPrefetchPromise = null;
+  piperPrefetchText = '';
+  piperPrefetchAgentId = undefined;
 }
 
 async function speakWithPuter(text: string, agentId?: string): Promise<boolean> {
@@ -143,7 +197,11 @@ async function speakWithPuter(text: string, agentId?: string): Promise<boolean> 
 
     // Try to use prefetched audio (generated during AI streaming)
     if (prefetchPromise && prefetchAgentId === agentId) {
-      const prefetched = await prefetchPromise;
+      // Don't wait forever — if Puter prefetch is slow, bail to Piper
+      const prefetched = await Promise.race([
+        prefetchPromise,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+      ]);
       if (prefetched && !cancelled) {
         audio = prefetched;
         // Check if full text extends significantly beyond prefetched portion
@@ -152,20 +210,32 @@ async function speakWithPuter(text: string, agentId?: string): Promise<boolean> 
           if (remainderText.length < 10) remainderText = null;
         }
       }
-      clearPrefetch();
+      // Clear only Puter prefetch — preserve Piper prefetch for fallback path
+      prefetchPromise = null;
+      prefetchedCleanText = '';
+      prefetchAgentId = undefined;
     } else {
-      clearPrefetch();
+      prefetchPromise = null;
+      prefetchedCleanText = '';
+      prefetchAgentId = undefined;
     }
 
-    // No prefetch available — generate for full text normally
+    // No prefetch available — generate for full text normally (with timeout)
     if (!audio) {
-      audio = await puter.ai.txt2speech(truncated, {
-        provider: 'openai',
-        model: 'gpt-4o-mini-tts',
-        voice: profile.voice,
-        instructions: profile.instructions,
-        response_format: 'mp3',
-      });
+      // If Piper prefetch is likely ready, use a short timeout so we don't block
+      const timeout = piperPrefetchPromise ? 4000 : 15000;
+      audio = await Promise.race([
+        puter.ai.txt2speech(truncated, {
+          provider: 'openai',
+          model: 'gpt-4o-mini-tts',
+          voice: profile.voice,
+          instructions: profile.instructions,
+          response_format: 'mp3',
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Puter TTS timeout')), timeout)
+        ),
+      ]);
     }
 
     if (cancelled) {
@@ -230,12 +300,92 @@ async function speakWithPuter(text: string, agentId?: string): Promise<boolean> 
   } catch (error) {
     console.warn('[TTS] Puter TTS failed, disabling for session:', error);
     disablePuterTTS();
-    clearPrefetch();
+    // Only clear Puter prefetch — preserve Piper prefetch for fallback
+    prefetchPromise = null;
+    prefetchedCleanText = '';
+    prefetchAgentId = undefined;
     return false;
   }
 }
 
-// Fallback: browser SpeechSynthesis
+// Fallback 1: Piper TTS (self-hosted neural voices)
+async function speakWithPiper(text: string, agentId?: string): Promise<boolean> {
+  try {
+    if (cancelled) return false;
+    if (!getPiperURL() && !piperPrefetchPromise) return false;
+
+    let url: string | null = null;
+    let blob: Blob | null = null;
+
+    // Try to use prefetched Piper audio (generated during AI streaming)
+    if (piperPrefetchPromise && piperPrefetchAgentId === agentId) {
+      const prefetched = await piperPrefetchPromise;
+      piperPrefetchPromise = null;
+      piperPrefetchText = '';
+      piperPrefetchAgentId = undefined;
+
+      if (prefetched && !cancelled) {
+        url = prefetched.url;
+        blob = prefetched.blob;
+      }
+    } else {
+      // Clear stale prefetch
+      piperPrefetchPromise = null;
+      piperPrefetchText = '';
+      piperPrefetchAgentId = undefined;
+    }
+
+    // No prefetch — fetch normally
+    if (!url) {
+      const voice = (agentId && PIPER_VOICES[agentId]) || DEFAULT_PIPER_VOICE;
+      const truncated = truncateForTTS(text, 3500);
+
+      const response = await fetch(getPiperURL(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: truncated, voice }),
+      });
+
+      if (!response.ok) return false;
+
+      blob = await response.blob();
+      if (blob.size < 100 || cancelled) return false;
+
+      url = URL.createObjectURL(blob);
+    }
+
+    const audio = new Audio(url);
+    currentAudioUrl = url;
+
+    if (cancelled) {
+      URL.revokeObjectURL(url);
+      return false;
+    }
+
+    currentAudio = audio;
+    isPlaying = true;
+
+    audio.onended = () => {
+      cleanup();
+      onEndCallback?.();
+      onEndCallback = null;
+    };
+
+    audio.onerror = () => {
+      cleanup();
+      onEndCallback?.();
+      onEndCallback = null;
+    };
+
+    await audio.play();
+    return true;
+  } catch (error) {
+    console.warn('[TTS] Piper TTS failed:', error);
+    return false;
+  }
+}
+
+// Fallback 2: browser SpeechSynthesis
 function speakWithBrowser(text: string): void {
   if (!('speechSynthesis' in window)) {
     onEndCallback?.();
@@ -333,9 +483,16 @@ export async function speak(text: string, onEnd?: () => void, agentId?: string):
   // Try Puter.js first (human-like OpenAI voices, uses prefetched audio if available)
   const puterOk = await speakWithPuter(clean, agentId);
   if (!puterOk) {
-    clearPrefetch();
-    // Fallback: browser SpeechSynthesis
-    speakWithBrowser(clean);
+    // Only clear Puter prefetch — keep Piper prefetch alive for the fallback
+    prefetchPromise = null;
+    prefetchedCleanText = '';
+    prefetchAgentId = undefined;
+    // Fallback 1: Piper TTS (self-hosted neural voices, uses its own prefetched audio)
+    const piperOk = await speakWithPiper(clean, agentId);
+    if (!piperOk) {
+      // Fallback 2: browser SpeechSynthesis
+      speakWithBrowser(clean);
+    }
   }
 }
 
