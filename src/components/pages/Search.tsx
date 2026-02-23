@@ -11,7 +11,6 @@ import { TOKEN_REGISTRY, searchTokens as searchTokenRegistry } from '../../utils
 import { getJupiterTokens, searchJupiterTokens, jupiterToCoinGeckoFormat } from '../../utils/jupiterTokens';
 import { STOCK_TOKENS, STOCK_BY_MINT } from '../../utils/stockTokens';
 import { fetchTopTokens } from '../../utils/coingecko';
-import cosmicBg from 'figma:asset/d1566f8943179b67e87faa45cecace8e6cc289ed.png';
 
 // Wallet token interface for tokens with balance
 export interface WalletToken {
@@ -246,6 +245,35 @@ const SOLANA_TOKEN_SYMBOLS = new Set([
   'acs', 'grape', 'ninja', 'slim', 'liq', 'shdw', 'like', 'media',
 ]);
 
+// Known Ethereum-native token IDs and symbols
+const ETHEREUM_TOKEN_IDS = new Set([
+  'ethereum', 'usd-coin', 'tether', 'chainlink', 'uniswap', 'aave', 'maker',
+  'lido-dao', 'shiba-inu', 'pepe', 'wrapped-bitcoin', 'dai', 'compound-governance-token',
+  'sushi', 'curve-dao-token', 'yearn-finance', '1inch', 'ens', 'the-graph',
+  'loopring', 'balancer', 'synthetix-network-token', 'bancor', 'dydx',
+  'rocket-pool', 'frax', 'convex-finance', 'ribbon-finance', 'steth',
+  'blur', 'floki', 'arbitrum', 'optimism', 'immutable-x', 'gala',
+  'the-sandbox', 'decentraland', 'axie-infinity', 'ape', 'fetch-ai',
+]);
+
+const ETHEREUM_TOKEN_SYMBOLS = new Set([
+  'eth', 'usdc', 'usdt', 'link', 'uni', 'aave', 'mkr', 'ldo', 'shib', 'pepe',
+  'wbtc', 'dai', 'comp', 'sushi', 'crv', 'yfi', '1inch', 'ens', 'grt',
+  'lrc', 'bal', 'snx', 'bnt', 'dydx', 'rpl', 'frax', 'cvx', 'rbn', 'steth',
+  'blur', 'floki', 'arb', 'op', 'imx', 'gala', 'sand', 'mana', 'axs', 'ape',
+  'fet',
+]);
+
+// Known Bitcoin-ecosystem token IDs and symbols
+const BITCOIN_TOKEN_IDS = new Set([
+  'bitcoin', 'wrapped-bitcoin', 'bitcoin-cash', 'bitcoin-sv', 'litecoin',
+  'dogecoin', 'stacks', 'lightning-bitcoin', 'bitcoin-gold',
+]);
+
+const BITCOIN_TOKEN_SYMBOLS = new Set([
+  'btc', 'wbtc', 'bch', 'bsv', 'ltc', 'doge', 'stx', 'lbtc', 'btg',
+]);
+
 // Helper function to detect blockchain based on token metadata
 const detectBlockchain = (coin: CoinGeckoToken): string[] => {
   const symbol = coin.symbol.toLowerCase();
@@ -276,32 +304,29 @@ const detectBlockchain = (coin: CoinGeckoToken): string[] => {
     blockchains.push('solana');
   }
 
-  // Polygon tokens
+  // Ethereum tokens
   if (
-    id.includes('polygon') ||
-    symbol === 'matic' ||
-    symbol === 'pol' ||
-    name.includes('polygon')
+    ETHEREUM_TOKEN_IDS.has(id) ||
+    ETHEREUM_TOKEN_SYMBOLS.has(symbol) ||
+    id.includes('ethereum') ||
+    name.includes('ethereum') ||
+    name.includes('erc-20') ||
+    name.includes('erc20')
   ) {
-    blockchains.push('polygon');
+    blockchains.push('ethereum');
   }
 
-  // BSC tokens
+  // Bitcoin ecosystem tokens
   if (
-    id.includes('binance') ||
-    id.includes('bsc') ||
-    symbol === 'bnb' ||
-    name.includes('binance') ||
-    name.includes('bsc')
+    BITCOIN_TOKEN_IDS.has(id) ||
+    BITCOIN_TOKEN_SYMBOLS.has(symbol) ||
+    id.includes('bitcoin') ||
+    name.includes('bitcoin')
   ) {
-    blockchains.push('bsc');
+    blockchains.push('bitcoin');
   }
 
-  // If no specific blockchain detected, assume it's multi-chain
-  if (blockchains.length === 0) {
-    blockchains.push('solana');
-  }
-
+  // No fallback — unknown tokens only show under "All Networks"
   return blockchains;
 };
 
@@ -319,7 +344,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
   const [addingCoin, setAddingCoin] = useState<string | null>(null);
   const [addedCoins, setAddedCoins] = useState<Set<string>>(new Set());
   const [walletTokenSymbols, setWalletTokenSymbols] = useState<Set<string>>(new Set());
-  const [blockchainFilter, setBlockchainFilter] = useState<'all' | 'solana' | 'stocks' | 'polygon' | 'bsc'>('all');
+  const [blockchainFilter, setBlockchainFilter] = useState<'all' | 'solana' | 'ethereum' | 'bitcoin' | 'stocks'>('all');
   const [featuredTokensData, setFeaturedTokensData] = useState<CoinGeckoToken[]>([]);
   const [searchResults, setSearchResults] = useState<CoinGeckoToken[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -931,17 +956,6 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
 
   return (
     <div className="search-page max-w-md mx-auto bg-black pb-24 overflow-x-hidden relative">
-      {/* Cosmic background image */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none opacity-20"
-        style={{
-          backgroundImage: `url(${cosmicBg})`,
-          filter: 'blur(1px)'
-        }}
-      />
-      
-      {/* Dark overlay for readability */}
-      <div className="absolute inset-0 bg-black/40 pointer-events-none" />
       
       {/* Header */}
       <motion.div 
@@ -1021,7 +1035,7 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              All Chains
+              All Networks
             </motion.button>
 
             <motion.button
@@ -1051,29 +1065,29 @@ export function Search({ onBack, walletId, onSelectToken, onViewCoinDetail, wall
             </motion.button>
 
             <motion.button
-              onClick={() => setBlockchainFilter('polygon')}
+              onClick={() => setBlockchainFilter('ethereum')}
               className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
-                blockchainFilter === 'polygon'
-                  ? 'bg-gradient-to-r from-purple-600 to-violet-600 text-white shadow-lg shadow-purple-500/25'
+                blockchainFilter === 'ethereum'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25'
                   : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 border border-slate-700/50'
               }`}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              🟣 Polygon
+              ⚪ Ethereum
             </motion.button>
 
             <motion.button
-              onClick={() => setBlockchainFilter('bsc')}
+              onClick={() => setBlockchainFilter('bitcoin')}
               className={`px-4 py-2 rounded-full text-xs font-medium transition-all flex-shrink-0 ${
-                blockchainFilter === 'bsc'
-                  ? 'bg-gradient-to-r from-yellow-600 to-orange-600 text-white shadow-lg shadow-yellow-500/25'
+                blockchainFilter === 'bitcoin'
+                  ? 'bg-gradient-to-r from-orange-600 to-yellow-600 text-white shadow-lg shadow-orange-500/25'
                   : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 border border-slate-700/50'
               }`}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              🟡 BSC
+              🟡 Bitcoin
             </motion.button>
           </motion.div>
         )}

@@ -15,7 +15,7 @@ const CLOUDFLARE_WORKER_URL = localStorage.getItem('suprik_cf_worker_url') || 'h
 // Ollama server URL — stored in localStorage (no hardcoded IP in source code)
 const DEFAULT_OLLAMA_URL = '';
 
-let currentProvider: AIProvider = (localStorage.getItem('suprik_ai_provider') as AIProvider) || 'puter';
+let currentProvider: AIProvider = (localStorage.getItem('suprik_ai_provider') as AIProvider) || 'cloudflare';
 
 export function getAIProvider(): AIProvider {
   return currentProvider;
@@ -116,7 +116,8 @@ function setupPuterPopupBlocker(): void {
     const candidates = document.querySelectorAll('body > div, body > iframe');
     for (const el of candidates) {
       const text = el.textContent || '';
-      if (text.includes('Low Balance') || text.includes('not enough funding') || text.includes('Upgrade Now')) {
+      if (text.includes('Low Balance') || text.includes('not enough funding') || text.includes('Upgrade Now')
+        || text.includes('usage limit') || text.includes('insufficient_funds') || text.includes('please upgrade')) {
         dismissPuterPopup(el);
         return;
       }
@@ -124,7 +125,8 @@ function setupPuterPopupBlocker(): void {
       if (el instanceof HTMLIFrameElement) {
         try {
           const iframeText = el.contentDocument?.body?.textContent || '';
-          if (iframeText.includes('Low Balance') || iframeText.includes('not enough funding')) {
+          if (iframeText.includes('Low Balance') || iframeText.includes('not enough funding')
+            || iframeText.includes('usage limit') || iframeText.includes('please upgrade')) {
             el.remove();
             disablePuter();
             return;
@@ -137,7 +139,7 @@ function setupPuterPopupBlocker(): void {
       const style = (el as HTMLElement).style;
       if (style.position === 'fixed' && parseInt(style.zIndex || '0') > 99000) {
         const text = el.textContent || '';
-        if (text.includes('Low Balance') || text.includes('Upgrade')) {
+        if (text.includes('Low Balance') || text.includes('Upgrade') || text.includes('usage limit')) {
           dismissPuterPopup(el);
           return;
         }
@@ -156,6 +158,83 @@ function setupPuterPopupBlocker(): void {
     scanCount++;
     if (scanCount > 150) clearInterval(scanInterval); // Stop after 30s
   }, 200);
+}
+
+// --- Puter auth popup guard ---
+// The Puter SDK opens a popup to puter.com on first use for authentication.
+// This guard intercepts window.open during puter.ai.chat() calls, blocking the
+// auth popup when Cloudflare fallback is available. Already-authenticated users
+// (who have a valid Puter session) are unaffected since no popup is triggered.
+
+let puterAuthNeeded = false;
+try { puterAuthNeeded = localStorage.getItem('suprik_puter_auth_needed') === 'true'; } catch {}
+
+function markPuterAuthNeeded(): void {
+  puterAuthNeeded = true;
+  try { localStorage.setItem('suprik_puter_auth_needed', 'true'); } catch {}
+}
+
+export function clearPuterAuthNeeded(): void {
+  puterAuthNeeded = false;
+  try { localStorage.removeItem('suprik_puter_auth_needed'); } catch {}
+}
+
+/**
+ * Call puter.ai.chat() with a guard that intercepts auth popups.
+ * If the SDK tries to open puter.com for auth, block it and throw a
+ * recognizable error so the caller can fall back to Cloudflare.
+ */
+function callPuterChatGuarded(
+  apiMessages: Array<{ role: string; content: string }>,
+  options: { model: string; stream: boolean },
+): Promise<any> {
+  // If we already know Puter needs auth, skip the attempt entirely
+  if (puterAuthNeeded && isCloudflareConfigured()) {
+    return Promise.reject(new Error('__PUTER_AUTH_NEEDED__'));
+  }
+
+  const origOpen = window.open;
+  let popupIntercepted = false;
+  let restored = false;
+
+  function restoreOpen() {
+    if (!restored) { restored = true; window.open = origOpen; }
+  }
+
+  // Temporarily intercept window.open to catch Puter auth popups
+  window.open = function (...args: any[]) {
+    const url = String(args[0] || '');
+    if (url.includes('puter.com') || url.includes('puter.site') || url === '') {
+      popupIntercepted = true;
+      markPuterAuthNeeded();
+      restoreOpen();
+      // Return a fake window to avoid SDK errors
+      return { closed: true, close: () => {} } as any;
+    }
+    // Non-Puter popups pass through
+    return origOpen.apply(window, args);
+  };
+
+  // Safety: restore window.open after 8s regardless
+  const safetyTimer = setTimeout(restoreOpen, 8000);
+
+  return window.puter!.ai.chat(apiMessages, options).then((result: any) => {
+    clearTimeout(safetyTimer);
+    restoreOpen();
+    if (popupIntercepted) {
+      throw new Error('__PUTER_AUTH_NEEDED__');
+    }
+    // Auth succeeded — clear any previous auth-needed flag
+    if (puterAuthNeeded) clearPuterAuthNeeded();
+    return result;
+  }).catch((err: any) => {
+    clearTimeout(safetyTimer);
+    restoreOpen();
+    if (popupIntercepted) {
+      throw new Error('__PUTER_AUTH_NEEDED__');
+    }
+    throw err;
+  });
 }
 
 // --- Cloudflare Workers AI (free tier, Llama 3.1 8B) ---
@@ -770,12 +849,14 @@ export async function callPuterAI(
     }
   }
 
-  // Try streaming first, fall back to non-streaming
+  // Try streaming first, fall back to non-streaming.
+  // Uses callPuterChatGuarded() to intercept auth popups — if Puter tries to
+  // open puter.com for auth, the guard blocks it and we fall back to Cloudflare.
   let fullText = '';
 
   try {
     const response = await Promise.race([
-      window.puter.ai.chat(apiMessages, {
+      callPuterChatGuarded(apiMessages, {
         model: AI_MODEL,
         stream: true,
       }),
@@ -807,6 +888,18 @@ export async function callPuterAI(
   } catch (streamError: any) {
     if (signal?.aborted) throw streamError;
 
+    // Check if Puter needs auth (popup was blocked by guard)
+    const isAuthNeeded = streamError?.message?.includes('__PUTER_AUTH_NEEDED__');
+    if (isAuthNeeded) {
+      if (isCloudflareConfigured()) {
+        console.log('[AI] Puter needs auth, using Cloudflare AI seamlessly');
+        return callCloudflareAI(apiMessages, onChunk, signal);
+      }
+      // No Cloudflare — clear flag so next attempt allows the popup
+      clearPuterAuthNeeded();
+      throw new Error('AI requires authentication. Please try again — a sign-in popup will appear.');
+    }
+
     // Check if Puter returned a credits/balance error
     const isCreditsError = streamError?.message?.includes('credits exhausted')
       || (streamError && typeof streamError === 'object' && streamError.success === false);
@@ -826,7 +919,7 @@ export async function callPuterAI(
 
     try {
       const response = await Promise.race([
-        window.puter.ai.chat(apiMessages, {
+        callPuterChatGuarded(apiMessages, {
           model: AI_MODEL,
           stream: false,
         }),
@@ -841,6 +934,17 @@ export async function callPuterAI(
     } catch (nonStreamError: any) {
       // Puter completely failed — fall back to Cloudflare if configured
       if (signal?.aborted) throw nonStreamError;
+
+      // Auth needed on non-streaming retry
+      if (nonStreamError?.message?.includes('__PUTER_AUTH_NEEDED__')) {
+        if (isCloudflareConfigured()) {
+          console.log('[AI] Puter needs auth (non-stream), using Cloudflare AI');
+          return callCloudflareAI(apiMessages, onChunk, signal);
+        }
+        clearPuterAuthNeeded();
+        throw new Error('AI requires authentication. Please try again.');
+      }
+
       disablePuter();
       if (isCloudflareConfigured()) {
         console.warn('[AI] Puter failed completely, falling back to Cloudflare AI:', nonStreamError.message);

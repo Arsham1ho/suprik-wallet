@@ -4,7 +4,6 @@ import { ArrowLeft, Key } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { createSupabaseClient } from '../utils/supabase/client';
-import backgroundImage from 'figma:asset/7fff6c0f4086de297821ed0e75fcf92b1f55b37f.png';
 
 interface SignUpOptionsProps {
   onSelectRecoveryPhrase: () => void;
@@ -60,15 +59,45 @@ export function SignUpOptions({ onSelectRecoveryPhrase, onBack }: SignUpOptionsP
         overflowX: 'hidden',
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
-        backgroundImage: `url(${backgroundImage})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-        backgroundColor: '#050510',
+        background: 'linear-gradient(180deg, #08061a 0%, #0a0818 40%, #060510 100%)',
       }}
     >
-        {/* Dark overlay for text readability */}
-        <div className="absolute inset-0 bg-black/30" />
+        {/* Connected dots grid background */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <style>{`
+            @keyframes suGridPulse { 0%, 100% { opacity: 0.13; } 50% { opacity: 0.2; } }
+            @keyframes suGridPulse2 { 0%, 100% { opacity: 0.05; } 50% { opacity: 0.09; } }
+            @keyframes suGlowOrbit {
+              0% { top: -15%; left: -15%; }
+              25% { top: -10%; left: 70%; }
+              50% { top: 70%; left: 60%; }
+              75% { top: 60%; left: -10%; }
+              100% { top: -15%; left: -15%; }
+            }
+          `}</style>
+          {/* Primary network grid */}
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='50' height='50'><line x1='0' y1='0' x2='50' y2='0' stroke='rgba(139,92,246,1)' stroke-width='0.3'/><line x1='0' y1='0' x2='0' y2='50' stroke='rgba(139,92,246,1)' stroke-width='0.3'/><line x1='0' y1='0' x2='25' y2='25' stroke='rgba(139,92,246,1)' stroke-width='0.2'/><line x1='25' y1='25' x2='50' y2='0' stroke='rgba(139,92,246,1)' stroke-width='0.2'/><line x1='25' y1='25' x2='0' y2='50' stroke='rgba(139,92,246,1)' stroke-width='0.2'/><line x1='25' y1='25' x2='50' y2='50' stroke='rgba(139,92,246,1)' stroke-width='0.2'/><circle cx='0' cy='0' r='1.5' fill='rgba(139,92,246,1)'/><circle cx='25' cy='25' r='1' fill='rgba(139,92,246,0.7)'/></svg>`)}")`,
+            animation: 'suGridPulse 6s ease-in-out infinite',
+            opacity: 0.13,
+          }} />
+          {/* Secondary grid — offset for depth */}
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='50' height='50'><line x1='0' y1='0' x2='50' y2='0' stroke='rgba(99,102,241,1)' stroke-width='0.2'/><line x1='0' y1='0' x2='0' y2='50' stroke='rgba(99,102,241,1)' stroke-width='0.2'/><circle cx='0' cy='0' r='1' fill='rgba(99,102,241,0.8)'/></svg>`)}")`,
+            backgroundSize: '35px 35px',
+            backgroundPosition: '17px 17px',
+            animation: 'suGridPulse2 9s ease-in-out infinite',
+            opacity: 0.05,
+          }} />
+          {/* Orbiting glow spot */}
+          <div className="absolute" style={{ width: 350, height: 350, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.22) 0%, transparent 60%)', filter: 'blur(60px)', animation: 'suGlowOrbit 18s ease-in-out infinite' }} />
+          {/* Center glow */}
+          <div className="absolute" style={{ top: '30%', left: '50%', transform: 'translate(-50%, -50%)', width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, rgba(88,28,135,0.06) 40%, transparent 70%)', filter: 'blur(40px)' }} />
+          {/* Fade at top edge */}
+          <div className="absolute top-0 left-0 right-0" style={{ height: '12%', background: 'linear-gradient(to bottom, #08061a, transparent)', zIndex: 1 }} />
+          {/* Fade at bottom edge */}
+          <div className="absolute bottom-0 left-0 right-0" style={{ height: '12%', background: 'linear-gradient(to top, #060510, transparent)', zIndex: 1 }} />
+        </div>
 
         <div
           className="px-6 py-6 w-full relative z-10 flex-1"
@@ -78,11 +107,10 @@ export function SignUpOptions({ onSelectRecoveryPhrase, onBack }: SignUpOptionsP
         <div className="flex items-center mb-8">
           <Button
             variant="ghost"
-            size="icon"
             onClick={onBack}
-            className="text-slate-400 hover:text-white hover:bg-slate-900/50 -ml-2 transition-all"
+            className="text-slate-400 hover:text-white hover:bg-slate-900/50 -ml-2 transition-all h-10 w-10 p-0"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="!size-6" />
           </Button>
         </div>
 

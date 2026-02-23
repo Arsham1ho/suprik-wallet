@@ -226,7 +226,6 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
         >
           <Button
             variant="ghost"
-            size="icon"
             onClick={() => {
               if (step === 'intro') onBack();
               else if (step === 'phrase') setStep('intro');
@@ -234,9 +233,9 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
               else if (step === 'confirm-password') setStep('password');
               else if (step === 'biometric') setStep('confirm-password');
             }}
-            className="text-slate-400 hover:text-white hover:bg-slate-900 -ml-2 transition-all"
+            className="text-slate-400 hover:text-white hover:bg-slate-900 -ml-2 transition-all h-10 w-10 p-0"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="!size-6" />
           </Button>
         </motion.div>
 
@@ -279,7 +278,7 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
                 ))}
               </div>
 
-              <div className="bg-amber-950/20 border border-amber-900/30 rounded-xl p-4 backdrop-blur-sm">
+              <div className="rounded-xl p-4">
                 <p className="text-amber-200/90 text-sm leading-relaxed">
                   <strong className="text-amber-400 font-semibold">Warning:</strong> Suprik cannot recover your wallet if you lose your secret recovery phrase.
                 </p>
@@ -507,7 +506,7 @@ export function SignUp({ onSuccess, onBack }: SignUpProps) {
                 </motion.div>
               )}
 
-              <div className="bg-amber-950/20 border border-amber-900/30 rounded-xl p-4 backdrop-blur-sm">
+              <div className="rounded-xl p-4">
                 <p className="text-amber-200/90 text-sm leading-relaxed">
                   <strong className="text-amber-400 font-semibold">Important:</strong> This password cannot be recovered. Make sure to remember it!
                 </p>

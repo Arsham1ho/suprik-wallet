@@ -587,11 +587,10 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
         >
           <Button
             variant="ghost"
-            size="icon"
             onClick={handleBack}
-            className="text-slate-400 hover:text-white hover:bg-slate-900 -ml-2 transition-all"
+            className="text-slate-400 hover:text-white hover:bg-slate-900/50 -ml-2 transition-all h-10 w-10 p-0"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="!size-6" />
           </Button>
         </motion.div>
 
@@ -725,10 +724,9 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
                 </p>
               </div>
 
-              <Card className="bg-slate-950/50 backdrop-blur-sm border-slate-800/50 p-6">
+              <Card className="bg-transparent border-0 p-0">
                 <div className="space-y-4">
                   <div>
-                    <label className="text-sm text-slate-400 mb-2 block">Private Key</label>
                     <textarea
                       value={privateKey}
                       onChange={(e) => handlePrivateKeyChange(e.target.value)}
@@ -751,14 +749,11 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
                     </motion.div>
                   )}
 
-                  <p className="text-slate-500 text-xs">
-                    Supports base58 encoded keys or JSON byte arrays [1,2,3,...]
-                  </p>
                 </div>
               </Card>
 
               <motion.div
-                className="bg-amber-950/20 border border-amber-900/30 rounded-xl p-4 backdrop-blur-sm"
+                className="rounded-xl p-4"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
               >
@@ -915,20 +910,14 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
 
               {/* Show selected accounts summary for mnemonic import */}
               {importMode === 'mnemonic' && selectedAccounts.length > 0 && (
-                <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
+                <div className="rounded-xl p-4">
                   <p className="text-sm text-purple-200">
                     Importing {selectedAccounts.length} account{selectedAccounts.length > 1 ? 's' : ''} from this seed phrase
                   </p>
                 </div>
               )}
 
-              {/* Show derived address for private key import */}
-              {importMode === 'privateKey' && derivedPublicKey && (
-                <div className="bg-slate-950/50 backdrop-blur-sm border border-slate-800/50 rounded-xl p-4">
-                  <p className="text-xs text-slate-400 mb-1">Importing wallet:</p>
-                  <p className="text-sm text-white break-all">{derivedPublicKey}</p>
-                </div>
-              )}
+
 
               <div className="space-y-4">
                 <div>
@@ -968,7 +957,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
                 )}
               </div>
 
-              <div className="bg-blue-950/20 border border-blue-900/30 rounded-xl p-4 backdrop-blur-sm">
+              <div className="rounded-xl p-4">
                 <p className="text-blue-200/90 text-sm leading-relaxed">
                   <strong className="text-blue-400 font-semibold">Tip:</strong> Use a mix of uppercase, lowercase, numbers, and special characters for a stronger password.
                 </p>
@@ -1034,7 +1023,7 @@ export function SignIn({ onSuccess, onBack }: SignInProps) {
                 </motion.div>
               )}
 
-              <div className="bg-amber-950/20 border border-amber-900/30 rounded-xl p-4 backdrop-blur-sm">
+              <div className="rounded-xl p-4">
                 <p className="text-amber-200/90 text-sm leading-relaxed">
                   <strong className="text-amber-400 font-semibold">Important:</strong> This password cannot be recovered. Make sure to remember it!
                 </p>
