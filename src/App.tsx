@@ -515,8 +515,10 @@ export default function App() {
   };
 
   const handleWelcomePageContinue = () => {
+    setShowWelcome(false);
     setShowWelcomePage(false);
     setShowIntroVideo(true);
+    sessionStorage.setItem('hasSeenWelcome', 'true');
     sessionStorage.setItem('hasSeenWelcomePage', 'true');
   };
 
@@ -540,9 +542,7 @@ export default function App() {
           <NetworkProvider>
             <div className="wallet-outer">
               <div className="wallet-container">
-                {showWelcome ? (
-                  <WelcomeAnimation onComplete={handleWelcomeComplete} />
-                ) : showWelcomePage ? (
+                {(showWelcome || showWelcomePage) ? (
                   <WelcomePage onContinue={handleWelcomePageContinue} />
                 ) : showIntroVideo ? (
                   <IntroVideo onComplete={handleIntroVideoComplete} />
