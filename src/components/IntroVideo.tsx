@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 
 interface IntroVideoProps {
   onComplete: () => void;
@@ -79,9 +79,15 @@ export function IntroVideo({ onComplete }: IntroVideoProps) {
         zIndex: 9999,
       }}
     >
+      <style>{`
+        @media (max-width: 768px) {
+          .intro-video { object-fit: cover !important; }
+        }
+      `}</style>
       <video
         ref={videoRef}
         src={VIDEO_PATH}
+        className="intro-video"
         style={{
           position: 'absolute',
           top: '50%',

@@ -196,6 +196,7 @@ export function SetupPassword({ walletId, onComplete }: SetupPasswordProps) {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && password.length >= 12) handleContinue(); }}
                 className="w-full bg-slate-950/50 border border-slate-800/50 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-lg"
                 placeholder="Enter password (min 12 characters)"
                 autoFocus
@@ -255,6 +256,7 @@ export function SetupPassword({ walletId, onComplete }: SetupPasswordProps) {
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && confirmPassword && password === confirmPassword) handleContinue(); }}
               className="w-full bg-slate-950/50 border border-slate-800/50 rounded-xl px-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all text-lg"
               placeholder="Re-enter your password"
               autoFocus
