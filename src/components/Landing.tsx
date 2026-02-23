@@ -1,6 +1,5 @@
-import { Sparkles, Shield, Zap, Lock, ArrowRight, Check } from 'lucide-react';
+import { Wallet, Shield, Zap, Lock, Wand2, ArrowRight, Check, KeyRound } from 'lucide-react';
 const logo = '/sup_logo.png';
-import backgroundImage from 'figma:asset/7fff6c0f4086de297821ed0e75fcf92b1f55b37f.png';
 
 interface LandingProps {
   onCreateWallet: () => void;
@@ -20,30 +19,61 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
         WebkitUserSelect: 'none',
         userSelect: 'none',
         WebkitOverflowScrolling: 'touch',
-        backgroundImage: `url(${backgroundImage})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-        backgroundColor: '#050510',
+        background: 'linear-gradient(180deg, #08061a 0%, #0a0818 40%, #060510 100%)',
       }}
     >
+      {/* Connected dots grid background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <style>{`
+          @keyframes gridPulse { 0%, 100% { opacity: 0.13; } 50% { opacity: 0.2; } }
+          @keyframes gridPulse2 { 0%, 100% { opacity: 0.05; } 50% { opacity: 0.09; } }
+          @keyframes glowOrbit {
+            0% { top: -15%; left: -15%; }
+            25% { top: -10%; left: 70%; }
+            50% { top: 70%; left: 60%; }
+            75% { top: 60%; left: -10%; }
+            100% { top: -15%; left: -15%; }
+          }
+        `}</style>
+        {/* Primary network grid — dots + orthogonal + diagonal lines */}
+        <div className="absolute inset-0" style={{
+          backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='50' height='50'><line x1='0' y1='0' x2='50' y2='0' stroke='rgba(139,92,246,1)' stroke-width='0.3'/><line x1='0' y1='0' x2='0' y2='50' stroke='rgba(139,92,246,1)' stroke-width='0.3'/><line x1='0' y1='0' x2='25' y2='25' stroke='rgba(139,92,246,1)' stroke-width='0.2'/><line x1='25' y1='25' x2='50' y2='0' stroke='rgba(139,92,246,1)' stroke-width='0.2'/><line x1='25' y1='25' x2='0' y2='50' stroke='rgba(139,92,246,1)' stroke-width='0.2'/><line x1='25' y1='25' x2='50' y2='50' stroke='rgba(139,92,246,1)' stroke-width='0.2'/><circle cx='0' cy='0' r='1.5' fill='rgba(139,92,246,1)'/><circle cx='25' cy='25' r='1' fill='rgba(139,92,246,0.7)'/></svg>`)}")`,
+          animation: 'gridPulse 6s ease-in-out infinite',
+          opacity: 0.13,
+        }} />
+        {/* Secondary grid — smaller, offset for depth */}
+        <div className="absolute inset-0" style={{
+          backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='50' height='50'><line x1='0' y1='0' x2='50' y2='0' stroke='rgba(99,102,241,1)' stroke-width='0.2'/><line x1='0' y1='0' x2='0' y2='50' stroke='rgba(99,102,241,1)' stroke-width='0.2'/><circle cx='0' cy='0' r='1' fill='rgba(99,102,241,0.8)'/></svg>`)}")`,
+          backgroundSize: '35px 35px',
+          backgroundPosition: '17px 17px',
+          animation: 'gridPulse2 9s ease-in-out infinite',
+          opacity: 0.05,
+        }} />
+        {/* Orbiting glow spot */}
+        <div className="absolute" style={{ width: 350, height: 350, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.22) 0%, transparent 60%)', filter: 'blur(60px)', animation: 'glowOrbit 18s ease-in-out infinite' }} />
+        {/* Center glow behind logo */}
+        <div className="absolute" style={{ top: '30%', left: '50%', transform: 'translate(-50%, -50%)', width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, rgba(88,28,135,0.06) 40%, transparent 70%)', filter: 'blur(40px)' }} />
+        {/* Fade at top edge */}
+        <div className="absolute top-0 left-0 right-0" style={{ height: '12%', background: 'linear-gradient(to bottom, #08061a, transparent)', zIndex: 1 }} />
+        {/* Fade at bottom edge */}
+        <div className="absolute bottom-0 left-0 right-0" style={{ height: '12%', background: 'linear-gradient(to top, #060510, transparent)', zIndex: 1 }} />
+      </div>
 
         {/* Content */}
         <div className="flex flex-col px-6 py-6 relative z-10 landing-page-content">
           {/* Hero Section */}
           <div className="flex flex-col items-center justify-start pt-4">
-            {/* Logo Circle - Light purple with atom icon */}
+            {/* Logo */}
             <div className="relative mb-6 select-none pointer-events-none">
-              {/* Outer glow */}
+              {/* Soft glow behind logo */}
               <div
-                className="absolute inset-0 -m-6 rounded-full animate-pulse-glow"
+                className="absolute inset-0 -m-6 rounded-full"
                 style={{
-                  background: 'radial-gradient(circle, rgba(216, 180, 254, 0.3) 0%, transparent 70%)',
+                  background: 'radial-gradient(circle, rgba(139, 92, 246, 0.2) 0%, transparent 70%)',
                   filter: 'blur(20px)',
                 }}
               />
 
-              {/* Logo */}
               <div
                 className="relative w-32 h-32 flex items-center justify-center"
                 style={{
@@ -69,21 +99,16 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
 
             {/* Brand & Tagline */}
             <div className="text-center mb-8">
-              <h1 
+              <h1
                 className="text-6xl font-bold mb-3 select-none tracking-tight"
-                style={{
-                  background: 'linear-gradient(135deg, #a78bfa 0%, #818cf8 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                }}
+                style={{ color: '#c4b5fd' }}
               >
                 Suprik
               </h1>
-              <p className="text-white mb-2 select-none">
+              <p className="text-white/85 mb-2 select-none text-[15px]">
                 The friendly crypto wallet
               </p>
-              <p className="text-sm text-slate-400 select-none">
+              <p className="text-sm text-slate-500 select-none">
                 Buy, store, send and swap tokens
               </p>
             </div>
@@ -94,19 +119,18 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
                 { icon: Shield, text: 'Secure' },
                 { icon: Zap, text: 'Fast' },
                 { icon: Lock, text: 'Private' },
-                { icon: Sparkles, text: 'Easy' },
+                { icon: Wand2, text: 'Easy' },
               ].map((feature) => (
                 <div
                   key={feature.text}
                   className="flex items-center gap-3 px-5 py-4 rounded-2xl backdrop-blur-sm select-none"
                   style={{
                     background: 'rgba(15, 10, 26, 0.6)',
-                    border: '1px solid rgba(139, 92, 246, 0.3)',
-                    boxShadow: '0 4px 20px rgba(139, 92, 246, 0.1)',
+                    border: '1px solid rgba(139, 92, 246, 0.25)',
                   }}
                 >
-                  <feature.icon className="w-5 h-5 text-purple-300 flex-shrink-0" />
-                  <span className="text-slate-200">{feature.text}</span>
+                  <feature.icon className="w-5 h-5 text-purple-400/80 flex-shrink-0" />
+                  <span className="text-slate-300 text-[15px]">{feature.text}</span>
                 </div>
               ))}
             </div>
@@ -117,55 +141,51 @@ export function Landing({ onCreateWallet, onImportWallet }: LandingProps) {
             className="space-y-3 pb-8 mt-auto"
             style={{ paddingBottom: 'max(32px, env(safe-area-inset-bottom))' }}
           >
-            {/* Create Wallet - Primary CTA with gradient */}
+            {/* Create Wallet */}
             <button
               onClick={onCreateWallet}
-              className="w-full h-14 rounded-2xl font-medium select-none relative overflow-hidden transition-transform active:scale-95"
+              className="w-full h-14 rounded-2xl font-semibold select-none relative overflow-hidden transition-transform active:scale-[0.97]"
               style={{
-                background: 'linear-gradient(90deg, #42138c 0%, #5218af 50%, #6b30c9 100%)',
+                background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
                 touchAction: 'manipulation',
-                WebkitUserDrag: 'none',
-                userSelect: 'none',
-                boxShadow: '0 10px 30px rgba(82, 24, 175, 0.5)',
+                boxShadow: '0 8px 32px rgba(124, 58, 237, 0.3)',
               }}
             >
               <span className="flex items-center justify-center gap-2.5 select-none text-white">
-                <Sparkles className="w-5 h-5" />
+                <Wallet className="w-5 h-5" />
                 Create New Wallet
-                <ArrowRight className="w-5 h-5" />
+                <ArrowRight className="w-4 h-4 opacity-60" />
               </span>
             </button>
-            
-            {/* Import Wallet - Secondary CTA - dark button */}
+
+            {/* Import Wallet */}
             <button
               onClick={onImportWallet}
-              className="w-full h-14 rounded-2xl text-white backdrop-blur-sm transition-all active:scale-95 select-none"
+              className="w-full h-14 rounded-2xl text-white transition-all active:scale-[0.97] select-none"
               style={{
-                background: 'rgba(15, 10, 26, 0.8)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.07)',
                 touchAction: 'manipulation',
-                WebkitUserDrag: 'none',
-                userSelect: 'none'
               }}
             >
               <span className="flex items-center justify-center gap-2.5">
-                <Lock className="w-5 h-5" />
+                <KeyRound className="w-5 h-5 opacity-50" />
                 I already have a wallet
               </span>
             </button>
 
             {/* Trust Indicators */}
             <div className="flex items-center justify-center gap-2 pt-2 select-none">
-              <Check className="w-4 h-4 text-purple-400" />
-              <span className="text-xs text-slate-400">
+              <Check className="w-4 h-4 text-purple-400/60" />
+              <span className="text-xs text-slate-500">
                 Trusted by Community
               </span>
             </div>
 
             {/* Terms */}
-            <p className="text-center text-xs text-slate-500 select-none pt-1">
+            <p className="text-center text-xs text-slate-600 select-none pt-1">
               By continuing, you agree to our{' '}
-              <span className="text-slate-400 underline cursor-pointer">Terms of Service</span>
+              <a href="https://www.suprik.com/terms" target="_blank" rel="noopener noreferrer" className="text-slate-500 underline cursor-pointer">Terms of Service</a>
             </p>
           </div>
         </div>

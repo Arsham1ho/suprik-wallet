@@ -23,66 +23,108 @@ interface FAQItem {
 }
 
 const faqs: FAQItem[] = [
+  // Getting Started
   {
     category: 'Getting Started',
     question: 'How do I create a new wallet?',
-    answer: 'When you first open Suprik, you can create a new wallet by choosing "Create New Wallet". You\'ll receive a 12-word recovery phrase - make sure to write it down and store it safely!'
+    answer: 'Tap "Create New Wallet" on the welcome screen. You\'ll receive a 12-word secret recovery phrase. Write it down on paper and store it in a safe place — this is the only way to recover your wallet.'
   },
   {
     category: 'Getting Started',
     question: 'How do I import an existing wallet?',
-    answer: 'On the welcome screen, select "Import Wallet" and enter your 12-word recovery phrase. Your wallet and all associated accounts will be restored.'
+    answer: 'Tap "Import Wallet" and choose either Recovery Phrase (enter your 12-word seed phrase) or Private Key (paste your Solana base58 private key). Your wallet and balances will be restored automatically.'
   },
+  {
+    category: 'Getting Started',
+    question: 'What networks does Suprik support?',
+    answer: 'Suprik currently supports Solana (mainnet and devnet). Your wallet displays SOL and all SPL tokens including USDC, USDT, and thousands of Solana ecosystem tokens.'
+  },
+  // Security
   {
     category: 'Security',
     question: 'What is a recovery phrase?',
-    answer: 'A recovery phrase (also called a seed phrase) is a 12-word backup of your wallet. It\'s the ONLY way to recover your wallet if you lose access. Never share it with anyone!'
+    answer: 'A recovery phrase (seed phrase) is a 12-word backup that controls your wallet. It\'s the ONLY way to recover your funds if you lose access. Never share it with anyone — Suprik will never ask for it.'
   },
   {
     category: 'Security',
     question: 'How do I keep my wallet secure?',
-    answer: 'Always keep your recovery phrase offline and secure. Enable biometric authentication, never share your private keys, and be cautious of phishing attempts. Suprik will never ask for your recovery phrase.'
+    answer: 'Store your recovery phrase offline (never screenshot it). Set a strong password (min 12 characters). Enable biometric authentication for quick access. Be cautious of phishing sites — always verify URLs.'
   },
   {
-    category: 'Accounts',
-    question: 'Can I have multiple accounts?',
-    answer: 'Yes! You can create multiple accounts within your wallet. Go to Settings > Account Settings and tap "Add Another Account". Each account has its own unique address.'
+    category: 'Security',
+    question: 'Is my data stored on your servers?',
+    answer: 'No. Suprik is a self-custodial wallet — your keys and recovery phrase never leave your device. All sensitive data is encrypted locally. We have no access to your funds or private keys.'
   },
+  // Sending & Receiving
   {
-    category: 'Accounts',
-    question: 'How do I switch between accounts?',
-    answer: 'Tap on your profile picture or account name at the top of the Home screen to open the account switcher, then select the account you want to use.'
-  },
-  {
-    category: 'Transactions',
+    category: 'Sending & Receiving',
     question: 'How do I send crypto?',
-    answer: 'Tap "Send" on the Home screen, enter the recipient\'s address (or scan their QR code), enter the amount, and confirm the transaction. Always double-check the address before sending!'
+    answer: 'Tap "Send" on the Home screen, select a token, enter the recipient\'s Solana address (or scan their QR code), enter the amount, and confirm. Transactions on Solana typically confirm in seconds.'
   },
   {
-    category: 'Transactions',
-    question: 'What is Suprik Pay?',
-    answer: 'Suprik Pay is Suprik\'s innovative feature for peer-to-peer offline transactions. You can create transaction files that can be shared via QR code, Bluetooth, or NFC - even without internet!'
+    category: 'Sending & Receiving',
+    question: 'How do I receive crypto?',
+    answer: 'Tap "Receive" on the Home screen to display your wallet address and QR code. Share either with the sender. Your address stays the same for all SPL tokens and SOL.'
   },
   {
-    category: 'Transactions',
-    question: 'How long do transactions take?',
-    answer: 'Transaction times depend on network congestion and fees. On Solana mainnet, transactions typically confirm in seconds. You can track your transaction in the Activity tab.'
+    category: 'Sending & Receiving',
+    question: 'What are transaction fees?',
+    answer: 'Solana transactions cost approximately 0.000005 SOL (fractions of a cent). You need a small SOL balance to pay for fees. Token transfers may also require rent for new token accounts (~0.002 SOL).'
+  },
+  // Swap
+  {
+    category: 'Swap',
+    question: 'How do I swap tokens?',
+    answer: 'Go to the Swap tab, select the tokens you want to swap (e.g., SOL to USDC), enter the amount, and confirm. Suprik uses Jupiter aggregator to find you the best rates across all Solana DEXs.'
   },
   {
-    category: 'Tokens & NFTs',
+    category: 'Swap',
+    question: 'What is slippage tolerance?',
+    answer: 'Slippage is the difference between the expected price and the actual execution price. You can adjust slippage tolerance in swap settings. Higher slippage = more likely to execute but may get a worse price.'
+  },
+  // AI Chat
+  {
+    category: 'AI Chat',
+    question: 'What is AI Chat?',
+    answer: 'AI Chat gives you access to a team of 6 AI analyst agents (Alex, Warren, Cathie, Linda, Ray, Nassim). Each has a unique perspective — tap an agent for a single take, or use "Discuss" mode for a full roundtable debate.'
+  },
+  {
+    category: 'AI Chat',
+    question: 'Is AI Chat financial advice?',
+    answer: 'No. AI Chat provides analysis and educational insights only. It is not financial advice. Always do your own research (DYOR) before making investment decisions.'
+  },
+  {
+    category: 'AI Chat',
+    question: 'Which AI provider does Suprik use?',
+    answer: 'By default, Suprik uses Cloudflare Workers AI. You can change the AI provider in Settings > API Keys to use Puter AI or a self-hosted Ollama server for more privacy.'
+  },
+  // Tokens & Stocks
+  {
+    category: 'Tokens & Stocks',
     question: 'How do I add custom tokens?',
-    answer: 'Suprik automatically detects tokens in your wallet. For tokens that don\'t appear, you can manually add them by entering the token\'s mint address in the token settings.'
+    answer: 'Go to the Search/Select Token page and search for your token. If it\'s not listed, you can add it manually using the token\'s Solana mint address. Suprik also auto-detects tokens in your wallet.'
   },
   {
-    category: 'Tokens & NFTs',
-    question: 'Where can I see my NFTs?',
-    answer: 'Your NFTs are displayed on the Home screen below your token list. Tap on any NFT to view details, or go to Settings to access the full NFT Gallery.'
+    category: 'Tokens & Stocks',
+    question: 'What are tokenized stocks (xStocks)?',
+    answer: 'xStocks are tokenized versions of real stocks (like Apple, Tesla, Google) that trade on Solana. You can swap into them just like any other SPL token. They track the price of the underlying stock.'
+  },
+  // Accounts & Settings
+  {
+    category: 'Accounts & Settings',
+    question: 'Can I have multiple accounts?',
+    answer: 'Yes! Go to Settings > Account Settings and tap "Add Another Account". Each account is derived from your recovery phrase and has its own unique Solana address.'
   },
   {
-    category: 'Settings',
-    question: 'Can I use Testnet?',
-    answer: 'Yes! Enable Testnet Mode in Settings > Developer. This is useful for testing without using real funds. You can switch back to Mainnet anytime.'
-  }
+    category: 'Accounts & Settings',
+    question: 'How do I switch networks?',
+    answer: 'Go to Settings and toggle between Mainnet and Devnet. Devnet is useful for testing with free test tokens without risking real funds.'
+  },
+  {
+    category: 'Accounts & Settings',
+    question: 'How do I customize the wallet theme?',
+    answer: 'Go to Settings > Theme to choose from multiple color themes including Indigo, Emerald, Rose, Amber, and more. Your theme applies across the entire wallet.'
+  },
 ];
 
 export function HelpAndSupport({ onBack }: HelpAndSupportProps) {

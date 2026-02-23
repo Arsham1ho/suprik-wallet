@@ -686,7 +686,7 @@ export function StockAIChat({ walletId, tokensData }: StockAIChatProps) {
   };
 
   return (
-    <div className="flex flex-col overflow-hidden" style={{ height: 'calc(100vh - 150px)' }}>
+    <div className="flex flex-col overflow-hidden" style={{ height: 'calc(100vh - 160px)' }}>
       {/* Agent Avatars Row + Roundtable Toggle */}
       <div className="flex-shrink-0 px-4 pb-3">
         <div className="flex gap-3 justify-between pb-1">
@@ -1073,9 +1073,6 @@ export function StockAIChat({ walletId, tokensData }: StockAIChatProps) {
             )}
           </button>
         </div>
-        <p className="text-center text-[10px] text-slate-600 mt-2">
-          Powered by <span style={{ color: accentHex }}>Puter AI</span> · Not financial advice
-        </p>
       </div>
     </div>
   );
