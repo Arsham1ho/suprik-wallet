@@ -13,8 +13,10 @@ interface Env {
 const ALLOWED_ORIGINS = new Set([
   'https://suprik.com',
   'https://www.suprik.com',
+  'https://app.suprik.com',
   'https://suprik.io',
   'https://www.suprik.io',
+  'https://suprik-wallet.vercel.app',
   'http://localhost:3000',
   'http://localhost:5173',
 ]);
